@@ -9,10 +9,12 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Production polling schedule + worker hardening.** The worker interval is
-   configurable but still set to a dev cadence; define the 60-minute 24/7
-   production default with a deployment override. Small, and a prerequisite
-   for any real deployment. (Closes the High-Priority polling item.)
+1. **Worker hardening.** The 60-minute 24/7 production cadence is already the
+   default (`Worker:ScheduleIntervalSeconds` = 3600 in `appsettings.json`; the
+   dev override is 15s in `appsettings.Development.json`), so what remains is
+   resilience: the worker host currently dies permanently on an unguarded
+   startup DB call — see issue #20 (one-line fix) — plus retry/backoff around
+   first DB contact.
 2. **Retention + purge jobs.** `client.retention_months` (default 27) exists
    but nothing enforces it — `dmarc_report*` data grows unbounded. Add
    scheduled archival/purge with legal-hold support. Compliance-relevant.
@@ -49,7 +51,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Implement local username/password authentication with secure password hashing and session flow.
 - [x] (done) Add secure mailbox credential storage with app-level encryption key management (AES-256-GCM, key via `Security:CredentialEncryptionKey`).
 - [x] (done) Add Dockerfiles and Docker Compose stack (api, ui, db, worker) for self-hosted deployment.
-- [ ] (todo) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level (interval is configurable; production default not yet set).
+- [x] (done) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level (`Worker:ScheduleIntervalSeconds` defaults to 3600 in `appsettings.json`, overridable per deployment via `Worker__ScheduleIntervalSeconds`; dev uses 15s).
 - [x] (done) Implement report deduplication using client + domain + report-id + begin/end date range.
 - [x] (done) Enforce globally unique domain ownership across clients.
 - [x] (done) Add support for ZIP and GZIP attachment extraction in ingestion pipeline (magic-byte detection; SharpCompress codecs incl. deflate64/bzip2/lzma/zstd).
@@ -69,7 +71,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
-- [ ] (todo) Publish a versioned container image (e.g. GHCR) via CI and add a README quick-start (`docker run` / minimal compose) so new users can start from a prebuilt image without a local build.
+- [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64+arm64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
 - [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
