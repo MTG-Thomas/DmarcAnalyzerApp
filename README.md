@@ -43,7 +43,7 @@ variables.
   `linux/arm64`. Mirrored to Docker Hub as `dmarcanalyzernet/dmarc-analyzer`;
   GHCR is recommended because it has no anonymous pull rate limits.
 - Tags: **`latest`** is the most recent release (what the compose file uses), or
-  pin a version such as `0.1.0`. **`edge`** tracks `main` and is unreleased —
+  pin a version such as `0.2.0`. **`edge`** tracks `main` and is unreleased —
   useful for trying a fix early, not for production.
 - Next steps: add a client, a domain, and a mailbox source (the inbox your
   `rua=` reports arrive in) — see `docs/ops/mailbox-sync.md`.
@@ -154,8 +154,8 @@ Ops runbook:
 
 - `docs/ops/configuration.md` — every environment variable, and the same set in
   every deployment shape. Kept true by `ConfigurationContractTests`.
-- `docs/ops/live-migration-handover.md` — bringing a running instance up to `main`,
-  including why a green healthcheck does not prove the schema is current.
+- `docs/ops/migrating-a-running-instance.md` — bringing a running instance onto a
+  newer image, including why a green healthcheck does not prove the schema is current.
 - `docs/ops/mailbox-sync.md`
 - `docs/ops/oidc-zitadel.md`
 - `docs/ops/release.md`
