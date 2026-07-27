@@ -55,7 +55,6 @@ services:
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres
       Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - run: echo \"DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)\" > .env}"
       Worker__ScheduleIntervalSeconds: 15
-      Worker__MaxMessagesPerSync: 50
       Worker__MaxRetryAttempts: 3
       Worker__RetryBaseDelaySeconds: 2
       Worker__StaleRunTimeoutMinutes: 20
