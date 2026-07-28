@@ -105,7 +105,12 @@ public sealed class MailboxSyncService(
                 query = SearchQuery.Uids(new UniqueIdRange(startUid, UniqueId.MaxValue));
             }
 
-            var uids = await inbox.SearchAsync(query, operationToken);
+            // Filtered rather than taken as given. IMAP resolves * to the highest UID that
+            // exists, so {checkpoint+1}:* does not return nothing once a mailbox is caught
+            // up — the range is normalised and the newest message comes back again. See
+            // SelectUidsPastCheckpoint.
+            var uids = SelectUidsPastCheckpoint(
+                await inbox.SearchAsync(query, operationToken), lastProcessedUid);
             var batchSize = Math.Max(1, _options.MaxMessagesPerSync);
 
             // The budget bounds how long this source may keep drawing batches. The hard
@@ -563,6 +568,34 @@ public sealed class MailboxSyncService(
         => (attachment.ContentDisposition?.FileName ?? attachment.ContentType?.Name ?? string.Empty)
             .Trim()
             .ToLowerInvariant();
+
+    /// <summary>
+    /// The UIDs a pass should actually read: those past the checkpoint, oldest first.
+    /// <para>
+    /// Not redundant with the UID range already in the search, and leaving it out was a real
+    /// bug. IMAP resolves <c>*</c> to the highest UID that exists, so searching
+    /// <c>230687:*</c> on a mailbox whose newest message is 230686 does not come back empty —
+    /// the range is normalised to <c>230686:230687</c> and that message is returned. The pass
+    /// then committed the checkpoint it already had and did the same thing on the next poll:
+    /// one message re-fetched, re-parsed and re-checked every 16 seconds. On a real instance
+    /// that was 5,162 no-op passes and a <c>mailbox_sync_run</c> row for each.
+    /// </para>
+    /// <para>
+    /// It hides behind a backlog — while one exists <c>*</c> is above the checkpoint and the
+    /// range behaves as intended — so it only appears once a mailbox has nothing left to
+    /// fetch. The range is kept regardless, because it is what stops the server sending every
+    /// UID in the mailbox on every poll.
+    /// </para>
+    /// <para>
+    /// Ordering is explicit rather than assumed, because the drain loop's batch boundaries and
+    /// the oldest-to-newest backfill both depend on it.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<UniqueId> SelectUidsPastCheckpoint(
+        IEnumerable<UniqueId> found, long? lastProcessedUid)
+        => [.. found
+            .Where(x => !lastProcessedUid.HasValue || x.Id > lastProcessedUid.Value)
+            .OrderBy(x => x.Id)];
 
     private static async Task<IReadOnlyList<MemoryStream>> ExtractXmlStreamsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
     {
