@@ -65,6 +65,21 @@ public static class OidcAuthenticationExtensions
                 }
 
                 oidc.ResponseType = "code";
+                // Explicit, because the handler's default is form_post — and a
+                // form_post callback is a *cross-site POST*, which no SameSite=Lax
+                // cookie is sent on. The correlation cookie set during the
+                // challenge would then be missing on return, and every login would
+                // fail with "Correlation failed" before any of our code ran.
+                // Entra ID honours this default and broke exactly that way; Zitadel
+                // happens to answer with a query redirect, which is why the dev
+                // setup never showed it. Keep this next to the Lax cookies below:
+                // the two settings only work as a pair.
+                //
+                // Setting this drops response_mode from the authorize request
+                // entirely rather than sending "query" — an omitted response_mode
+                // already means query for response_type=code, so the effect is to
+                // stop asking for form_post. Don't go looking for the parameter.
+                oidc.ResponseMode = "query";
                 oidc.UsePkce = true;
                 oidc.CallbackPath = CallbackPath;
                 oidc.RequireHttpsMetadata = options.RequireHttpsMetadata;
@@ -85,8 +100,9 @@ public static class OidcAuthenticationExtensions
                     oidc.Scope.Add(scope);
                 }
 
-                // The callback is a top-level GET navigation, so Lax cookies are
-                // sent — and unlike the None default they work on plain-http dev.
+                // The callback is a top-level GET navigation — guaranteed by the
+                // ResponseMode above, not by luck — so Lax cookies are sent, and
+                // unlike the None default they work on plain-http dev.
                 oidc.CorrelationCookie.SameSite = SameSiteMode.Lax;
                 oidc.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 oidc.NonceCookie.SameSite = SameSiteMode.Lax;
