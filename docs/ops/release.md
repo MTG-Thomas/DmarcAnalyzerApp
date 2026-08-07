@@ -133,7 +133,20 @@ Semantic versioning. While on `0.x`:
 5. **`docs/planning/status.md` reflects reality**, since that's what people read
    to know what exists.
 6. **Version references point at the release you are about to cut**, not the last
-   one. Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
+   one. Don't do this by hand — run the **Prepare release** workflow with the
+   version you are about to cut:
+
+   ```bash
+   gh workflow run prepare-release.yml -f version=0.8.1
+   ```
+
+   It bumps `Chart.yaml` (both `version` and `appVersion`), `render.yaml` and
+   both READMEs, refuses to run if the tag already exists or the website is
+   stale, and opens a pull request. Merge that, then tag the merge commit. The
+   rest of this step is what it does and why, and how to do it by hand if the
+   workflow is unavailable.
+
+   Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
    `appVersion` — *before* tagging. Bump `render.yaml`'s image tag too.
 
    This is not cosmetic. `values.image.tag` defaults to the chart's `appVersion`,
@@ -144,9 +157,17 @@ Semantic versioning. While on `0.x`:
    committed to the file, never to a new push to a tag it already references, so
    a forgotten bump means that deploy never updates again.
 
-   `VersionReferenceTests` fails the build for anything in *this* repo. It cannot
-   see the website, so run that repo's own check there — against the version you
-   are about to cut, not the one already published:
+   `VersionReferenceTests` fails the build for anything in *this* repo — but it
+   checks those files against `Chart.yaml`, so it catches drift *between* files
+   and not a `Chart.yaml` you forgot to bump. Miss that and everything stays
+   consistently stale, CI stays green, and nothing tells you. v0.8.0 shipped that
+   way. A tag build now also asserts `Chart.yaml` matches the tag, which turns it
+   into a loud failure rather than a silent one — but that fires *after* the tag
+   is pushed and a tag is never moved, so it costs a patch release. Do the bump
+   here.
+
+   It cannot see the website, so run that repo's own check there — against the
+   version you are about to cut, not the one already published:
 
    ```bash
    cd ../dmarc-analyzer-net.github.io
@@ -155,6 +176,13 @@ Semantic versioning. While on `0.x`:
 
    It reports the file, line and offending text for anything older, and exits
    non-zero. Ship those fixes in the same release as step 4.
+
+   Skipping this does not fail anything here — it breaks the *website* repo,
+   whose CI runs that same check against the latest published release. Publish a
+   tag without bumping its docs and the next pull request there fails, on a
+   change that has nothing to do with it. Note the check exempts a version floor
+   ("0.7.1 or newer" naming the release a fix landed in); only install pins have
+   to move.
 
    > This step used to list the website's files by hand. The list was wrong the
    > day it was written — it named two files when there were three — which is why
