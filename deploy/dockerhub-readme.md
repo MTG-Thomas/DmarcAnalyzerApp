@@ -5,6 +5,11 @@ your `rua=` reports arrive in and it collects, parses and charts them — unlimi
 domains, many clients, no per-domain pricing, and the report data never leaves
 your infrastructure.
 
+- **DMARC aggregate reports** — parsed, charted, grouped per client domain
+- **MTA-STS and TLS-RPT** — policy hosting and SMTP TLS failure reports alongside
+- **Single sign-on** — OIDC, including Microsoft Entra ID, with SSO-only users
+- **Multi-tenant** — per-client separation and access, built for agencies
+
 **[Documentation](https://dmarc-analyzer.net/docs)** ·
 **[Install guide](https://dmarc-analyzer.net/docs/install)** ·
 **[Source](https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp)**
@@ -51,11 +56,12 @@ The two that matter on day one:
 | Variable | |
 |---|---|
 | `ConnectionStrings__Default` | Npgsql connection string |
+| `DATABASE_URL` | `postgres://user:pass@host/db` instead, if your platform sets it |
 | `Security__CredentialEncryptionKey` | base64 32 bytes; `openssl rand -base64 32` |
 
 ## Tags
 
-`latest` tracks releases. Pin a version (`0.2.2`) for anything you depend on —
+`latest` tracks releases. Pin a version (`0.9.0`) for anything you depend on —
 it makes upgrades explicit and rollbacks unambiguous. `edge` tracks `main` and is
 unreleased.
 
