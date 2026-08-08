@@ -28,8 +28,9 @@ const OIDC_ERROR_MESSAGES: Record<string, string> = {
 }
 
 export function LoginPage() {
-  const { login } = useAuth()
+  const { login, status } = useAuth()
   const navigate = useNavigate()
+  const justLoggedOut = status === 'logged-out'
 
   // null = setup check in flight; falls back to the login form if it fails.
   const [requiresBootstrap, setRequiresBootstrap] = useState<boolean | null>(null)
@@ -85,7 +86,15 @@ export function LoginPage() {
   // so skip straight to the provider instead of showing a login page with
   // nothing usable on it. Bootstrap is exempt — it's the one path that still
   // works locally on a fresh instance (see AuthModule's /register comment).
-  const shouldAutoRedirectToSso = requiresBootstrap === false && !localLoginEnabled && !!oidcProvider?.enabled
+  //
+  // Also exempt: having just logged out. The IdP's own session outlives ours —
+  // logging out here doesn't touch it — so an auto-redirect right after logout
+  // gets silently re-authenticated with no prompt at all, and logout looks like
+  // it does nothing. Showing a confirmation instead makes the logout visible;
+  // the auto-redirect resumes on the next real visit (a fresh mount reads
+  // 'unauthenticated', not 'logged-out').
+  const shouldAutoRedirectToSso =
+    requiresBootstrap === false && !localLoginEnabled && !!oidcProvider?.enabled && !justLoggedOut
 
   useEffect(() => {
     if (shouldAutoRedirectToSso) {
@@ -149,6 +158,30 @@ export function LoginPage() {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-secondary" aria-label="Loading" />
+      </div>
+    )
+  }
+
+  // The one case shouldAutoRedirectToSso deliberately excludes: no local
+  // login, and we'd otherwise have redirected straight back into the IdP's
+  // still-live session. Give the explicit sign-in step a click instead.
+  if (justLoggedOut && !localLoginEnabled && oidcProvider?.enabled) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-6">
+        <Card className="w-full max-w-md">
+          <CardHeader className="flex-col items-stretch">
+            <BrandLogo height={40} className="mb-5" />
+            <CardTitle>Signed out</CardTitle>
+            <CardDescription className="mt-1">
+              You've been signed out of the Operations Console.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button type="button" className="w-full" onClick={startSso}>
+              Sign in with {oidcProvider.displayName}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
