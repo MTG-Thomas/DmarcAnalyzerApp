@@ -67,6 +67,7 @@ jobs:
             "$chart"
             README.md
             deploy/helm/dmarc-analyzer/README.md
+            deploy/dockerhub-readme.md
             render.yaml
           )
           sed -i "s/${current//./\\.}/$version/g" "${files[@]}"

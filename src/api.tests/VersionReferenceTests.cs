@@ -30,6 +30,11 @@ public sealed class VersionReferenceTests
     [
         "README.md",
         Path.Combine("deploy", "helm", "dmarc-analyzer", "README.md"),
+        // Added 2026-08-08. It had sat at 0.2.2 through seven releases without
+        // anything noticing, because this list is the only thing that looks.
+        // It is also the file with the least chance of someone spotting the
+        // drift by accident — it renders on Docker Hub, not in the repo.
+        Path.Combine("deploy", "dockerhub-readme.md"),
         "render.yaml",
     ];
 
