@@ -20,7 +20,11 @@ export type AuthUser = {
   updatedAtUtc: string
 }
 
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
+// 'logged-out' is distinct from 'unauthenticated': it's only reached via an
+// explicit logout, so LoginPage can skip the DisableLocalLogin auto-redirect
+// there — otherwise a live IdP session gets silently re-used and logout looks
+// like it does nothing. A session that merely expired still auto-redirects.
+export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'logged-out'
 
 export type AuthContextValue = {
   status: AuthStatus

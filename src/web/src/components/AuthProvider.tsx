@@ -56,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // clear the local session even if the logout request fails
     }
     setUser(null)
-    setStatus('unauthenticated')
+    setStatus('logged-out')
   }, [])
 
   const value = useMemo(

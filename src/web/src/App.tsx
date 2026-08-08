@@ -31,7 +31,7 @@ function App() {
 
   // The login page renders in place without redirecting, so the requested URL is
   // preserved and the router lands on it once authentication succeeds.
-  if (status === 'unauthenticated') {
+  if (status === 'unauthenticated' || status === 'logged-out') {
     return <LoginPage />
   }
 
