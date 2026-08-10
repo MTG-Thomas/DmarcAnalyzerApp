@@ -101,7 +101,7 @@ never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
 ### System and admin
 | Method | Path | Access |
 |---|---|---|
-| GET | `/system/status` | any signed-in user — `service`, the resolved `mode`, `version` (`0.9.0`) and `revision` (the commit SHA, null on a release build), plus `timestampUtc`. The console shows version + revision in the sidebar |
+| GET | `/system/status` | any signed-in user — `service`, the resolved `mode`, `version` (the release number, or `unknown` if the build stamped none) and `revision` (the full commit SHA, null on a release build, `local` on a self-built image), plus `timestampUtc`. The console renders these at the foot of the sidebar |
 | POST | `/admin/database/migrate` | admin — applies pending EF migrations |
 | GET | `/admin/audit-events` | admin — audit trail (`days`, `eventType` prefix, `actor`, `clientId`, `limit`). Read-only by design |
 | GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |

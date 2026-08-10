@@ -178,18 +178,27 @@ export function ConsoleLayout() {
           {/* Which build this is. Nothing renders until the fetch lands and
               nothing renders if it fails — there is no placeholder, because a
               version that flickers in is easier to live with than one that
-              reserves space to say it does not know yet. */}
+              reserves space to say it does not know yet.
+
+              Plain text when there is nothing to link to: a self-built image
+              (`0.9.0+local`) is on no remote, and a build that stamped no version
+              at all reads `unknown`. Linking either would promise release notes
+              and open a 404. */}
           {status && (
-            <p className="mt-3 text-xs text-secondary">
-              <a
-                className="font-mono underline"
-                href={versionSourceUrl(status)}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={versionSourceLabel(status)}
-              >
-                {formatVersion(status)}
-              </a>
+            <p className="mt-3 font-mono text-xs text-secondary">
+              {versionSourceUrl(status) ? (
+                <a
+                  className="underline"
+                  href={versionSourceUrl(status) ?? undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={versionSourceLabel(status) ?? undefined}
+                >
+                  {formatVersion(status)}
+                </a>
+              ) : (
+                formatVersion(status)
+              )}
             </p>
           )}
         </div>

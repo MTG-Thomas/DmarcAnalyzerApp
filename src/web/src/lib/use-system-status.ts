@@ -51,17 +51,47 @@ export function useSystemStatus(): SystemStatus | null {
 /** Commit characters shown to a human. Git's own abbreviation length. */
 const SHORT_REVISION_LENGTH = 7
 
+/** A release number, optionally with a prerelease label: `0.9.0`, `1.0.0-rc.1`. */
+const VERSION_SHAPE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
+
+/** A git object name, abbreviated or full. */
+const REVISION_SHAPE = /^[0-9a-f]{7,40}$/i
+
 /**
- * How a build names itself to a self-hoster: `v0.9.0` for a release, and
- * `0.9.0+a1b2c3d` for a build past one.
+ * Whether the reported build is one GitHub can be asked about. False for the two
+ * shapes that reach here legitimately and resolve to nothing: `unknown`, when the
+ * build stamped no version at all, and `local`, the container build's default when
+ * no commit was passed — an image someone built themselves, which is on no remote.
  *
- * The two read differently on purpose. Someone on a fixed tag gets a number they
- * can match against the releases page, with no suffix to wonder about; someone on
- * `:latest` or `edge` gets the commit, because the release number alone would
- * name a build they are not running. The `v` is only on the exact form, so the
- * prefix itself signals which of the two this is.
+ * Guarding on shape rather than on a flag because both values arrive through the
+ * same field as a real one, and a link built from either is a 404 with a label
+ * promising release notes.
+ */
+export function hasResolvableSource(status: SystemStatus): boolean {
+  return (
+    VERSION_SHAPE.test(status.version) &&
+    (status.revision === null || REVISION_SHAPE.test(status.revision))
+  )
+}
+
+/**
+ * How a build names itself to a self-hoster: `v0.9.0` for a release,
+ * `0.9.0+a1b2c3d` for a build past one, and `0.9.0+local` for one somebody built
+ * themselves.
+ *
+ * The first two read differently on purpose. Someone on a fixed tag gets a number
+ * they can match against the releases page, with no suffix to wonder about;
+ * someone on `:latest` or `edge` gets the commit, because the release number alone
+ * would name a build they are not running. The `v` is only on the exact form, so
+ * the prefix itself signals which of the two this is — and a build with any
+ * revision at all, resolvable or not, never gets that prefix.
  */
 export function formatVersion(status: SystemStatus): string {
+  if (!VERSION_SHAPE.test(status.version)) {
+    // `unknown`. Shown as-is rather than dressed up as `vunknown`.
+    return status.version
+  }
+
   return status.revision === null
     ? `v${status.version}`
     : `${status.version}+${status.revision.slice(0, SHORT_REVISION_LENGTH)}`
@@ -76,9 +106,14 @@ const REPOSITORY_URL = 'https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp'
  *
  * The version being hard to find was only half of what was asked for; the other
  * half was reaching the changelog from it, so the label is a link rather than
- * text a user then has to go and search for.
+ * text a user then has to go and search for. Null when there is nothing to link
+ * to, which the caller must render as plain text — see {@link hasResolvableSource}.
  */
-export function versionSourceUrl(status: SystemStatus): string {
+export function versionSourceUrl(status: SystemStatus): string | null {
+  if (!hasResolvableSource(status)) {
+    return null
+  }
+
   return status.revision === null
     ? `${REPOSITORY_URL}/releases/tag/v${status.version}`
     : `${REPOSITORY_URL}/commit/${status.revision}`
@@ -89,7 +124,11 @@ export function versionSourceUrl(status: SystemStatus): string {
  * It has to follow {@link versionSourceUrl} rather than say "release notes" in
  * both cases — on an unreleased build there are none, and the link opens a commit.
  */
-export function versionSourceLabel(status: SystemStatus): string {
+export function versionSourceLabel(status: SystemStatus): string | null {
+  if (!hasResolvableSource(status)) {
+    return null
+  }
+
   return status.revision === null
     ? `Release notes for v${status.version}`
     : `Commit this build was made from, ${status.revision.slice(0, SHORT_REVISION_LENGTH)}`

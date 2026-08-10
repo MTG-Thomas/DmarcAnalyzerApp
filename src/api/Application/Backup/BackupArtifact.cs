@@ -33,9 +33,12 @@ public sealed record BackupArtifact(
 /// version it does not know rather than guessing at the difference.
 /// </param>
 /// <param name="AppVersion">
-/// The API assembly's informational version. Advisory only: this build does not stamp
-/// one, so it reads <c>1.0.0</c> until the release pipeline sets it. Use
-/// <paramref name="MigrationId"/> for anything that must be exact.
+/// The build that wrote the artifact, as the console shows it — the release, plus the
+/// commit when the build was not a release. Advisory only: use
+/// <paramref name="MigrationId"/> for anything that must be exact, since two builds of
+/// the same release can differ and a version cannot say whether a schema matches.
+/// It reported <c>1.0.0</c> for every build before the version was stamped, so an
+/// artifact carrying that came from a build older than this field means anything.
 /// </param>
 /// <param name="MigrationId">
 /// The newest applied migration — the artifact's real schema identity, and the thing

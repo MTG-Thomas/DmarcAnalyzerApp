@@ -64,3 +64,37 @@ describe('versionSourceLabel', () => {
     )
   })
 })
+
+describe('builds with nothing to link to', () => {
+  it('shows a self-built image as text, not a link', () => {
+    // The container build's default when no commit is passed — docker-compose.yml
+    // and any `docker build .`. It is on no remote, so /commit/local is a 404.
+    const built = status('0.9.0', 'local')
+
+    expect(formatVersion(built)).toBe('0.9.0+local')
+    expect(versionSourceUrl(built)).toBeNull()
+    expect(versionSourceLabel(built)).toBeNull()
+  })
+
+  it('does not render an unstamped build as a version', () => {
+    // `vunknown`, linking to /releases/tag/vunknown, under a label promising
+    // release notes, was the shape of this before the guard.
+    const unstamped = status('unknown', null)
+
+    expect(formatVersion(unstamped)).toBe('unknown')
+    expect(versionSourceUrl(unstamped)).toBeNull()
+    expect(versionSourceLabel(unstamped)).toBeNull()
+  })
+
+  it('still links a prerelease, which is a real tag', () => {
+    expect(versionSourceUrl(status('1.0.0-rc.1', null))).toBe(
+      'https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/releases/tag/v1.0.0-rc.1',
+    )
+  })
+
+  it('refuses a revision that is not an object name', () => {
+    // Anything that is not hex-and-long-enough cannot be resolved, whatever it is.
+    expect(versionSourceUrl(status('0.9.0', 'not-a-sha'))).toBeNull()
+    expect(versionSourceUrl(status('0.9.0', 'abc'))).toBeNull()
+  })
+})

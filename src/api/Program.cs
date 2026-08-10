@@ -211,6 +211,11 @@ var connectionString = ConnectionStringResolver.Resolve(builder.Configuration)
     ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
 builder.Services.AddCarter();
+// The resolved mode, for anything that reports what this process is — SystemModule.
+// Registered rather than re-read from the environment so there is one parse per process
+// and one answer; AppRuntimeMode.Parse throws on a bad value, and that has to stay a
+// startup crash rather than becoming a 500 on an endpoint.
+builder.Services.AddSingleton(new AppRuntimeInfo(mode));
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));

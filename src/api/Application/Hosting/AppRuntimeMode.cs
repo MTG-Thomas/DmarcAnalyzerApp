@@ -36,6 +36,20 @@ public enum AppMode
     MtaSts,
 }
 
+/// <summary>
+/// The mode this process resolved at startup, for the handful of places that report
+/// what the process is rather than decide what it does.
+/// <para>
+/// A wrapper because <see cref="AppMode"/> is a value type and cannot be registered in
+/// DI on its own, and because a Carter module must not take constructor dependencies
+/// (the CARTER1 analyzer refuses it) — so the endpoint binds this from services
+/// instead. The alternative, calling <see cref="AppRuntimeMode.FromEnvironment"/> a
+/// second time inside the module, would parse the environment twice per process and
+/// give the answer two sources.
+/// </para>
+/// </summary>
+public sealed record AppRuntimeInfo(AppMode Mode);
+
 public static class AppRuntimeMode
 {
     public const string EnvironmentVariable = "APP_MODE";

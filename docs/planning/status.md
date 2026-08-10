@@ -366,12 +366,20 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   `src/Directory.Build.props` (bumped with `Chart.yaml`, enforced by
   `VersionReferenceTests`) and the build stamps the commit onto it as
   `InformationalVersion` — from git locally, from the `SOURCE_REVISION` build
-  argument in the container, where `.dockerignore` excludes `.git`. CI passes it on
-  every build except a tag, so `0.9.0` is the release and `0.9.0+a1b2c3d` is a build
-  past it. Read from the assembly and never from an environment variable: an image
-  whose version can be set at run time can be made to lie about itself. Surfaced in
-  `/api/v1/system/status`, in `service.version`, and at the foot of the console
-  sidebar, linking to the release notes or to the commit.
+  argument in the container, where `.dockerignore` excludes `.git`. Read from the
+  assembly and never from an environment variable: an image whose version can be set
+  at run time can be made to lie about itself. Surfaced in `/api/v1/system/status`,
+  in `service.version`, in the backup manifest's `appVersion`, and at the foot of
+  the console sidebar.
+  - Three shapes, and only one of them is a release. A bare version is the release,
+    and CI produces it by passing the build argument *explicitly empty* on a tag.
+    Version-plus-commit is a build past a release — an `edge` image, or a working
+    tree. Version-plus-`local` is the container build's default, so an image built
+    from `docker compose` or `docker build .` cannot claim to be the release by
+    passing nothing: the claim has to be made, and staying silent makes the safe
+    one. The sidebar links the first two to the release notes and to the commit; it
+    renders `local`, and an unstamped `unknown`, as plain text, because neither
+    resolves to anything on the remote.
 
 - Report parsing tolerates malformed real-world reports rather than discarding
   them. One bad token used to fail an entire `<feedback>` document and lose every
