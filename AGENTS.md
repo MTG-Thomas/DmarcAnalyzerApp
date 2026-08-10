@@ -50,6 +50,14 @@ docker compose up -d --build
 
 **Local dev URLs:** frontend `http://localhost:5173`, API `http://localhost:5076` (Vite proxies `/api`). **Docker:** API on `http://localhost:8080`, Postgres `localhost:5432`. (You can override host ports locally with a gitignored `docker-compose.override.yml`.)
 
+**If the image build fails at `dotnet restore` with NU1004**, the lockfile and the csproj disagree — you changed a `PackageReference` and `src/api/packages.lock.json` was not regenerated. The image restores in locked mode on purpose, so that a stale lockfile stops the build rather than quietly resolving a different dependency graph into the artifact people run. NU1004 offers two remedies and the first one is wrong here: do **not** disable `RestoreLockedMode` to get past it, that removes the check instead of fixing what it caught. Regenerate and commit:
+
+```bash
+dotnet restore src/api/DmarcAnalyzer.Api.csproj --force-evaluate
+```
+
+A local `dotnet build`/`dotnet test` will *not* reproduce this — `RestoreLockedMode` is on for CI and inside the image, not for your working tree (see `src/Directory.Build.props`), so drift is invisible until one of those two runs.
+
 ### Working in a worktree
 
 A fresh worktree has none of this repo's gitignored files, and two of them gate whether it can build or run at all:

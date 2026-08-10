@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  formatVersion,
-  versionSourceLabel,
-  versionSourceUrl,
-  type SystemStatus,
-} from '@/lib/use-system-status'
+import { formatVersion, versionSource, type SystemStatus } from '@/lib/use-system-status'
 
 /** Only the two fields the version label reads. */
 const status = (version: string, revision: string | null): SystemStatus => ({
@@ -36,32 +31,26 @@ describe('formatVersion', () => {
   })
 })
 
-describe('versionSourceUrl', () => {
-  it('points a release at its release notes', () => {
+describe('versionSource', () => {
+  it('points a release at its release notes, and says so', () => {
     // Reaching the changelog from the version was the second half of the request,
-    // so this tag has to be the one GitHub published — v-prefixed.
-    expect(versionSourceUrl(status('0.9.0', null))).toBe(
-      'https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/releases/tag/v0.9.0',
-    )
+    // so this tag has to be the one GitHub published — v-prefixed. Url and label
+    // are asserted together because a link that disagrees with its own label is
+    // the failure the pair exists to prevent.
+    expect(versionSource(status('0.9.0', null))).toEqual({
+      url: 'https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/releases/tag/v0.9.0',
+      label: 'Release notes for v0.9.0',
+    })
   })
 
   it('points a build past a release at the commit, in full', () => {
-    // There are no release notes for an unreleased build, and the abbreviation is
-    // for reading — the link resolves the exact commit.
-    expect(versionSourceUrl(status('0.9.0', SHA))).toBe(
-      `https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/commit/${SHA}`,
-    )
-  })
-})
-
-describe('versionSourceLabel', () => {
-  it('names release notes only when the link goes to release notes', () => {
-    // A reader who gets the label instead of the layout should not be told
-    // "release notes" and then be handed a commit.
-    expect(versionSourceLabel(status('0.9.0', null))).toBe('Release notes for v0.9.0')
-    expect(versionSourceLabel(status('0.9.0', SHA))).toBe(
-      'Commit this build was made from, b1c72c2',
-    )
+    // There are no release notes for an unreleased build, so the label must not
+    // promise them. The abbreviation is for reading; the link resolves the exact
+    // commit.
+    expect(versionSource(status('0.9.0', SHA))).toEqual({
+      url: `https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/commit/${SHA}`,
+      label: 'Commit this build was made from, b1c72c2',
+    })
   })
 })
 
@@ -72,8 +61,7 @@ describe('builds with nothing to link to', () => {
     const built = status('0.9.0', 'local')
 
     expect(formatVersion(built)).toBe('0.9.0+local')
-    expect(versionSourceUrl(built)).toBeNull()
-    expect(versionSourceLabel(built)).toBeNull()
+    expect(versionSource(built)).toBeNull()
   })
 
   it('does not render an unstamped build as a version', () => {
@@ -82,19 +70,21 @@ describe('builds with nothing to link to', () => {
     const unstamped = status('unknown', null)
 
     expect(formatVersion(unstamped)).toBe('unknown')
-    expect(versionSourceUrl(unstamped)).toBeNull()
-    expect(versionSourceLabel(unstamped)).toBeNull()
+    expect(versionSource(unstamped)).toBeNull()
   })
 
   it('still links a prerelease, which is a real tag', () => {
-    expect(versionSourceUrl(status('1.0.0-rc.1', null))).toBe(
+    expect(versionSource(status('1.0.0-rc.1', null))?.url).toBe(
       'https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/releases/tag/v1.0.0-rc.1',
     )
   })
 
   it('refuses a revision that is not an object name', () => {
     // Anything that is not hex-and-long-enough cannot be resolved, whatever it is.
-    expect(versionSourceUrl(status('0.9.0', 'not-a-sha'))).toBeNull()
-    expect(versionSourceUrl(status('0.9.0', 'abc'))).toBeNull()
+    expect(versionSource(status('0.9.0', 'not-a-sha'))).toBeNull()
+    expect(versionSource(status('0.9.0', 'abc'))).toBeNull()
+    // Uppercase is not how git writes an object name, or how the build stamps one,
+    // so the shape does not accept it — the regex has no `i` flag by intent.
+    expect(versionSource(status('0.9.0', SHA.toUpperCase()))).toBeNull()
   })
 })

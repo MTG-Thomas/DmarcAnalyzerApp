@@ -6,12 +6,7 @@ import { Icon, type IconName } from '@/components/ui/icon'
 import type { AuthUser } from '@/lib/auth-context'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
-import {
-  formatVersion,
-  useSystemStatus,
-  versionSourceLabel,
-  versionSourceUrl,
-} from '@/lib/use-system-status'
+import { formatVersion, useSystemStatus, versionSource } from '@/lib/use-system-status'
 import { cn } from '@/lib/utils'
 
 type NavItem = {
@@ -72,6 +67,9 @@ export function ConsoleLayout() {
   const { user, logout } = useAuth()
   const visibleManage = manageNav.filter((item) => item.visibleTo?.(user) ?? true)
   const status = useSystemStatus()
+  // Resolved once: the url and its accessible label come from the same shape check,
+  // so they cannot end up describing different things.
+  const source = status ? versionSource(status) : null
 
   // Below lg the sidebar is an off-canvas drawer. At lg and up this state is
   // inert — the sidebar is a static column and the trigger is not rendered.
@@ -186,13 +184,13 @@ export function ConsoleLayout() {
               and open a 404. */}
           {status && (
             <p className="mt-3 font-mono text-xs text-secondary">
-              {versionSourceUrl(status) ? (
+              {source ? (
                 <a
                   className="underline"
-                  href={versionSourceUrl(status) ?? undefined}
+                  href={source.url}
                   target="_blank"
                   rel="noreferrer"
-                  aria-label={versionSourceLabel(status) ?? undefined}
+                  aria-label={source.label}
                 >
                   {formatVersion(status)}
                 </a>
