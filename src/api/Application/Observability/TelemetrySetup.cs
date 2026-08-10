@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Common;
+using DmarcAnalyzer.Api.Application.Hosting;
 using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
@@ -18,9 +19,16 @@ public static class TelemetrySetup
     /// does not.
     /// <para>
     /// Takes <see cref="IHostApplicationBuilder"/> rather than a web builder so the one
-    /// implementation serves every APP_MODE — api, worker, all and migrate each get the same
-    /// treatment from a single call, instead of the three host branches in Program.cs each
-    /// growing their own copy that can drift.
+    /// implementation serves every APP_MODE — each host branch in Program.cs gets the same
+    /// treatment from a single call, instead of growing its own copy that can drift.
+    /// </para>
+    /// <para>
+    /// Takes the <see cref="AppMode"/> and not its name. A string parameter invited each
+    /// branch to spell the mode by hand, and one of them derived it — <c>mode == All ? "all"
+    /// : "api"</c> — which was correct only because every other mode had already returned.
+    /// That is the same shape as the bug that had <c>/api/v1/system/status</c> reporting
+    /// <c>api</c> from an <c>all</c> container. Passing the mode itself is exact and cannot
+    /// stop being exact when a mode is added.
     /// </para>
     /// <para>
     /// Endpoint, protocol, headers and sampler are all left to the SDK, which reads the OTEL_*
@@ -31,9 +39,9 @@ public static class TelemetrySetup
     /// OTEL_RESOURCE_ATTRIBUTES.
     /// </para>
     /// </summary>
-    public static TelemetrySettings AddTelemetry(this IHostApplicationBuilder builder, string appMode)
+    public static TelemetrySettings AddTelemetry(this IHostApplicationBuilder builder, AppMode mode)
     {
-        var settings = TelemetrySettings.Resolve(builder.Configuration, appMode);
+        var settings = TelemetrySettings.Resolve(builder.Configuration, mode.ToName());
 
         if (!settings.Enabled)
         {

@@ -31,7 +31,7 @@ if (mode == AppMode.Migrate)
     // trail, nothing that serves or ingests. It runs to completion and exits, so
     // an orchestrator can order schema changes ahead of every application pod.
     var migrateBuilder = Host.CreateApplicationBuilder(args);
-    var migrateTelemetry = migrateBuilder.AddTelemetry("migrate");
+    var migrateTelemetry = migrateBuilder.AddTelemetry(mode);
     var migrateConnectionString = ConnectionStringResolver.Resolve(migrateBuilder.Configuration)
         ?? throw new InvalidOperationException(
             "ConnectionStrings:Default or DATABASE_URL is required in migrate mode.");
@@ -84,7 +84,7 @@ if (mode == AppMode.Migrate)
 if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);
-    var workerTelemetry = workerBuilder.AddTelemetry("worker");
+    var workerTelemetry = workerBuilder.AddTelemetry(mode);
     var workerConnectionString = ConnectionStringResolver.Resolve(workerBuilder.Configuration)
         ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
@@ -150,7 +150,7 @@ if (mode == AppMode.MtaSts)
     // (never migrate from an internet-facing, replica-able pod — the console or
     // a migrate Job owns the schema), hosted services, and credential handling.
     var mtaStsBuilder = WebApplication.CreateBuilder(args);
-    var mtaStsTelemetry = mtaStsBuilder.AddTelemetry("mta-sts");
+    var mtaStsTelemetry = mtaStsBuilder.AddTelemetry(mode);
 
     // No localhost fallback, unlike api/worker: this mode exists to face the
     // internet, and a policy host silently reading an empty local database
@@ -206,7 +206,7 @@ if (mode == AppMode.MtaSts)
 }
 
 var builder = WebApplication.CreateBuilder(args);
-var apiTelemetry = builder.AddTelemetry(mode == AppMode.All ? "all" : "api");
+var apiTelemetry = builder.AddTelemetry(mode);
 var connectionString = ConnectionStringResolver.Resolve(builder.Configuration)
     ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
