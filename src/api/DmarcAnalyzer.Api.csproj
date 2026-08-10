@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="4.0.101.4" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.102" />
     <PackageReference Include="Carter" Version="10.0.0" />
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="DmarcRua" Version="2.0.0" />
@@ -23,7 +23,7 @@
          PrivateAssets=all, so without this the tests build against the Npgsql
          provider's 10.0.0 floor while the API builds against 10.0.10. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Npgsql.OpenTelemetry" Version="10.0.3" />
     <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.17.0" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
