@@ -40,7 +40,11 @@ public static class AppRuntimeMode
 {
     public const string EnvironmentVariable = "APP_MODE";
 
-    /// <summary>Mode names accepted for <c>APP_MODE</c>, in the order they are documented.</summary>
+    /// <summary>
+    /// Mode names accepted for <c>APP_MODE</c>, in the order they are documented —
+    /// which is also <see cref="AppMode"/>'s declaration order, so this doubles as
+    /// the lookup for <see cref="ToName"/>. A test holds the two in step.
+    /// </summary>
     public static readonly string[] Names = ["api", "worker", "all", "migrate", "mta-sts"];
 
     /// <summary>
@@ -76,6 +80,13 @@ public static class AppRuntimeMode
     /// <summary>Reads and parses the ambient <c>APP_MODE</c>.</summary>
     public static AppMode FromEnvironment()
         => Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
+
+    /// <summary>
+    /// The <c>APP_MODE</c> spelling of a mode — the same string that selects it.
+    /// <c>ToString()</c> is not that string: it would report <c>MtaSts</c> for a
+    /// mode nobody can set under that name.
+    /// </summary>
+    public static string ToName(this AppMode mode) => Names[(int)mode];
 
     /// <summary>Whether this mode runs the background loop in-process.</summary>
     public static bool RunsWorker(this AppMode mode) => mode is AppMode.Worker or AppMode.All;

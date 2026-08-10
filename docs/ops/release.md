@@ -140,14 +140,18 @@ Semantic versioning. While on `0.x`:
    gh workflow run prepare-release.yml -f version=0.8.1
    ```
 
-   It bumps `Chart.yaml` (both `version` and `appVersion`), `render.yaml` and
-   both READMEs, refuses to run if the tag already exists or the website is
-   stale, and opens a pull request. Merge that, then tag the merge commit. The
-   rest of this step is what it does and why, and how to do it by hand if the
-   workflow is unavailable.
+   It bumps `Chart.yaml` (both `version` and `appVersion`), `render.yaml`,
+   `src/Directory.Build.props` and both READMEs, refuses to run if the tag
+   already exists or the website is stale, and opens a pull request. Merge that,
+   then tag the merge commit. The rest of this step is what it does and why, and
+   how to do it by hand if the workflow is unavailable.
 
    Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
-   `appVersion` — *before* tagging. Bump `render.yaml`'s image tag too.
+   `appVersion` — *before* tagging. Bump `render.yaml`'s image tag too, and
+   `src/Directory.Build.props`, which is `<Version>` for the built assembly:
+   miss that one and the release ships naming the *previous* release in its own
+   sidebar, in `/api/v1/system/status` and in `service.version`. It is the only
+   entry on the list a user can read off the running app.
 
    This is not cosmetic. `values.image.tag` defaults to the chart's `appVersion`,
    so a stale `Chart.yaml` means `helm install ./deploy/helm/dmarc-analyzer` from a

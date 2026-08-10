@@ -6,6 +6,12 @@ import { Icon, type IconName } from '@/components/ui/icon'
 import type { AuthUser } from '@/lib/auth-context'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
+import {
+  formatVersion,
+  useSystemStatus,
+  versionSourceLabel,
+  versionSourceUrl,
+} from '@/lib/use-system-status'
 import { cn } from '@/lib/utils'
 
 type NavItem = {
@@ -65,6 +71,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
 export function ConsoleLayout() {
   const { user, logout } = useAuth()
   const visibleManage = manageNav.filter((item) => item.visibleTo?.(user) ?? true)
+  const status = useSystemStatus()
 
   // Below lg the sidebar is an off-canvas drawer. At lg and up this state is
   // inert — the sidebar is a static column and the trigger is not rendered.
@@ -167,6 +174,24 @@ export function ConsoleLayout() {
             <Icon name="log-out" size={16} />
             <span className="flex-1 text-left">Sign out</span>
           </button>
+
+          {/* Which build this is. Nothing renders until the fetch lands and
+              nothing renders if it fails — there is no placeholder, because a
+              version that flickers in is easier to live with than one that
+              reserves space to say it does not know yet. */}
+          {status && (
+            <p className="mt-3 text-xs text-secondary">
+              <a
+                className="font-mono underline"
+                href={versionSourceUrl(status)}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={versionSourceLabel(status)}
+              >
+                {formatVersion(status)}
+              </a>
+            </p>
+          )}
         </div>
       </aside>
 

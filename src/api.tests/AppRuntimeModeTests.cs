@@ -77,6 +77,23 @@ public sealed class AppRuntimeModeTests
     }
 
     [Fact]
+    public void ToNameRoundTripsThroughParse()
+    {
+        // ToName indexes Names by the enum's value, so it is correct only while the
+        // array stays in declaration order. Insert a mode in the middle of the enum
+        // without moving its name and every mode after it reports the wrong one —
+        // silently, since they are all valid names. This is the test that catches it.
+        foreach (var mode in Enum.GetValues<AppMode>())
+        {
+            Assert.Equal(mode, AppRuntimeMode.Parse(mode.ToName()));
+        }
+
+        // The one case ToString() would have got wrong, which is why ToName exists:
+        // "MtaSts" is not a name APP_MODE accepts.
+        Assert.Equal("mta-sts", AppMode.MtaSts.ToName());
+    }
+
+    [Fact]
     public void EveryModeIsReachableFromItsDocumentedName()
     {
         // Guards the docs and the error message against a mode being added to the

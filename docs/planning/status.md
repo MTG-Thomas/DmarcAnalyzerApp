@@ -358,6 +358,20 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   proves migrations were applied and `CanConnectAsync` does not.
   - structured JSON console logging, which ADR 0006 also lists as decided, is
     **not** implemented — the console logger is plain text. Backlog item.
+  - resource attributes are the SDK's job except for two the process knows about
+    itself: `app.mode`, and `service.version` — the build's version and, when it is
+    not a release, its commit.
+
+- The running build identifies itself. `<Version>` lives in
+  `src/Directory.Build.props` (bumped with `Chart.yaml`, enforced by
+  `VersionReferenceTests`) and the build stamps the commit onto it as
+  `InformationalVersion` — from git locally, from the `SOURCE_REVISION` build
+  argument in the container, where `.dockerignore` excludes `.git`. CI passes it on
+  every build except a tag, so `0.9.0` is the release and `0.9.0+a1b2c3d` is a build
+  past it. Read from the assembly and never from an environment variable: an image
+  whose version can be set at run time can be made to lie about itself. Surfaced in
+  `/api/v1/system/status`, in `service.version`, and at the foot of the console
+  sidebar, linking to the release notes or to the commit.
 
 - Report parsing tolerates malformed real-world reports rather than discarding
   them. One bad token used to fail an entire `<feedback>` document and lose every

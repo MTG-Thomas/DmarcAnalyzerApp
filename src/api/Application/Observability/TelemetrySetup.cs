@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Common;
 using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Logs;
@@ -22,9 +23,12 @@ public static class TelemetrySetup
     /// growing their own copy that can drift.
     /// </para>
     /// <para>
-    /// Endpoint, protocol, headers, sampler and resource attributes are all left to the SDK,
-    /// which reads the OTEL_* variables itself. Re-reading them here would be a second
-    /// implementation of the spec, and a worse one.
+    /// Endpoint, protocol, headers and sampler are all left to the SDK, which reads the OTEL_*
+    /// variables itself. Re-reading them here would be a second implementation of the spec, and
+    /// a worse one. Resource attributes are the exception, and only for the two the process
+    /// knows about itself and an operator would otherwise have to restate per deployment:
+    /// <c>app.mode</c> and <c>service.version</c>. Everything else still comes from
+    /// OTEL_RESOURCE_ATTRIBUTES.
     /// </para>
     /// </summary>
     public static TelemetrySettings AddTelemetry(this IHostApplicationBuilder builder, string appMode)
@@ -36,15 +40,23 @@ public static class TelemetrySetup
             return settings;
         }
 
+        // service.version, so "did this start after the upgrade" is answerable from the
+        // telemetry rather than from deploy timestamps. Display and not the bare version:
+        // on an `edge` image the release number alone identifies the wrong build.
+        var version = AppVersion.Current.Display;
+
+        // Both builders get the same attributes. Logs use the local `resource` and
+        // traces/metrics the configured one, so a difference here would leave the two halves
+        // of a deployment disagreeing about which version they are.
         var resource = ResourceBuilder.CreateDefault()
-            .AddService(settings.ServiceName)
+            .AddService(settings.ServiceName, serviceVersion: version)
             // Which half of the deployment a span came from. Both modes share a service name
             // on purpose, so a trace that starts in the API and a worker's ingestion pass sit
             // under one service, and this attribute tells them apart.
             .AddAttributes([new KeyValuePair<string, object>("app.mode", settings.AppMode)]);
 
         var otel = builder.Services.AddOpenTelemetry().ConfigureResource(r => r
-            .AddService(settings.ServiceName)
+            .AddService(settings.ServiceName, serviceVersion: version)
             .AddAttributes([new KeyValuePair<string, object>("app.mode", settings.AppMode)]));
 
         if (settings.Traces != TelemetrySink.None)

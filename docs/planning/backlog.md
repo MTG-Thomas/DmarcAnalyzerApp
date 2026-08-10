@@ -202,6 +202,18 @@ Sequenced; each step is independently shippable.
       Still needs someone on that machine to run it; it is unreachable from
       `hermes-agent` (the mesh peer exists but is offline).
 
+- [x] (done) **The app reports its own version** (issue #150). `<Version>` in
+      `src/Directory.Build.props`, stamped with the commit as
+      `InformationalVersion`, surfaced in `/api/v1/system/status`, in
+      `service.version`, and as a link in the console sidebar — release notes for a
+      release, the commit for a build past one. Until this, a running instance could
+      not answer which version it was: nothing set a version at all, so every
+      release published an assembly saying `1.0.0`, and the only real version lived
+      in `Chart.yaml` and the image tags. Someone on `:latest` had no way to find
+      their own release notes. The commit is stamped on every build *except* a tag,
+      which is what makes `0.9.0` mean the release and `0.9.0+a1b2c3d` mean an
+      `edge` image built past it.
+
 - [x] (done) **Publish the chart.** A release tag pushes it to
       `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`, with `version` and
       `appVersion` both taken from the tag so the chart version alone determines the

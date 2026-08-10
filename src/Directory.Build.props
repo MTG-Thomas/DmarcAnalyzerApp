@@ -1,5 +1,28 @@
 <Project>
 
+  <!-- The application version, and the reason it lives here rather than in the
+       csproj: `prepare-release` bumps the tracked files with a global sed, and
+       VersionReferenceTests flags every version-shaped string in them older than
+       the chart. Both misfire on a file that also holds PackageReference
+       versions — the sed rewrites any package pinned at the app's version, and
+       the test starts failing on packages whose own numbers fall behind the
+       chart's, which happens to every 0.x dependency the first time this project
+       ships a major. This file has no package versions, so it is the one safe
+       home. Keep it in step with Chart.yaml; the test does not let it drift.
+
+       Two rules follow for this comment, both learned by tripping them: no
+       version numbers (the release sed rewrites prose as readily as the property,
+       and the test reads illustrations as recommendations), and no package names
+       with numbers attached.
+
+       The build stamps the git commit onto this as InformationalVersion — from
+       the local repository automatically, and from SOURCE_REVISION in the
+       container, where there is no .git to read. That is what distinguishes an
+       `edge` image from the release it is built past; see AppVersion.cs. -->
+  <PropertyGroup>
+    <Version>0.9.0</Version>
+  </PropertyGroup>
+
   <!-- packages.lock.json per project, enforced in CI so a drifted lockfile fails
        restore instead of silently resolving different transitive versions. -->
   <PropertyGroup>
