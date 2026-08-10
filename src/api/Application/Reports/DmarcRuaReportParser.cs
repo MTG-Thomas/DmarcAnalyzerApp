@@ -93,8 +93,8 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             MapDisposition(policyPublished.P),
             hasSubdomainPolicy ? MapDisposition(policyPublished.Sp) : null,
             ParsePercent(policyPublished.Percent),
-            MapAlignment(policyPublished.Adkim),
-            MapAlignment(policyPublished.Aspf));
+            MapAlignment(policyPublished.AdkimRaw),
+            MapAlignment(policyPublished.AspfRaw));
     }
 
     private static string MapDisposition(DispositionType disposition) => disposition switch
@@ -104,11 +104,48 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         _ => "none",
     };
 
-    private static string MapAlignment(AlignmentType? alignment) => alignment switch
+    /// <summary>
+    /// adkim/aspf, read from DmarcRua's raw strings rather than its <c>Adkim</c>/<c>Aspf</c>.
+    /// <para>
+    /// 2.0.1 replaced those two settable <c>AlignmentType?</c> properties with get-only ones
+    /// computed from new <c>AdkimRaw</c>/<c>AspfRaw</c> strings, and the helper behind them
+    /// calls <c>Regex.Replace</c> on the raw value with no null check. Both tags are
+    /// <c>minOccurs="0"</c> in DmarcRua's own schema, so a reporter that just omits them
+    /// leaves the raw string null and merely *reading* the property throws
+    /// ArgumentNullException — after deserialization has already succeeded, so it surfaces
+    /// here rather than as a parse error. That is 1.5% of the 3241 real reports vendored in
+    /// 2.0.1's own test resources, Mail.Ru and Fastmail among them; every report from such a
+    /// reporter would fail ingestion outright, where 2.0.0 returned null and fell to the
+    /// default below.
+    /// </para>
+    /// <para>
+    /// Reading the raw string keeps 2.0.0's behaviour and does not wait on an upstream fix.
+    /// Absent means "relaxed": unlike sp, adkim and aspf have fixed RFC 7489 §6.3 defaults,
+    /// so collapsing an absent tag to its default is correct and needs no
+    /// HasSubdomainPolicyTag-style presence sniff. Do not simplify this back to
+    /// <c>.Adkim</c>/<c>.Aspf</c>.
+    /// </para>
+    /// <para>
+    /// Reported upstream as danielsen/DmarcRua#11. If a later release fixes it, this can
+    /// go back to the properties — but check first that an absent tag returns null rather
+    /// than throwing, and that the library has not changed what absent *means*: "relaxed"
+    /// is this method's decision to make, not the library's.
+    /// </para>
+    /// <para>
+    /// Trimming, lowercasing and dropping non-alphanumerics mirrors what 2.0.1 does to these
+    /// values — that much of its change is a real improvement, so '&#160;S&#160;' still reads
+    /// as strict instead of silently becoming relaxed.
+    /// </para>
+    /// </summary>
+    private static string MapAlignment(string? alignment)
     {
-        AlignmentType.Strict => "strict",
-        _ => "relaxed",
-    };
+        var cleaned = (alignment ?? string.Empty)
+            .ToLowerInvariant()
+            .Where(char.IsAsciiLetterOrDigit)
+            .ToArray();
+
+        return cleaned is ['s'] ? "strict" : "relaxed";
+    }
 
     /// <summary>
     /// Read-through only, per the DMARCbis (RFC 9989/9990/9991) impact report: np,
@@ -244,6 +281,15 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         ("spf", "result",
             ["none", "neutral", "pass", "fail", "softfail", "temperror", "permerror", "hardfail", ""],
             "permerror"),
+
+        // SpfDomainScope. DmarcRua 2.0.0 modelled only mfrom, so helo — legal per RFC 7208
+        // and sent by real reporters — was fatal, and this parser rewrote it to mfrom to save
+        // the document. 2.0.1 added Helo, so the scope is now recorded as sent; the rewrite
+        // was the last thing storing a value the reporter never reported. Kept as a repair
+        // rather than dropped outright because the enum still has no empty member, so
+        // <scope/> or a value neither of these is fatal, and mfrom is the safe reading —
+        // it is the scope RFC 7489 aligns against and the one ~99% of reports send.
+        ("spf", "scope", ["mfrom", "helo"], "mfrom"),
     ];
 
     /// <summary>
@@ -369,7 +415,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         try
         {
             var updated = false;
-            var scopeNormalized = false;
 
             xmlStream.Position = 0;
             XDocument document;
@@ -396,6 +441,14 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
             // field-compatible for everything we read, so strip namespaces entirely.
+            //
+            // Still needed on 2.0.1, despite its NamespaceIgnorantXmlReader: that reader only
+            // hides namespaces from the *serializer*, while the validating reader beneath it
+            // still sees them, and rua.xsd declares no targetNamespace. Measured on a
+            // namespaced report with this pass removed: it deserializes, but the schema
+            // matches nothing and every element raises "Could not find schema information" —
+            // 31 warnings on a one-record report, and HasWarnings true. Stripping first keeps
+            // validation meaningful and costs one explanatory message instead.
             if (document.Root is not null && document.Root.Name.Namespace != XNamespace.None)
             {
                 var reportNamespace = document.Root.Name.NamespaceName;
@@ -411,26 +464,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 updated = true;
             }
 
-            foreach (var scopeElement in document.Descendants().Where(x => x.Name.LocalName == "scope"))
-            {
-                var value = (scopeElement.Value ?? string.Empty).Trim().ToLowerInvariant();
-                if (value == "mfrom")
-                {
-                    continue;
-                }
-
-                if (value == "helo")
-                {
-                    scopeElement.Value = "mfrom";
-                    if (!scopeNormalized)
-                    {
-                        normalizationMessages.Add("warning: normalized SPF scope value 'helo' to 'mfrom' for compatibility");
-                        scopeNormalized = true;
-                    }
-                    updated = true;
-                }
-            }
-
             // Reporters send values these enums do not accept, and XmlSerializer treats that
             // as fatal: one bad token fails the whole <feedback> document and discards every
             // record in it, 28 on average. Observed in one mailbox pass alone: '' and <dkim/>
@@ -438,10 +471,21 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             // result, and '15' for a disposition. Repairing the value costs one field;
             // rejecting the document costs the whole report.
             //
-            // The accepted sets below are the XmlEnum names on the DmarcRua enums themselves,
-            // not the XSD, so they cannot drift from what the serializer will actually take.
-            // Note DispositionType, SpfResultType and DKIMResultType all accept '' — only
-            // DMARCResultType is strictly pass|fail, which is why an empty one was fatal.
+            // The accepted sets below started as the XmlEnum names on the DmarcRua enums
+            // themselves, not the XSD. Note DispositionType, SpfResultType and DKIMResultType
+            // all accept '' — only DMARCResultType was strictly pass|fail, which is why an
+            // empty one was fatal.
+            //
+            // As of DmarcRua 2.0.1 those sets are deliberately *narrower* than the enums, so
+            // this pass now pre-empts the library on three values rather than mirroring it:
+            // DMARCResultType gained softfail and none, DKIMResultType gained invalid and
+            // unknown, SpfResultType gained unknown. Keeping our reading matters most for
+            // policy_evaluated none, which 2.0.1 aliases to Pass (None = Pass) — we call it
+            // fail, because a mechanism the reporter did not evaluate must not manufacture a
+            // DMARC pass and inflate compliance. softfail agrees either way; invalid and
+            // unknown land on permerror here versus temperror upstream, and both read as
+            // "could not be evaluated". Adding a value to a set below hands that value back
+            // to the library, so check what its enum maps it to first.
             foreach (var element in document.Descendants())
             {
                 var parent = element.Parent?.Name.LocalName;
@@ -460,12 +504,21 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 var original = (element.Value ?? string.Empty).Trim();
                 var candidate = LegacyResultNames.TryGetValue(original, out var modern) ? modern : original;
 
-                if (repair.Allowed.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                // Match case-insensitively but write back the *canonical* spelling, never the
+                // reporter's. XmlSerializer matches XmlEnum names case-sensitively, so passing
+                // 'PASS' or 'HELO' through unchanged after accepting it here would hand the
+                // serializer a value it rejects and lose the whole document — the exact failure
+                // this pass exists to prevent. Case-only differences are not a substitution of
+                // meaning, so they are corrected silently and raise no warning.
+                var canonical = repair.Allowed.FirstOrDefault(
+                    x => string.Equals(x, candidate, StringComparison.OrdinalIgnoreCase));
+
+                if (canonical is not null)
                 {
                     // Whitespace-only where '' is legal still needs trimming to become ''.
-                    if (!string.Equals(element.Value, candidate, StringComparison.Ordinal))
+                    if (!string.Equals(element.Value, canonical, StringComparison.Ordinal))
                     {
-                        element.Value = candidate;
+                        element.Value = canonical;
                         updated = true;
                     }
 

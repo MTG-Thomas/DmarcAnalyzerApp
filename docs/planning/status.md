@@ -385,8 +385,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   them. One bad token used to fail an entire `<feedback>` document and lose every
   record in it, 28 on average:
   - values the strict enums reject are replaced with a documented fallback and
-    named in a warning; the accepted sets are read off the DmarcRua enums by
-    reflection, so they cannot drift from what the serializer takes
+    named in a warning; the accepted sets are hand-maintained lists that started
+    from the `XmlEnum` names on the DmarcRua enums, and as of 2.0.1 are
+    deliberately narrower than them — see the note on that upgrade below
   - `unknown` and `error` in an SPF auth result are *translated* to `permerror`
     and `temperror` — the RFC 4408 names for what RFC 7208 renamed
   - a document truncated after its last complete `</record>` is completed and
@@ -396,6 +397,53 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     0.0%, and one reporter went from 100% discarded to ingesting
   - the parser's `ValidationMessages` are still discarded by `MailboxSyncService`,
     so these repairs leave no trace an operator can find. Backlog item.
+
+- **DmarcRua is pinned at 2.0.1, and the alignment tags are read around it.** The
+  library publishes no releases or changelog, so the upgrade was reviewed by diffing
+  the commits embedded in the two nuspecs (`5d30703` → `7a59061`). It is worth taking:
+  parsing became namespace-agnostic, a `trusted_forwarded` → `trusted_forwarder`
+  typo was fixed, and enum values seen in the wild were added. Despite the patch
+  version it is **source-breaking** — `PolicyPublishedType.Adkim`/`.Aspf` went from
+  settable `AlignmentType?` to get-only properties computed from new
+  `AdkimRaw`/`AspfRaw` strings — and the helper behind them calls `Regex.Replace`
+  on a value that can be null. Both tags are `minOccurs="0"` in DmarcRua's own
+  schema, so for a reporter that omits them, *reading* the property throws
+  `ArgumentNullException` after deserialization has already succeeded. That is 1.5%
+  of the 3241 real reports vendored in 2.0.1's own test resources, Mail.Ru and
+  Fastmail among them, and it would have failed ingestion for every report from
+  those reporters where 2.0.0 quietly returned null.
+  - `DmarcRuaReportParser` therefore reads `AdkimRaw`/`AspfRaw` and maps them
+    itself, which preserves 2.0.0's behaviour and does not wait on an upstream fix.
+    Absent means `relaxed`, the fixed RFC 7489 §6.3 default for both tags. Reported
+    upstream as [danielsen/DmarcRua#11](https://github.com/danielsen/DmarcRua/issues/11).
+    Note the library merges contributions by reimplementing them in its own commits
+    rather than by merging pull requests — every PR since 2022 is closed unmerged,
+    including one of ours — so treat a fix as arriving whenever it arrives, and keep
+    the workaround until a release actually carries one.
+  - the upgrade was verified by running the parser over all 3242 reports in that
+    corpus on both versions: no regressions, identical output on every report both
+    parse, and one report gained — a `trusted_forwarder` report that 2.0.0 discarded
+    whole over the typo.
+  - our normalization now *pre-empts* the library on three values rather than
+    mirroring it. The one that matters is `policy_evaluated` `none`, which 2.0.1
+    aliases to `Pass` (`None = Pass`); we keep reading it as `fail`, because a
+    mechanism the reporter never evaluated must not manufacture a DMARC pass and
+    inflate compliance.
+  - the upgrade also retired a workaround it made obsolete: **SPF `scope=helo` is
+    recorded as sent** rather than rewritten to `mfrom`. 2.0.0 modelled only `mfrom`,
+    so `helo` was fatal and the rewrite existed to save the document — at the cost of
+    storing a scope the reporter never reported and showing it in the per-source SPF
+    table (82 auth results across the 3242-report corpus). `scope` moved into
+    `EnumRepairs` instead, because the enum still has no empty member. Historic rows
+    stay `mfrom` and cannot be backfilled: the value was destroyed at parse time.
+  - and fixed a latent bug found on the way. `EnumRepairs` matched values
+    case-insensitively but wrote the reporter's spelling back, while `XmlSerializer`
+    matches `XmlEnum` names case-sensitively — so `PASS` was accepted here and then
+    rejected by the serializer, losing every record in the document. It now writes the
+    canonical spelling; case-only corrections raise no warning.
+  - the namespace-stripping pass is **not** redundant on 2.0.1, though it looks it.
+    See the rejected backlog item: removing it turns one explanatory warning into 31
+    `Could not find schema information` warnings per namespaced report.
 
 ## Planned Next
 
