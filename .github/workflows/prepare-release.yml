@@ -69,6 +69,11 @@ jobs:
             deploy/helm/dmarc-analyzer/README.md
             deploy/dockerhub-readme.md
             render.yaml
+            # <Version> for the built assembly — this is the one entry that
+            # changes what the app *reports* about itself rather than what a doc
+            # recommends, so forgetting it would ship a release that names the
+            # previous one in its own UI.
+            src/Directory.Build.props
           )
           sed -i "s/${current//./\\.}/$version/g" "${files[@]}"
 

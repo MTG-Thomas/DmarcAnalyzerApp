@@ -36,6 +36,14 @@ public sealed class VersionReferenceTests
         // drift by accident — it renders on Docker Hub, not in the repo.
         Path.Combine("deploy", "dockerhub-readme.md"),
         "render.yaml",
+        // Not documentation — this one is <Version> for the assembly, so drift
+        // here means the running app reports the previous release in its own
+        // sidebar and in service.version. It is safe to check with the same blunt
+        // "no version older than the chart" rule only because the file holds no
+        // PackageReference versions; that is why <Version> lives there and not in
+        // the csproj, where SharpCompress 0.50.4 would fail this test the day the
+        // chart reaches 1.0.0.
+        Path.Combine("src", "Directory.Build.props"),
     ];
 
     /// <summary>

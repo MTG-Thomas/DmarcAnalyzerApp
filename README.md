@@ -135,6 +135,16 @@ docker compose up -d --build
 Keep that key once you have added a mailbox source: changing it makes every
 stored mailbox password undecryptable.
 
+If the build fails during `dotnet restore` with **NU1004**, `packages.lock.json`
+does not match the project's package references. The image build restores in
+locked mode deliberately — a stale lockfile should stop the build rather than
+silently resolve different transitive versions into the image — so regenerate it
+and commit the change:
+
+```bash
+dotnet restore src/api/DmarcAnalyzer.Api.csproj --force-evaluate
+```
+
 Services:
 
 - API: `http://localhost:8080`

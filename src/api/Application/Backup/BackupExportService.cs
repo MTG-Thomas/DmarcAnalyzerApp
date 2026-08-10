@@ -1,4 +1,3 @@
-using System.Reflection;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Data;
@@ -134,7 +133,9 @@ public sealed class BackupExportService(
         var manifest = new BackupManifest(
             FormatVersion: BackupJson.FormatVersion,
             ExportedAtUtc: DateTime.UtcNow,
-            AppVersion: AppVersion(),
+            // The same string the console shows, so an artifact and the screenshot in the
+            // support thread that came with it name the build identically.
+            AppVersion: Common.AppVersion.Current.Display,
             MigrationId: migrationId,
             MigrationCount: migrationCount,
             EncryptionKeyFingerprint: CredentialKeyFingerprint.Compute(key),
@@ -165,17 +166,6 @@ public sealed class BackupExportService(
             manifest, clients, domains, mailboxSources, recipients, users, identities, grants,
             mtaStsPolicies));
     }
-
-    /// <summary>
-    /// Advisory only. Nothing in the build stamps a version, so this reads 1.0.0 until
-    /// the release pipeline sets one — the manifest's migration id is the field to trust
-    /// for compatibility.
-    /// </summary>
-    private static string AppVersion()
-        => typeof(BackupExportService).Assembly
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-           ?? typeof(BackupExportService).Assembly.GetName().Version?.ToString()
-           ?? "unknown";
 
     /// <summary>
     /// The artifact's real schema identity: the newest applied migration, and how many

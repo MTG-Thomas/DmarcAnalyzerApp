@@ -358,6 +358,28 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   proves migrations were applied and `CanConnectAsync` does not.
   - structured JSON console logging, which ADR 0006 also lists as decided, is
     **not** implemented — the console logger is plain text. Backlog item.
+  - resource attributes are the SDK's job except for two the process knows about
+    itself: `app.mode`, and `service.version` — the build's version and, when it is
+    not a release, its commit.
+
+- The running build identifies itself. `<Version>` lives in
+  `src/Directory.Build.props` (bumped with `Chart.yaml`, enforced by
+  `VersionReferenceTests`) and the build stamps the commit onto it as
+  `InformationalVersion` — from git locally, from the `SOURCE_REVISION` build
+  argument in the container, where `.dockerignore` excludes `.git`. Read from the
+  assembly and never from an environment variable: an image whose version can be set
+  at run time can be made to lie about itself. Surfaced in `/api/v1/system/status`,
+  in `service.version`, in the backup manifest's `appVersion`, and at the foot of
+  the console sidebar.
+  - Three shapes, and only one of them is a release. A bare version is the release,
+    and CI produces it by passing the build argument *explicitly empty* on a tag.
+    Version-plus-commit is a build past a release — an `edge` image, or a working
+    tree. Version-plus-`local` is the container build's default, so an image built
+    from `docker compose` or `docker build .` cannot claim to be the release by
+    passing nothing: the claim has to be made, and staying silent makes the safe
+    one. The sidebar links the first two to the release notes and to the commit; it
+    renders `local`, and an unstamped `unknown`, as plain text, because neither
+    resolves to anything on the remote.
 
 - Report parsing tolerates malformed real-world reports rather than discarding
   them. One bad token used to fail an entire `<feedback>` document and lose every

@@ -319,6 +319,30 @@ jobs:
             type=raw,value=edge,enable={{is_default_branch}}
             type=sha,prefix=sha-
 
+      # The commit the image reports as its own, and the thing that lets someone on
+      # a mutable tag identify their build: the version reads "0.9.0" for a release
+      # and "0.9.0+a1b2c3d" for an `edge` image built past it. A release is left
+      # unstamped on purpose — the tag already pins its commit, so the number in the
+      # sidebar stays the number on the releases page.
+      #
+      # Deliberately a shell step rather than `${{ cond && '' || sha }}`. An empty
+      # string is falsy in an Actions expression, so that form falls through its
+      # `||` and stamps a tag build after all — silently, because both branches
+      # produce a working image and only the version string differs. This is not a
+      # second source of the version itself; that stays in Directory.Build.props,
+      # which the release tooling bumps with the chart.
+      - name: Resolve the commit to stamp
+        id: stamp
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+            echo "revision=" >> "$GITHUB_OUTPUT"
+            echo "Release build — no commit stamped; the tag pins it."
+          else
+            echo "revision=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "Pre-release build — stamping $GITHUB_SHA."
+          fi
+
       # One build, pushed to every tag metadata-action produced — which spans both
       # registries when Docker Hub is enabled. Pull requests build without pushing.
       - name: Build and push
@@ -327,6 +351,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            SOURCE_REVISION=${{ steps.stamp.outputs.revision }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

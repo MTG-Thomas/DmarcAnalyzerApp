@@ -36,11 +36,29 @@ public enum AppMode
     MtaSts,
 }
 
+/// <summary>
+/// The mode this process resolved at startup, for the handful of places that report
+/// what the process is rather than decide what it does.
+/// <para>
+/// A wrapper because <see cref="AppMode"/> is a value type and cannot be registered in
+/// DI on its own, and because a Carter module must not take constructor dependencies
+/// (the CARTER1 analyzer refuses it) — so the endpoint binds this from services
+/// instead. The alternative, calling <see cref="AppRuntimeMode.FromEnvironment"/> a
+/// second time inside the module, would parse the environment twice per process and
+/// give the answer two sources.
+/// </para>
+/// </summary>
+public sealed record AppRuntimeInfo(AppMode Mode);
+
 public static class AppRuntimeMode
 {
     public const string EnvironmentVariable = "APP_MODE";
 
-    /// <summary>Mode names accepted for <c>APP_MODE</c>, in the order they are documented.</summary>
+    /// <summary>
+    /// Mode names accepted for <c>APP_MODE</c>, in the order they are documented —
+    /// which is also <see cref="AppMode"/>'s declaration order, so this doubles as
+    /// the lookup for <see cref="ToName"/>. A test holds the two in step.
+    /// </summary>
     public static readonly string[] Names = ["api", "worker", "all", "migrate", "mta-sts"];
 
     /// <summary>
@@ -76,6 +94,13 @@ public static class AppRuntimeMode
     /// <summary>Reads and parses the ambient <c>APP_MODE</c>.</summary>
     public static AppMode FromEnvironment()
         => Parse(Environment.GetEnvironmentVariable(EnvironmentVariable));
+
+    /// <summary>
+    /// The <c>APP_MODE</c> spelling of a mode — the same string that selects it.
+    /// <c>ToString()</c> is not that string: it would report <c>MtaSts</c> for a
+    /// mode nobody can set under that name.
+    /// </summary>
+    public static string ToName(this AppMode mode) => Names[(int)mode];
 
     /// <summary>Whether this mode runs the background loop in-process.</summary>
     public static bool RunsWorker(this AppMode mode) => mode is AppMode.Worker or AppMode.All;
