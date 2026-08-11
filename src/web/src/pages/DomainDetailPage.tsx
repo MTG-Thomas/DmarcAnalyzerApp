@@ -1425,6 +1425,25 @@ function MtaStsPolicyEditor({
 
 // --- Expandable per-source detail panel ---
 
+/**
+ * The four RFC 9990 action dispositions, rendered next to the message total they have to
+ * account for. `pass` earns its own badge rather than joining `none`: the reporter is
+ * saying DMARC passed under an enforcing policy, not that it declined to act. Zero
+ * buckets are still shown, so a reader can see the total is fully accounted for instead
+ * of wondering which badge went missing.
+ */
+export function DispositionBadges({ dispositions }: { dispositions: SourceDetail['dispositions'] }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+      <span className="font-medium text-secondary">Dispositions</span>
+      <Badge variant="neutral">none · {formatCompact(dispositions.none)}</Badge>
+      <Badge variant="success">pass · {formatCompact(dispositions.pass)}</Badge>
+      <Badge variant="warning">quarantine · {formatCompact(dispositions.quarantine)}</Badge>
+      <Badge variant="danger">reject · {formatCompact(dispositions.reject)}</Badge>
+    </div>
+  )
+}
+
 type SourceDetailPanelProps = {
   domainId: string
   sourceIp: string
@@ -1502,12 +1521,7 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
             ))}
           </div>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-medium text-secondary">Dispositions</span>
-          <Badge variant="neutral">none · {formatCompact(detail.dispositions.none)}</Badge>
-          <Badge variant="warning">quarantine · {formatCompact(detail.dispositions.quarantine)}</Badge>
-          <Badge variant="danger">reject · {formatCompact(detail.dispositions.reject)}</Badge>
-        </div>
+        <DispositionBadges dispositions={detail.dispositions} />
       </section>
 
       {/* Raw auth results identify the actual sending service. */}

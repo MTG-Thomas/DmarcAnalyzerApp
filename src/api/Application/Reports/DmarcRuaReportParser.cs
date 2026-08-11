@@ -8,6 +8,11 @@ namespace DmarcAnalyzer.Api.Application.Reports;
 
 public sealed class DmarcRuaReportParser : IDmarcReportParser
 {
+    private const string DmarcBisNamespace = "urn:ietf:params:xml:ns:dmarc-2.0";
+
+    private static readonly string[] DmarcBisActionDispositions =
+        ["none", "pass", "quarantine", "reject"];
+
     public DmarcReportParseResult Parse(Stream xmlStream)
     {
         ArgumentNullException.ThrowIfNull(xmlStream);
@@ -20,7 +25,8 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         using var sourceBuffer = CopyToMemory(xmlStream);
         var hasSubdomainPolicy = HasSubdomainPolicyTag(sourceBuffer);
         var normalizationMessages = new List<string>();
-        using var parserStream = NormalizeReportXml(sourceBuffer, normalizationMessages);
+        var normalized = NormalizeReportXml(sourceBuffer, normalizationMessages);
+        using var parserStream = normalized.Stream;
 
         var aggregateReport = new AggregateReport(parserStream);
         var feedback = aggregateReport.Feedback
@@ -43,8 +49,17 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             .Concat(DescribeDmarcBisTags(policyPublished))
             .ToArray();
 
+        // The captured RFC 9990 dispositions are keyed by position among the document's own
+        // <record> elements, so they are only safe to use while the deserializer produced
+        // exactly that many records. Nothing observed makes the two disagree, but if they ever
+        // did, an index would carry one record's disposition onto another — storing a value the
+        // reporter never sent for that source, which is worse than falling back to the v1 enum.
+        var actionDispositions = normalized.DmarcBisDispositions.Count == (feedback.Record?.Length ?? 0)
+            ? normalized.DmarcBisDispositions
+            : Array.Empty<string?>();
+
         var records = feedback.Record?
-            .Select(record =>
+            .Select((record, index) =>
             {
                 var dkimAuth = record.AuthResults?.Dkim?
                     .Select(x => new DmarcReportRecordDkimAuthParseResult(
@@ -67,7 +82,9 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 return new DmarcReportRecordParseResult(
                     record.Row?.SourceIp ?? string.Empty,
                     record.Row?.Count ?? 0,
-                    record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant() ?? string.Empty,
+                    actionDispositions.ElementAtOrDefault(index)
+                        ?? record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant()
+                        ?? string.Empty,
                     record.Row?.PolicyEvaluated?.Dkim.ToString().ToLowerInvariant() ?? string.Empty,
                     record.Row?.PolicyEvaluated?.Spf.ToString().ToLowerInvariant() ?? string.Empty,
                     record.Identifiers?.HeaderFrom ?? string.Empty,
@@ -410,7 +427,9 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         return open;
     }
 
-    private static MemoryStream NormalizeReportXml(Stream xmlStream, List<string> normalizationMessages)
+    private static (MemoryStream Stream, IReadOnlyList<string?> DmarcBisDispositions) NormalizeReportXml(
+        Stream xmlStream,
+        List<string> normalizationMessages)
     {
         try
         {
@@ -437,6 +456,27 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 document = recovered;
                 updated = true;
             }
+
+            var isDmarcBisReport = document.Root?.Name.NamespaceName == DmarcBisNamespace;
+            var dmarcBisDispositions = isDmarcBisReport
+                ? document.Root!
+                    .Elements()
+                    .Where(x => x.Name.LocalName == "record")
+                    .Select(record =>
+                    {
+                        var reported = record
+                            .Descendants()
+                            .FirstOrDefault(x =>
+                                x.Name.LocalName == "disposition"
+                                && x.Parent?.Name.LocalName == "policy_evaluated")?
+                            .Value
+                            .Trim();
+
+                        return DmarcBisActionDispositions.FirstOrDefault(x =>
+                            string.Equals(x, reported, StringComparison.OrdinalIgnoreCase));
+                    })
+                    .ToArray()
+                : Array.Empty<string?>();
 
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
@@ -504,6 +544,25 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 var original = (element.Value ?? string.Empty).Trim();
                 var candidate = LegacyResultNames.TryGetValue(original, out var modern) ? modern : original;
 
+                // RFC 9990 split the row's action disposition from the published-policy
+                // DispositionType and added "pass". DmarcRua still models this field with
+                // the v1 enum, so feed it a compatible transport value; the canonical v2
+                // value captured above is restored when mapping each deserialized record.
+                //
+                // Upstream as danielsen/DmarcRua#12, with a patch verified against its own
+                // corpus. Deserialization *throws* there rather than degrading the value, so
+                // without this the whole document is lost, not just the field. Treat this as
+                // the fix rather than a stopgap: 2.0.1 is 18 months old and unanswered.
+                if (isDmarcBisReport
+                    && parent == "policy_evaluated"
+                    && element.Name.LocalName == "disposition"
+                    && string.Equals(candidate, "pass", StringComparison.OrdinalIgnoreCase))
+                {
+                    element.Value = "none";
+                    updated = true;
+                    continue;
+                }
+
                 // Match case-insensitively but write back the *canonical* spelling, never the
                 // reporter's. XmlSerializer matches XmlEnum names case-sensitively, so passing
                 // 'PASS' or 'HELO' through unchanged after accepting it here would hand the
@@ -545,13 +604,13 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 var original = new MemoryStream();
                 xmlStream.CopyTo(original);
                 original.Position = 0;
-                return original;
+                return (original, dmarcBisDispositions);
             }
 
             var normalized = new MemoryStream();
             document.Save(normalized);
             normalized.Position = 0;
-            return normalized;
+            return (normalized, dmarcBisDispositions);
         }
         catch
         {
@@ -559,7 +618,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             var original = new MemoryStream();
             xmlStream.CopyTo(original);
             original.Position = 0;
-            return original;
+            return (original, Array.Empty<string?>());
         }
     }
 }
