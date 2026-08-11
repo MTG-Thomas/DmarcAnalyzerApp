@@ -71,6 +71,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
+        source.NormalizeProtocolState();
 
         db.MailboxSources.Add(source);
         await db.SaveChangesAsync(ct);
@@ -187,16 +188,6 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
                     "mailbox retention cannot be enabled for an API source", 400);
             }
 
-            host = null;
-            port = null;
-            useTls = null;
-            username = null;
-            passwordEncrypted = null;
-            deleteAfterRetention = false;
-            source.OldestMessageAtUtc = null;
-            source.LastSuccessSyncAtUtc = null;
-            source.LastProcessedUid = null;
-            source.LastProcessedUidValidity = null;
         }
         else if (!HasCompleteMailboxConfiguration(host, port, useTls, username, passwordEncrypted))
         {
@@ -211,6 +202,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         source.Username = username;
         source.PasswordEncrypted = passwordEncrypted;
         source.DeleteAfterRetention = deleteAfterRetention;
+        source.NormalizeProtocolState();
         source.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 

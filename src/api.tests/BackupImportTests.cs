@@ -103,6 +103,10 @@ public sealed class BackupImportTests
         string password = "enc:v1:ZmFrZS1jaXBoZXJ0ZXh0")
         => new(id, name, "imap", host, 993, true, username, password, defaultClientId, true, Stamp, Stamp);
 
+    private static BackupMailboxSource ExportedApiSource(Guid id, Guid defaultClientId)
+        => new(id, "API source", "api", null, null, null, null, null,
+            defaultClientId, true, Stamp, Stamp);
+
     private static BackupUser ExportedUser(
         Guid id, string email, string hash = "pbkdf2$restored", string display = "Restored",
         string role = "agency_admin", bool isActive = true)
@@ -716,6 +720,98 @@ public sealed class BackupImportTests
         // This install's own reading position is untouched: clearing it for a config edit would
         // re-fetch the whole mailbox.
         Assert.Equal(4711L, updated.LastProcessedUid!.Value);
+    }
+
+    [Fact]
+    public async Task ApiSourceMergePreviewAndApplyClearMailboxOnlyState()
+    {
+        await using var db = NewDb();
+        var client = new Client { Slug = "acme", Name = "Acme", Timezone = "UTC" };
+        var existing = new MailboxSource
+        {
+            Name = "Mailbox",
+            Protocol = "imap",
+            Host = "imap.example",
+            Port = 993,
+            UseTls = true,
+            Username = "dmarc@example",
+            PasswordEncrypted = "enc:v1:bWFpbGJveA==",
+            DefaultClientId = client.Id,
+            DeleteAfterRetention = true,
+            OldestMessageAtUtc = Stamp.AddDays(-30),
+            LastSuccessSyncAtUtc = Stamp.AddDays(-1),
+            LastProcessedUid = 4711,
+            LastProcessedUidValidity = 9,
+        };
+        db.AddRange(client, existing);
+        await db.SaveChangesAsync();
+
+        var artifact = Artifact(sources: [ExportedApiSource(existing.Id, client.Id)]);
+
+        var preview = await Service(db).PreviewAsync(
+            artifact, BackupImportModes.Merge, false, default);
+
+        Assert.True(preview.IsSuccess);
+        Assert.Equal(1, Counts(preview.Value!, BackupImportEntities.MailboxSource).Updated);
+        await db.SaveChangesAsync();
+
+        var afterPreview = await db.MailboxSources.AsNoTracking().SingleAsync();
+        Assert.Equal("imap", afterPreview.Protocol);
+        Assert.True(afterPreview.DeleteAfterRetention);
+        Assert.Equal(4711, afterPreview.LastProcessedUid);
+
+        var applied = await Service(db).ImportAsync(
+            artifact, BackupImportModes.Merge, false, default);
+
+        Assert.True(applied.IsSuccess);
+        var source = await db.MailboxSources.AsNoTracking().SingleAsync();
+        Assert.Equal("api", source.Protocol);
+        Assert.Null(source.Host);
+        Assert.Null(source.Port);
+        Assert.Null(source.UseTls);
+        Assert.Null(source.Username);
+        Assert.Null(source.PasswordEncrypted);
+        Assert.False(source.DeleteAfterRetention);
+        Assert.Null(source.OldestMessageAtUtc);
+        Assert.Null(source.LastSuccessSyncAtUtc);
+        Assert.Null(source.LastProcessedUid);
+        Assert.Null(source.LastProcessedUidValidity);
+    }
+
+    [Fact]
+    public async Task MailboxSourceMergeOverApiRestoresCompleteConnectionConfiguration()
+    {
+        await using var db = NewDb();
+        var client = new Client { Slug = "acme", Name = "Acme", Timezone = "UTC" };
+        var existing = new MailboxSource
+        {
+            Name = "API source",
+            Protocol = "api",
+            Host = null,
+            Port = null,
+            UseTls = null,
+            Username = null,
+            PasswordEncrypted = null,
+            DefaultClientId = client.Id,
+        };
+        db.AddRange(client, existing);
+        await db.SaveChangesAsync();
+
+        var artifact = Artifact(sources: [ExportedSource(existing.Id, client.Id)]);
+        var preview = await Service(db).PreviewAsync(
+            artifact, BackupImportModes.Merge, false, default);
+        var applied = await Service(db).ImportAsync(
+            artifact, BackupImportModes.Merge, false, default);
+
+        Assert.True(preview.IsSuccess);
+        Assert.True(applied.IsSuccess);
+        var source = await db.MailboxSources.AsNoTracking().SingleAsync();
+        Assert.Equal("imap", source.Protocol);
+        Assert.Equal("imap.example", source.Host);
+        Assert.Equal(993, source.Port);
+        Assert.True(source.UseTls);
+        Assert.Equal("dmarc@example", source.Username);
+        Assert.Equal("enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", source.PasswordEncrypted);
     }
 
     /// <summary>

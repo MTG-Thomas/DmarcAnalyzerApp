@@ -475,6 +475,7 @@ public sealed class BackupImportService(
                 existing.IsActive = source.IsActive;
                 existing.CreatedAtUtc = source.CreatedAtUtc;
                 existing.UpdatedAtUtc = source.UpdatedAtUtc;
+                existing.NormalizeProtocolState();
                 tally.Updated++;
                 continue;
             }
@@ -501,6 +502,7 @@ public sealed class BackupImportService(
                 LastProcessedUid = null,
                 LastProcessedUidValidity = null,
             };
+            row.NormalizeProtocolState();
 
             db.MailboxSources.Add(row);
             state.SourcesById[row.Id] = row;

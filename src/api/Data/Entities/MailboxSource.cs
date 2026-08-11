@@ -46,4 +46,23 @@ public sealed class MailboxSource
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Client? DefaultClient { get; set; }
+
+    public void NormalizeProtocolState()
+    {
+        if (!string.Equals(Protocol, "api", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Host = null;
+        Port = null;
+        UseTls = null;
+        Username = null;
+        PasswordEncrypted = null;
+        DeleteAfterRetention = false;
+        OldestMessageAtUtc = null;
+        LastSuccessSyncAtUtc = null;
+        LastProcessedUid = null;
+        LastProcessedUidValidity = null;
+    }
 }
