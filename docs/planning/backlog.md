@@ -164,6 +164,13 @@ Sequenced; each step is independently shippable.
       seam using the PostgreSQL fixture; do not introduce a test-only IMAP
       architecture or treat database constraint tests as proof of the current
       mailbox write transaction.
+- [x] (done 2026-08-11) **Add the bounded raw-report extractor.** Bare
+      XML/JSON, GZIP, and multi-entry ZIP payloads now share one standalone
+      classifier with configuration-backed request, expanded, entry-count,
+      per-entry, and compression-ratio limits. Fatal container failures yield
+      no payloads; empty, nested, and unsupported ZIP entries can be rejected
+      alongside valid siblings. Parser, persistence, mailbox, and HTTP wiring
+      remain in MTG fork slice 3B after the parsed persistence seam lands.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).

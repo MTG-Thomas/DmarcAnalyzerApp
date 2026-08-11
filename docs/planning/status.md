@@ -78,6 +78,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
+- A standalone bounded raw-payload extractor classifies bare XML/JSON, GZIP,
+  and multi-entry ZIP content before parsing. Configuration caps request bytes,
+  total and per-entry expansion, entry count, and compression ratio; fatal
+  container failures return no payloads while valid ZIP siblings survive typed
+  per-entry rejections. Runtime callers move to this seam in MTG fork slice 3B.
 - Sync operational history persisted in `mailbox_sync_run`.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing
