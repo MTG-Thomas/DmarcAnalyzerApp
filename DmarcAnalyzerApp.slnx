@@ -6,4 +6,7 @@
   <Folder Name="/src/api.tests/">
     <Project Path="src/api.tests/DmarcAnalyzer.Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/src/api.integrationtests/">
+    <Project Path="src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj" />
+  </Folder>
 </Solution>
