@@ -1,0 +1,83 @@
+{
+  "case_id": "ipv6-multi-dkim-override",
+  "deltas": {
+    "compliant_messages": 41,
+    "dispositions": {
+      "none": 0,
+      "pass": 0,
+      "quarantine": 41,
+      "reject": 0
+    },
+    "dkim": {
+      "fail": 0,
+      "pass": 41
+    },
+    "messages": 41,
+    "records": 1,
+    "reports": 1,
+    "spf": {
+      "fail": 41,
+      "pass": 0
+    }
+  },
+  "outcome": "inserted",
+  "reason_class": null,
+  "reports": [
+    {
+      "key": {
+        "policy_domain": "kappa.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "ipv6-auth-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 1
+      },
+      "policy": {
+        "adkim": "s",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "quarantine",
+        "pct": 100,
+        "sp": "reject",
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "quarantine",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "kappa.example",
+              "result": "pass",
+              "selector": "primary"
+            },
+            {
+              "domain": "third-party.example",
+              "result": "fail",
+              "selector": "relay"
+            }
+          ],
+          "envelope_from": "bounce.kappa.example",
+          "envelope_to": "recipient.example",
+          "header_from": "news.kappa.example",
+          "message_count": 41,
+          "reasons": [
+            {
+              "comment": "Synthetic allow-list override",
+              "type": "local_policy"
+            }
+          ],
+          "source_ip": "2001:db8::25",
+          "spf": "fail",
+          "spf_auth": []
+        }
+      ],
+      "routing": null
+    }
+  ],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}

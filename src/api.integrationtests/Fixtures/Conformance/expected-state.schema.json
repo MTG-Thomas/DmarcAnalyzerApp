@@ -1,0 +1,372 @@
+{
+  "$defs": {
+    "authResult": {
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "selector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "domain",
+        "result"
+      ],
+      "type": "object"
+    },
+    "counterMap": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "object"
+    },
+    "deltas": {
+      "additionalProperties": false,
+      "properties": {
+        "compliant_messages": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dispositions": {
+          "$ref": "#/$defs/counterMap"
+        },
+        "dkim": {
+          "$ref": "#/$defs/counterMap"
+        },
+        "messages": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "records": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reports": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "spf": {
+          "$ref": "#/$defs/counterMap"
+        }
+      },
+      "required": [
+        "reports",
+        "records",
+        "messages",
+        "compliant_messages",
+        "dispositions",
+        "dkim",
+        "spf"
+      ],
+      "type": "object"
+    },
+    "reason": {
+      "additionalProperties": false,
+      "properties": {
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "comment"
+      ],
+      "type": "object"
+    },
+    "record": {
+      "additionalProperties": false,
+      "properties": {
+        "disposition": {
+          "type": "string"
+        },
+        "dkim": {
+          "type": "string"
+        },
+        "dkim_auth": {
+          "items": {
+            "$ref": "#/$defs/authResult"
+          },
+          "type": "array"
+        },
+        "envelope_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "envelope_to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "header_from": {
+          "type": "string"
+        },
+        "message_count": {
+          "type": "integer"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/reason"
+          },
+          "type": "array"
+        },
+        "source_ip": {
+          "type": "string"
+        },
+        "spf": {
+          "type": "string"
+        },
+        "spf_auth": {
+          "items": {
+            "$ref": "#/$defs/authResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "source_ip",
+        "message_count",
+        "disposition",
+        "dkim",
+        "spf",
+        "header_from",
+        "envelope_from",
+        "envelope_to",
+        "reasons",
+        "dkim_auth",
+        "spf_auth"
+      ],
+      "type": "object"
+    },
+    "report": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "additionalProperties": false,
+          "properties": {
+            "policy_domain": {
+              "type": "string"
+            },
+            "range_begin_epoch": {
+              "type": "integer"
+            },
+            "range_end_epoch": {
+              "type": "integer"
+            },
+            "report_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "policy_domain",
+            "report_id",
+            "range_begin_epoch",
+            "range_end_epoch"
+          ],
+          "type": "object"
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "properties": {
+            "organization": {
+              "type": "string"
+            },
+            "record_count": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "organization",
+            "record_count"
+          ],
+          "type": "object"
+        },
+        "policy": {
+          "additionalProperties": false,
+          "properties": {
+            "adkim": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "aspf": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "discovery_method": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "fo": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "np": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "p": {
+              "type": "string"
+            },
+            "pct": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "sp": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "testing": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "p",
+            "sp",
+            "np",
+            "pct",
+            "adkim",
+            "aspf",
+            "testing",
+            "discovery_method",
+            "fo"
+          ],
+          "type": "object"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/record"
+          },
+          "type": "array"
+        },
+        "routing": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "client_slug": {
+                  "type": "string"
+                },
+                "fallback_used": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "client_slug",
+                "fallback_used"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "metadata",
+        "policy",
+        "records",
+        "routing"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://dmarc-analyzer.example/schemas/conformance-expected-state-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "pattern": "^[a-z0-9][a-z0-9-]+$",
+      "type": "string"
+    },
+    "deltas": {
+      "$ref": "#/$defs/deltas"
+    },
+    "outcome": {
+      "enum": [
+        "inserted",
+        "rejected",
+        "duplicate"
+      ]
+    },
+    "reason_class": {
+      "enum": [
+        null,
+        "duplicate",
+        "xml_malformed",
+        "schema_invalid",
+        "archive_invalid",
+        "size_limit"
+      ],
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recovery_for": {
+      "pattern": "^[a-z0-9][a-z0-9-]+$",
+      "type": "string"
+    },
+    "reports": {
+      "items": {
+        "$ref": "#/$defs/report"
+      },
+      "type": "array"
+    },
+    "schema": {
+      "const": "dmarc-analyzer.conformance-expected-state/v1"
+    }
+  },
+  "required": [
+    "schema",
+    "case_id",
+    "outcome",
+    "reason_class",
+    "reports",
+    "deltas"
+  ],
+  "title": "DmarcAnalyzer normalized conformance expected state",
+  "type": "object"
+}

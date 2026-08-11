@@ -1,0 +1,265 @@
+{
+  "case_id": "routing-multi-client",
+  "deltas": {
+    "compliant_messages": 300,
+    "dispositions": {
+      "none": 300,
+      "pass": 0,
+      "quarantine": 0,
+      "reject": 36
+    },
+    "dkim": {
+      "fail": 36,
+      "pass": 300
+    },
+    "messages": 336,
+    "records": 6,
+    "reports": 3,
+    "spf": {
+      "fail": 36,
+      "pass": 300
+    }
+  },
+  "outcome": "inserted",
+  "reason_class": null,
+  "reports": [
+    {
+      "key": {
+        "policy_domain": "client-a.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "routing-a-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 2
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "client-a.example",
+              "result": "pass",
+              "selector": "s1"
+            }
+          ],
+          "envelope_from": "bounce.client-a.example",
+          "envelope_to": null,
+          "header_from": "client-a.example",
+          "message_count": 100,
+          "reasons": [],
+          "source_ip": "192.0.2.10",
+          "spf": "pass",
+          "spf_auth": [
+            {
+              "domain": "bounce.client-a.example",
+              "result": "pass",
+              "scope": "mfrom"
+            }
+          ]
+        },
+        {
+          "disposition": "reject",
+          "dkim": "fail",
+          "dkim_auth": [
+            {
+              "domain": "client-a.example",
+              "result": "fail",
+              "selector": "s2"
+            }
+          ],
+          "envelope_from": "sender.third-party.example",
+          "envelope_to": null,
+          "header_from": "client-a.example",
+          "message_count": 12,
+          "reasons": [],
+          "source_ip": "198.51.100.12",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "sender.third-party.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": {
+        "client_slug": "client-a",
+        "fallback_used": false
+      }
+    },
+    {
+      "key": {
+        "policy_domain": "client-b.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "routing-b-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 2
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "client-b.example",
+              "result": "pass",
+              "selector": "s1"
+            }
+          ],
+          "envelope_from": "bounce.client-b.example",
+          "envelope_to": null,
+          "header_from": "client-b.example",
+          "message_count": 100,
+          "reasons": [],
+          "source_ip": "192.0.2.10",
+          "spf": "pass",
+          "spf_auth": [
+            {
+              "domain": "bounce.client-b.example",
+              "result": "pass",
+              "scope": "mfrom"
+            }
+          ]
+        },
+        {
+          "disposition": "reject",
+          "dkim": "fail",
+          "dkim_auth": [
+            {
+              "domain": "client-b.example",
+              "result": "fail",
+              "selector": "s2"
+            }
+          ],
+          "envelope_from": "sender.third-party.example",
+          "envelope_to": null,
+          "header_from": "client-b.example",
+          "message_count": 12,
+          "reasons": [],
+          "source_ip": "198.51.100.12",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "sender.third-party.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": {
+        "client_slug": "client-b",
+        "fallback_used": false
+      }
+    },
+    {
+      "key": {
+        "policy_domain": "unowned.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "routing-default-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 2
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "unowned.example",
+              "result": "pass",
+              "selector": "s1"
+            }
+          ],
+          "envelope_from": "bounce.unowned.example",
+          "envelope_to": null,
+          "header_from": "unowned.example",
+          "message_count": 100,
+          "reasons": [],
+          "source_ip": "192.0.2.10",
+          "spf": "pass",
+          "spf_auth": [
+            {
+              "domain": "bounce.unowned.example",
+              "result": "pass",
+              "scope": "mfrom"
+            }
+          ]
+        },
+        {
+          "disposition": "reject",
+          "dkim": "fail",
+          "dkim_auth": [
+            {
+              "domain": "unowned.example",
+              "result": "fail",
+              "selector": "s2"
+            }
+          ],
+          "envelope_from": "sender.third-party.example",
+          "envelope_to": null,
+          "header_from": "unowned.example",
+          "message_count": 12,
+          "reasons": [],
+          "source_ip": "198.51.100.12",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "sender.third-party.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": {
+        "client_slug": "client-default",
+        "fallback_used": true
+      }
+    }
+  ],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}
