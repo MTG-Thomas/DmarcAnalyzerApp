@@ -49,8 +49,8 @@ public sealed class TlsReportIngestor(
         var domainIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
         foreach (var policyDomain in parsed.Policies.Select(p => p.PolicyDomain).Distinct(StringComparer.Ordinal))
         {
-            domainIds[policyDomain] = await domainResolver.ResolveOrCreateAsync(
-                source.DefaultClientId, policyDomain, ct);
+            domainIds[policyDomain] = (await domainResolver.ResolveOrCreateAsync(
+                source.DefaultClientId, policyDomain, ct)).DomainId;
         }
 
         var totalSuccessful = parsed.Policies.Sum(p => p.SuccessfulSessionCount);
