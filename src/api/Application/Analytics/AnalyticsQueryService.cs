@@ -145,7 +145,7 @@ public sealed class AnalyticsQueryService(
         AnalyticsMailboxesDto? mailboxes = null;
         if (currentUser.IsAgencyStaff)
         {
-            var mailboxTotal = await db.MailboxSources.CountAsync(ct);
+            var mailboxTotal = await db.ReportSources.CountAsync(ct);
             var latestRunStatuses = await db.MailboxSyncRuns
                 .GroupBy(x => x.ReportSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
