@@ -54,7 +54,7 @@ export type AnalyticsSummary = {
   trend: TrendPoint[]
   topFailingDomains: TopFailingDomain[]
   topReporters: TopReporter[]
-  dispositions: { none: number; quarantine: number; reject: number }
+  dispositions: { none: number; pass: number; quarantine: number; reject: number }
   /** Mailbox ops rollup; null for client_viewer users, who have no mailbox visibility. */
   mailboxes: { total: number; healthy: number; failing: number } | null
 }
@@ -246,7 +246,7 @@ export type SourceDetail = {
   messages: number
   compliantMessages: number
   complianceRate: number
-  dispositions: { none: number; quarantine: number; reject: number }
+  dispositions: { none: number; pass: number; quarantine: number; reject: number }
   evaluated: EvaluatedCombo[]
   headerFroms: ValueCount[]
   envelopeFroms: ValueCount[]
