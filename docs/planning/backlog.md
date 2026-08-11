@@ -146,15 +146,24 @@ Sequenced; each step is independently shippable.
       inserts nothing; the new order leaves 0 / 0, so a retry can succeed. Happy
       path and duplicate path both re-verified.
 
-- [ ] (todo) **An integration-test harness for the ingestion path.** This is the
-      second real bug in `MailboxSyncService` that the current test suite cannot
-      reach, and the reason is structural: every test uses `UseInMemoryDatabase`,
-      which supports neither the raw SQL nor the transactions this code depends on,
-      and the service needs an IMAP connection. Both fixes were verified by hand
-      against real Postgres, which is honest but not repeatable. Options are
-      Testcontainers for Postgres plus an `IMailStore` seam over MailKit, or a
-      narrower seam that lets the report-and-records write be driven directly.
-      Worth doing before the next change to this file.
+- [x] (done 2026-08-11) **Establish the real PostgreSQL integration harness.**
+      `src/api.integrationtests` keeps the fast InMemory suite intact while
+      giving each xUnit collection a randomly named disposable database. CI
+      runs the full lane on PostgreSQL 16 and a migration smoke on PostgreSQL
+      18; connection material uses an ephemeral test-only password and is
+      masked before it enters the test environment. The first tests pin the
+      latest migration, document the currently no-op v0.9.0/v0.10.0 schema
+      upgrade, preserve seeded configuration, and exercise the DMARC report and
+      ingest-ledger unique indexes plus concurrent `DomainIngestResolver` raw
+      SQL with two contexts.
+- [ ] (todo) **Move DMARC persistence acceptance onto a callable service.**
+      Atomic report/record/auth-result/ledger rollback, exact and concurrent
+      replay, and routed-owner behavior remain private to `MailboxSyncService`
+      behind a concrete MailKit connection. MTG fork slice 2 extracts
+      `IDmarcReportIngestor` and moves those assertions onto that production
+      seam using the PostgreSQL fixture; do not introduce a test-only IMAP
+      architecture or treat database constraint tests as proof of the current
+      mailbox write transaction.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).

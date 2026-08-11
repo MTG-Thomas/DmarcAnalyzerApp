@@ -45,6 +45,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - Not built: replaying reports back from the bucket archive. Until it exists the
     archive is evidence, not a restore path.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
+- A separate real-PostgreSQL integration project complements the fast EF
+  InMemory suite. Each xUnit collection owns a randomly named disposable
+  database; CI runs the complete lane on PostgreSQL 16 and the migration
+  category on PostgreSQL 18. It pins the expected latest migration, exercises
+  the currently no-op v0.9.0/v0.10.0 upgrade contract, and proves real unique
+  indexes plus concurrent `DomainIngestResolver` raw SQL. Direct DMARC
+  report/record/auth-result/ledger atomicity and replay move onto the parsed
+  persistence service in MTG fork slice 2; the harness does not emulate IMAP.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`
