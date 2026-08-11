@@ -2,6 +2,27 @@
 
 Orientation for AI coding agents (and new contributors) working in **DmarcAnalyzerApp** — an agency-first, self-hosted DMARC analyzer (ASP.NET Core + Carter API, React + Vite frontend, PostgreSQL). Read this first, then follow the links into the detailed docs.
 
+## MTG fork operating model
+
+This repository is the MTG working fork. `origin` is
+`MTG-Thomas/DmarcAnalyzerApp`; `upstream` is
+`dmarc-analyzer-net/DmarcAnalyzerApp`. The fork is the integration and dogfood
+lane, not a place to hide deployment-only patches.
+
+- Land and verify changes in the fork first. Images used by MTG infrastructure
+  must be published by CI from a tested fork commit, then selected by digest in
+  `MTG-Thomas/bifrost-infra`; never deploy a node-local or mutable-tag build.
+- Keep application, parser, schema, and chart behavior in this repository.
+  Bifrost AKS/PostgreSQL/Key Vault manifests belong in `bifrost-infra`; Microsoft
+  Graph mailbox acquisition, retry, and raw-attachment retention belong in
+  `bifrost-workspace`.
+- Prefer small concrete upstream pull requests after the fork proves them. Do
+  not create upstream issues, speculative proposals, releases, or tags without
+  explicit operator approval.
+- No customer data, public ingress, or production claim is permitted until the
+  pre-live gates in [`docs/planning/mtg-fork-slices.md`](docs/planning/mtg-fork-slices.md)
+  are complete.
+
 ## What this project is
 
 One agency workspace monitors DMARC aggregate (RUA) reports for many clients across many domains. Reports are pulled from mailboxes over IMAP, parsed, stored, and surfaced as compliance analytics with per-source drill-down. Multi-tenant (client-scoped), role-gated, and packaged as a single container.
@@ -134,6 +155,24 @@ The full list with defaults is in [`docs/ops/configuration.md`](docs/ops/configu
 - **Ingestion changes need a real database.** Every test uses `UseInMemoryDatabase`, which supports neither the raw SQL nor the transactions `MailboxSyncService` depends on — two real bugs there were invisible to the suite and had to be found by hand against Postgres. Until the integration harness in the backlog exists, verify changes to that file against a real database and say so in the PR.
 - **Frontend**: TypeScript strict, sentence-case copy, no emoji, mono font for technical values (domains, IPs, policies). Use the design tokens (CSS vars + Tailwind theme) and existing primitives — the old shadcn light-blue tokens are gone.
 - **Tone/content**: plain, technical, no hype (see the design/content notes referenced from the planning docs).
+
+## Code Review Rules
+
+- Reject ingestion code that reads an unbounded request, archive, entry, or
+  decompressed stream. The body, expanded bytes, entry count, and compression
+  ratio need explicit limits with rejection tests.
+- A machine-ingest caller may select a source, never a client. Authentication
+  resolves the trusted source and the source resolves the client; request data
+  must not be able to override that relationship.
+- Changes to report persistence, deduplication, transactions, or migrations
+  need a real PostgreSQL test lane. EF InMemory coverage is useful but is not
+  acceptance evidence for those paths.
+- Keep mailbox and upload callers behind one raw-payload ingestion orchestrator.
+  Do not duplicate archive classification, parsing, routing, deduplication, or
+  persistence at the HTTP boundary.
+- New machine endpoints are deny-by-default and must not be added to the broad
+  session middleware public-path list. Tokens and report payloads must not be
+  logged.
 
 ## Quick task pointers
 
