@@ -223,7 +223,8 @@ jobs:
             exit 1
           }
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - name: Verify Helm is available
+        run: helm version --short
 
       # A syntactically valid throwaway key. It has to be real base64 for 32 bytes:
       # values.schema.json checks the shape, so a placeholder like "dummy" fails
@@ -534,9 +535,9 @@ jobs:
           cluster_name: dmarc-smoke
           wait: 90s
 
-      - name: Set up Helm
+      - name: Verify Helm is available
         if: github.event_name == 'pull_request'
-        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+        run: helm version --short
 
       - name: Install and probe the chart
         if: github.event_name == 'pull_request'
@@ -550,7 +551,7 @@ jobs:
             --set image.repository="$image" \
             --set image.tag=ci-smoke \
             --set image.pullPolicy=Never
-          kubectl port-forward service/smoke-dmarc-analyzer 18081:8080 >/tmp/dmarc-port-forward.log 2>&1 &
+          kubectl port-forward service/smoke-dmarc-analyzer 18081:80 >/tmp/dmarc-port-forward.log 2>&1 &
           forward_pid=$!
           trap 'kill "$forward_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 30); do
@@ -636,7 +637,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - name: Verify Helm is available
+        run: helm version --short
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
