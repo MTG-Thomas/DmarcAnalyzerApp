@@ -14,6 +14,8 @@ public enum ReportPayloadRejectionCode
     EntryTooLarge,
     ExpandedSizeLimitExceeded,
     CompressionRatioExceeded,
+    InvalidDmarcReport,
+    InvalidTlsReport,
 }
 
 /// <summary>
