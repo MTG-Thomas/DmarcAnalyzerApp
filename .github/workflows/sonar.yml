@@ -19,6 +19,20 @@ jobs:
     name: Sonar quality gate
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dmarc-${{ github.run_id }}-${{ github.run_attempt }}-sonar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
@@ -44,6 +58,13 @@ jobs:
       - name: Install pinned Sonar scanner
         run: dotnet tool install --tool-path .sonar-scanner dotnet-sonarscanner --version 11.2.1
 
+      - name: Prepare masked test connection
+        shell: bash
+        run: |
+          connection="Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=dmarc-${{ github.run_id }}-${{ github.run_attempt }}-sonar"
+          echo "::add-mask::$connection"
+          echo "DMARC_TEST_POSTGRES=$connection" >> "$GITHUB_ENV"
+
       - name: Analyze
         run: |
           set -euo pipefail
@@ -57,6 +78,11 @@ jobs:
             /d:sonar.cs.opencover.reportsPaths="TestResults/**/coverage.opencover.xml"
           dotnet build DmarcAnalyzerApp.slnx --configuration Release --no-restore --no-incremental --nologo
           dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj \
+            --configuration Release --no-build --nologo \
+            --collect:"XPlat Code Coverage" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          dotnet test src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj \
             --configuration Release --no-build --nologo \
             --collect:"XPlat Code Coverage" \
             --results-directory "$GITHUB_WORKSPACE/TestResults" \
