@@ -3,6 +3,10 @@
 ###############################################################################
 * text=auto
 
+# Conformance payload hashes are part of the test contract. Preserve fixture
+# bytes exactly across Windows and Unix checkouts.
+src/api.integrationtests/Fixtures/Conformance/** -text
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

@@ -1,0 +1,79 @@
+{
+  "case_id": "valid-v2-namespaced",
+  "deltas": {
+    "compliant_messages": 23,
+    "dispositions": {
+      "none": 0,
+      "pass": 23,
+      "quarantine": 0,
+      "reject": 0
+    },
+    "dkim": {
+      "fail": 0,
+      "pass": 23
+    },
+    "messages": 23,
+    "records": 1,
+    "reports": 1,
+    "spf": {
+      "fail": 23,
+      "pass": 0
+    }
+  },
+  "outcome": "inserted",
+  "reason_class": null,
+  "reports": [
+    {
+      "key": {
+        "policy_domain": "beta.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "rfc9990-shape-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 1
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": "treewalk",
+        "fo": null,
+        "np": "reject",
+        "p": "quarantine",
+        "pct": null,
+        "sp": "none",
+        "testing": "n"
+      },
+      "records": [
+        {
+          "disposition": "pass",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "beta.example",
+              "result": "pass",
+              "selector": "blue"
+            }
+          ],
+          "envelope_from": "mail.beta.example",
+          "envelope_to": null,
+          "header_from": "beta.example",
+          "message_count": 23,
+          "reasons": [],
+          "source_ip": "203.0.113.25",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "mail.beta.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": null
+    }
+  ],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}

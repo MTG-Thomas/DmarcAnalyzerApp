@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feedback>
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>Synthetic Reporter</org_name>
+    <email>reports@reporter.example</email>
+    <report_id>truncated-complete-001</report_id>
+    <date_range>
+      <begin>1785888000</begin>
+      <end>1785974399</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>nu.example</domain>
+    <adkim>r</adkim>
+    <aspf>r</aspf>
+    <p>none</p>
+    <pct>100</pct>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip>192.0.2.10</source_ip>
+      <count>100</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>pass</dkim>
+        <spf>pass</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <envelope_from>bounce.nu.example</envelope_from>
+      <header_from>nu.example</header_from>
+    </identifiers>
+    <auth_results>
+      <dkim>
+        <domain>nu.example</domain>
+        <selector>s1</selector>
+        <result>pass</result>
+      </dkim>
+      <spf>
+        <domain>bounce.nu.example</domain>
+        <scope>mfrom</scope>
+        <result>pass</result>
+      </spf>
+    </auth_results>
+  </record>

@@ -24,6 +24,7 @@
   <ItemGroup>
     <None Include="../api.tests/Fixtures/sample-yahoo-aggregate.xml" Link="Fixtures/sample-yahoo-aggregate.xml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../api.tests/Fixtures/sample-rfc8460-tls.json" Link="Fixtures/sample-rfc8460-tls.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures/Conformance/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

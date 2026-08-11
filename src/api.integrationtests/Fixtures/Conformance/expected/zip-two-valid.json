@@ -1,0 +1,180 @@
+{
+  "case_id": "zip-two-valid",
+  "deltas": {
+    "compliant_messages": 200,
+    "dispositions": {
+      "none": 200,
+      "pass": 0,
+      "quarantine": 0,
+      "reject": 24
+    },
+    "dkim": {
+      "fail": 24,
+      "pass": 200
+    },
+    "messages": 224,
+    "records": 4,
+    "reports": 2,
+    "spf": {
+      "fail": 24,
+      "pass": 200
+    }
+  },
+  "outcome": "inserted",
+  "reason_class": null,
+  "reports": [
+    {
+      "key": {
+        "policy_domain": "eta.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "zip-multi-a-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 2
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "eta.example",
+              "result": "pass",
+              "selector": "s1"
+            }
+          ],
+          "envelope_from": "bounce.eta.example",
+          "envelope_to": null,
+          "header_from": "eta.example",
+          "message_count": 100,
+          "reasons": [],
+          "source_ip": "192.0.2.10",
+          "spf": "pass",
+          "spf_auth": [
+            {
+              "domain": "bounce.eta.example",
+              "result": "pass",
+              "scope": "mfrom"
+            }
+          ]
+        },
+        {
+          "disposition": "reject",
+          "dkim": "fail",
+          "dkim_auth": [
+            {
+              "domain": "eta.example",
+              "result": "fail",
+              "selector": "s2"
+            }
+          ],
+          "envelope_from": "sender.third-party.example",
+          "envelope_to": null,
+          "header_from": "eta.example",
+          "message_count": 12,
+          "reasons": [],
+          "source_ip": "198.51.100.12",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "sender.third-party.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": null
+    },
+    {
+      "key": {
+        "policy_domain": "theta.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "zip-multi-b-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 2
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "theta.example",
+              "result": "pass",
+              "selector": "s1"
+            }
+          ],
+          "envelope_from": "bounce.theta.example",
+          "envelope_to": null,
+          "header_from": "theta.example",
+          "message_count": 100,
+          "reasons": [],
+          "source_ip": "192.0.2.10",
+          "spf": "pass",
+          "spf_auth": [
+            {
+              "domain": "bounce.theta.example",
+              "result": "pass",
+              "scope": "mfrom"
+            }
+          ]
+        },
+        {
+          "disposition": "reject",
+          "dkim": "fail",
+          "dkim_auth": [
+            {
+              "domain": "theta.example",
+              "result": "fail",
+              "selector": "s2"
+            }
+          ],
+          "envelope_from": "sender.third-party.example",
+          "envelope_to": null,
+          "header_from": "theta.example",
+          "message_count": 12,
+          "reasons": [],
+          "source_ip": "198.51.100.12",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "sender.third-party.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": null
+    }
+  ],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}

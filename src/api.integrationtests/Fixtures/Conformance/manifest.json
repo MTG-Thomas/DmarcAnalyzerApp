@@ -1,0 +1,725 @@
+{
+  "cases": [
+    {
+      "delivery_order": 10,
+      "expected": "expected/valid-v1-plain.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "3c4cf311194dfe95c70aeb3ee9e8ea71a0eae78288acecb5b1acd963217d069f",
+      "id": "valid-v1-plain",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!alpha.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/valid-v1-plain/01-receiver.example!alpha.example!1785888000!1785974399.xml",
+          "sha256": "ca7cd17e726a2c15546a26efb3080ade43d3f95b7cd67bc32506a7f41ac8ec42"
+        }
+      ],
+      "phase": "baseline",
+      "semantic_group": "baseline-a",
+      "source_case_id": "valid-v1-plain",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 20,
+      "expected": "expected/valid-v2-namespaced.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "23ff707a2600efdd867d65d8a9549bfa9b807cca5743019af191c87656ff6545",
+      "id": "valid-v2-namespaced",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!beta.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/valid-v2-namespaced/01-receiver.example!beta.example!1785888000!1785974399.xml",
+          "sha256": "86669cc05285af3c4cda513e848644b3b5e959e4ba494e96ad32057711acc129"
+        }
+      ],
+      "phase": "baseline",
+      "semantic_group": "rfc9990-shape",
+      "source_case_id": "valid-v2-namespaced",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 30,
+      "expected": "expected/valid-gzip.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "f25d7a8a23f96e4453def1adbee98fb84052fd4accd149b3aeb0b419f580d12e",
+      "id": "valid-gzip",
+      "payloads": [
+        {
+          "container": "gzip",
+          "filename": "receiver.example!gamma.example!1785888000!1785974399.xml.gz",
+          "media_type": "application/gzip",
+          "path": "payloads/valid-gzip/01-receiver.example!gamma.example!1785888000!1785974399.xml.gz",
+          "sha256": "06768250162ffa3d613793125ac342758f53dca6a1eff7615ac97d682dadeb88"
+        }
+      ],
+      "phase": "transport",
+      "semantic_group": "gzip",
+      "source_case_id": "valid-gzip",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 40,
+      "expected": "expected/gzip-misnamed.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "1ee8e795a13da3f7ac2a4d6c9b98a36f7c00a50b9d173d5172ad99a4663e7688",
+      "id": "gzip-misnamed",
+      "payloads": [
+        {
+          "container": "gzip",
+          "filename": "receiver.example!delta.example!1785888000!1785974399.zip",
+          "media_type": "application/zip",
+          "path": "payloads/gzip-misnamed/01-receiver.example!delta.example!1785888000!1785974399.zip",
+          "sha256": "d0cd4a38c376286e5cfe6057492ef087a7621dbff1fad3fa3ba4993be202956f"
+        }
+      ],
+      "phase": "transport",
+      "semantic_group": "gzip-misnamed",
+      "source_case_id": "gzip-misnamed",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 50,
+      "expected": "expected/zip-single.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "d06986a2ce27bee234346ed606d88b2f667742b7838fc1241a5bb21423a0041a",
+      "id": "zip-single",
+      "payloads": [
+        {
+          "container": "zip",
+          "filename": "receiver.example!epsilon.example!1785888000!1785974399.zip",
+          "media_type": "application/zip",
+          "path": "payloads/zip-single/01-receiver.example!epsilon.example!1785888000!1785974399.zip",
+          "sha256": "15821deb5353c30087842cb878ffb39990e2d22ed63ca0c397eb0356b3ad922b"
+        }
+      ],
+      "phase": "transport",
+      "semantic_group": "zip-single",
+      "source_case_id": "zip-single",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 60,
+      "expected": "expected/zip-junk-first.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "9f41346b605f41700c0297dfc98737bdafd454a74eac3134cc34d81562742abc",
+      "id": "zip-junk-first",
+      "payloads": [
+        {
+          "container": "zip",
+          "filename": "receiver.example!zeta.example!1785888000!1785974399.zip",
+          "media_type": "application/zip",
+          "path": "payloads/zip-junk-first/01-receiver.example!zeta.example!1785888000!1785974399.zip",
+          "sha256": "618bdc76dd5294934d128ea6fa1168ec54701a64013b9afd24cf59a46c11e421"
+        }
+      ],
+      "phase": "transport",
+      "semantic_group": "zip-junk-first",
+      "source_case_id": "zip-junk-first",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 70,
+      "expected": "expected/zip-two-valid.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "ffda0796f2c6d76f3487b3dd53268a6c5bec6f30124bd13683551e4c7edc6b2c",
+      "id": "zip-two-valid",
+      "payloads": [
+        {
+          "container": "zip",
+          "filename": "receiver.example!multi.example!1785888000!1785974399.zip",
+          "media_type": "application/zip",
+          "path": "payloads/zip-two-valid/01-receiver.example!multi.example!1785888000!1785974399.zip",
+          "sha256": "22652d864ef3bc940d9169b272522ba281688e899176dc5aceddf5b05dc12e10"
+        }
+      ],
+      "phase": "transport",
+      "semantic_group": "zip-two-valid",
+      "source_case_id": "zip-two-valid",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 80,
+      "expected": "expected/optional-fields-omitted.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "ffc2bff557e033fb0845a7276b7329a9c3178c2a56d1ebaece399529bf72c504",
+      "id": "optional-fields-omitted",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!iota.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/optional-fields-omitted/01-receiver.example!iota.example!1785888000!1785974399.xml",
+          "sha256": "0e79aa2b3afa1ce26070c0585d73e4e1de7de95c4ec4c920224912ddf30ea44f"
+        }
+      ],
+      "phase": "baseline",
+      "semantic_group": "optional-fields",
+      "source_case_id": "optional-fields-omitted",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 90,
+      "expected": "expected/ipv6-multi-dkim-override.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "33ece8e4444c2a16c9be1450244b22964c1dd619d6297f08f8629b5c86927cb2",
+      "id": "ipv6-multi-dkim-override",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!kappa.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/ipv6-multi-dkim-override/01-receiver.example!kappa.example!1785888000!1785974399.xml",
+          "sha256": "7c32cc730a37f2dd19459b7e4ac337bfbdef823f9017608c1cadce565b566ac0"
+        }
+      ],
+      "phase": "baseline",
+      "semantic_group": "complex-auth",
+      "source_case_id": "ipv6-multi-dkim-override",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 100,
+      "expected": "expected/null-report.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "7af6a148d1ce461d2bffb0966297509c35bf906d0289bebe5c3783b08cf79bf4",
+      "id": "null-report",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!lambda.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/null-report/01-receiver.example!lambda.example!1785888000!1785974399.xml",
+          "sha256": "ea30fc4343258c32693a4fc480a78112bb07a4bee4c52d9cfb9c1a300a443dd3"
+        }
+      ],
+      "phase": "isolation",
+      "semantic_group": "null-report",
+      "source_case_id": "null-report",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 110,
+      "expected": "expected/sentinel-after-null-report.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "c28decd5e55bb6f21eaceb26d104e403067e06e77dc1028cef1c0572c005e3c8",
+      "id": "sentinel-after-null-report",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-01.example!1785974400!1786060799.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-null-report/01-receiver.example!recovery-01.example!1785974400!1786060799.xml",
+          "sha256": "d93a08b9b997870ff5d89b5f9bc5781378f3b1fa97ce743bd97358430a745dc2"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "null-report",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-null-report",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 120,
+      "expected": "expected/replay-exact.json",
+      "expected_outcome": "duplicate",
+      "expected_sha256": "4c8a609ab457bd34086dbd3a333acacd97679d533bd8fe92d1e021b4130a7753",
+      "id": "replay-exact",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!alpha.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/replay-exact/01-receiver.example!alpha.example!1785888000!1785974399.xml",
+          "sha256": "ca7cd17e726a2c15546a26efb3080ade43d3f95b7cd67bc32506a7f41ac8ec42"
+        }
+      ],
+      "phase": "replay",
+      "semantic_group": "baseline-a",
+      "source_case_id": "replay-exact",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 130,
+      "expected": "expected/replay-cross-container.json",
+      "expected_outcome": "duplicate",
+      "expected_sha256": "63fcbea9d328a1fceba82b87c63db566760bea1a013d1f91cc4c7d40c862a2d9",
+      "id": "replay-cross-container",
+      "payloads": [
+        {
+          "container": "gzip",
+          "filename": "receiver.example!alpha.example!1785888000!1785974399.xml.gz",
+          "media_type": "application/gzip",
+          "path": "payloads/replay-cross-container/01-receiver.example!alpha.example!1785888000!1785974399.xml.gz",
+          "sha256": "7d567a4b643132b315efb48b09092d250eb8a369fb864f3d172fce9cd34df185"
+        }
+      ],
+      "phase": "replay",
+      "semantic_group": "baseline-a",
+      "source_case_id": "replay-cross-container",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 140,
+      "expected": "expected/report-id-cross-domain.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "f459b2e2bfe51b4c91d84f597287af2e3b9588de9b9d72eec8d1eb7f67290d5c",
+      "id": "report-id-cross-domain",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!mu.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/report-id-cross-domain/01-receiver.example!mu.example!1785888000!1785974399.xml",
+          "sha256": "9e8b3644f657718df2de513d7c42d4b1405a968b9393b726395834d6fd7b7312"
+        }
+      ],
+      "phase": "replay",
+      "semantic_group": "report-id-collision",
+      "source_case_id": "report-id-cross-domain",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 150,
+      "expected": "expected/conflicting-duplicate.json",
+      "expected_outcome": "duplicate",
+      "expected_sha256": "24c927601dadcbf1036c2f832a5124a72fe7e7280b56fb455d93743d63167464",
+      "id": "conflicting-duplicate",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!alpha.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/conflicting-duplicate/01-receiver.example!alpha.example!1785888000!1785974399.xml",
+          "sha256": "203fb5b5c66dd5ffddf94248e8478550e36143e7f4bb62cc47f5e11d71086bf0"
+        }
+      ],
+      "phase": "replay",
+      "semantic_group": "baseline-a",
+      "source_case_id": "conflicting-duplicate",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 160,
+      "expected": "expected/truncation-after-record.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "3c770fd160728a5b0342903ec2d1b6e5a114413058b9343b6e5929d4c551f7e5",
+      "id": "truncation-after-record",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!nu.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/truncation-after-record/01-receiver.example!nu.example!1785888000!1785974399.xml",
+          "sha256": "446afb5f61115495e5a91986514500bea5ff96d4565661be020a5b990aeeb325"
+        }
+      ],
+      "phase": "invalid",
+      "semantic_group": "truncation-complete-record",
+      "source_case_id": "truncation-after-record",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 170,
+      "expected": "expected/sentinel-after-truncation-after-record.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "662715bf3acf754c6fced459c5efca027a52b7a4330f8ca84f458b8ff79272db",
+      "id": "sentinel-after-truncation-after-record",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-02.example!1786060800!1786147199.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-truncation-after-record/01-receiver.example!recovery-02.example!1786060800!1786147199.xml",
+          "sha256": "dbd80479c516d0b416b9e77b260982a5849bd985a1c088d583b5968b42d02019"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "truncation-after-record",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-truncation-after-record",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 180,
+      "expected": "expected/truncation-mid-record.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "b23bef5053f9ea7b122715c77bd58d945fd44f3fbd313336a6eabfd387d27119",
+      "id": "truncation-mid-record",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!xi.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/truncation-mid-record/01-receiver.example!xi.example!1785888000!1785974399.xml",
+          "sha256": "c4fc4f3634c4aa393a96a552b70d4183e97a75a2298a41a61663587c3aeb6e28"
+        }
+      ],
+      "phase": "invalid",
+      "semantic_group": "truncation-mid-record",
+      "source_case_id": "truncation-mid-record",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 190,
+      "expected": "expected/sentinel-after-truncation-mid-record.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "2d784731adefd7eac1e85622ee9356104ff5e335142b56d460cc8cf3ae5c9009",
+      "id": "sentinel-after-truncation-mid-record",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-03.example!1786147200!1786233599.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-truncation-mid-record/01-receiver.example!recovery-03.example!1786147200!1786233599.xml",
+          "sha256": "3192f283c43d65657a6908dea4823f33f3c09e28046b32a0f2661609715b2c87"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "truncation-mid-record",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-truncation-mid-record",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 200,
+      "expected": "expected/missing-report-id.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "8666361b9330198ddec2ad39a8db076095b32a066f7de1a6658a94b3510d36d6",
+      "id": "missing-report-id",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!omicron.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/missing-report-id/01-receiver.example!omicron.example!1785888000!1785974399.xml",
+          "sha256": "ad138273858f1db42192310cd4a902b5b61a3afd1d6b96f919962a6776111441"
+        }
+      ],
+      "phase": "invalid",
+      "semantic_group": "missing-required-field",
+      "source_case_id": "missing-report-id",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 210,
+      "expected": "expected/sentinel-after-missing-report-id.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "6c0f5d80005558bef8241a98a2fb64940d7ea65452987bb7e0f7b122d8ce685a",
+      "id": "sentinel-after-missing-report-id",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-04.example!1786233600!1786319999.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-missing-report-id/01-receiver.example!recovery-04.example!1786233600!1786319999.xml",
+          "sha256": "3cdc4e21337f2aa8613152ea440c7acbac4769e46e856b13c30200c04db39f16"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "missing-report-id",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-missing-report-id",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 220,
+      "expected": "expected/no-records.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "8de0989ba1f2bd72a0a1273bce9368f0bfb2181fcc6c7d31f34365820cfca53d",
+      "id": "no-records",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!pi.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/no-records/01-receiver.example!pi.example!1785888000!1785974399.xml",
+          "sha256": "eb954cc45a002483e9e6f1e29c0959fd690e8f54410843979b3a45251c8714eb"
+        }
+      ],
+      "phase": "invalid",
+      "semantic_group": "missing-records",
+      "source_case_id": "no-records",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 230,
+      "expected": "expected/sentinel-after-no-records.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "e82363c6a615d54c7be24a991fe8a271bf1be8af72f447dfd73853a1df104b7d",
+      "id": "sentinel-after-no-records",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-05.example!1786320000!1786406399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-no-records/01-receiver.example!recovery-05.example!1786320000!1786406399.xml",
+          "sha256": "c41733f2c8b51661c2c63e55e518dac7d1a394fe857ce5d60a4a0113d6c58e35"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "no-records",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-no-records",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 240,
+      "expected": "expected/non-dmarc-payload.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "ab630f41f8037b665a6478ec3864d67202eab229fa52b51faad8eaf7afe9217e",
+      "id": "non-dmarc-payload",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "looks-like-dmarc.xml",
+          "media_type": "application/xml",
+          "path": "payloads/non-dmarc-payload/01-looks-like-dmarc.xml",
+          "sha256": "8ab51cc0d5f704c0b3514d514e46029edde5ff5728f9bdd43925f85c5bdaf006"
+        }
+      ],
+      "phase": "isolation",
+      "semantic_group": "non-report",
+      "source_case_id": "non-dmarc-payload",
+      "validity": "non_report"
+    },
+    {
+      "delivery_order": 250,
+      "expected": "expected/sentinel-after-non-dmarc-payload.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "56369d22fae09b01fb58bffbfd54697b2643bccee78a1975e1b0df450c978e60",
+      "id": "sentinel-after-non-dmarc-payload",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-06.example!1786406400!1786492799.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-non-dmarc-payload/01-receiver.example!recovery-06.example!1786406400!1786492799.xml",
+          "sha256": "45f4a6ca72f73a4fd8201ab6dadc4449a38878763a7c49fd6b665087cda2ebb8"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "non-dmarc-payload",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-non-dmarc-payload",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 260,
+      "expected": "expected/corrupt-gzip.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "3b4697ed08bd5accdd63baaf6927373da372def3e8346c83e2c3459a9951cbc0",
+      "id": "corrupt-gzip",
+      "payloads": [
+        {
+          "container": "gzip",
+          "filename": "receiver.example!rho.example!1785888000!1785974399.xml.gz",
+          "media_type": "application/gzip",
+          "path": "payloads/corrupt-gzip/01-receiver.example!rho.example!1785888000!1785974399.xml.gz",
+          "sha256": "411b637d433d358e86279310e7dd0c01975972948df589c3746bf57025212786"
+        }
+      ],
+      "phase": "invalid",
+      "semantic_group": "archive-invalid",
+      "source_case_id": "corrupt-gzip",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 270,
+      "expected": "expected/sentinel-after-corrupt-gzip.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "77369502f88e40e382ae1bd5af4ac9df027257ca3f7b2a64d3ed86db96df37a5",
+      "id": "sentinel-after-corrupt-gzip",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-07.example!1786492800!1786579199.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-corrupt-gzip/01-receiver.example!recovery-07.example!1786492800!1786579199.xml",
+          "sha256": "57d46a4227891a7acd5b7601d716b42d2087f86bd28b848b66f5d71f5070964f"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "corrupt-gzip",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-corrupt-gzip",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 280,
+      "expected": "expected/archive-size-limit.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "1d5c4e7254fb70e632da3da5b457b00b1b049ae9268958032d2d24bc4a6457dc",
+      "id": "archive-size-limit",
+      "payloads": [
+        {
+          "container": "gzip",
+          "filename": "receiver.example!sigma.example!1785888000!1785974399.xml.gz",
+          "media_type": "application/gzip",
+          "path": "payloads/archive-size-limit/01-receiver.example!sigma.example!1785888000!1785974399.xml.gz",
+          "sha256": "a0c6246f008510aef0e117c2fb41902f7b9e4518ef834c2f793d03c3825a021d"
+        }
+      ],
+      "phase": "resource",
+      "semantic_group": "expanded-size",
+      "source_case_id": "archive-size-limit",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 290,
+      "expected": "expected/sentinel-after-archive-size-limit.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "2ae28c806eb6e8a66af1063edb70b6c1f77383e9af41ebe33061819b0ae40279",
+      "id": "sentinel-after-archive-size-limit",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-08.example!1786579200!1786665599.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-archive-size-limit/01-receiver.example!recovery-08.example!1786579200!1786665599.xml",
+          "sha256": "fea9436207d42928c905c0bf9e63ca5fff20357bacd4e4376da46dada5c45032"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "archive-size-limit",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-archive-size-limit",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 300,
+      "expected": "expected/external-entity.json",
+      "expected_outcome": "rejected",
+      "expected_sha256": "fa482816026835989f2568db071f3085086f5345f1eb43839ff046653cb9d47c",
+      "id": "external-entity",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!tau.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/external-entity/01-receiver.example!tau.example!1785888000!1785974399.xml",
+          "sha256": "0670c6b61840941b4ac9219aef8fe90c5f1b7398f2dcfa3a9cbe79c500c8eae0"
+        }
+      ],
+      "phase": "invalid",
+      "semantic_group": "external-entity",
+      "source_case_id": "external-entity",
+      "validity": "nonconformant"
+    },
+    {
+      "delivery_order": 310,
+      "expected": "expected/sentinel-after-external-entity.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "09cf243a489c31ad427621e5bc1dcc2ef528f4a13a62281bd8ba6f1098c67408",
+      "id": "sentinel-after-external-entity",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!recovery-09.example!1786665600!1786751999.xml",
+          "media_type": "text/xml",
+          "path": "payloads/sentinel-after-external-entity/01-receiver.example!recovery-09.example!1786665600!1786751999.xml",
+          "sha256": "358da4c38a7c04cfeb240fff13c8c47b1de74fe2530d50603ab586acf9ca80b0"
+        }
+      ],
+      "phase": "isolation",
+      "recovery_for": "external-entity",
+      "semantic_group": "post-failure-recovery",
+      "source_case_id": "sentinel-after-external-entity",
+      "validity": "conformant"
+    },
+    {
+      "delivery_order": 320,
+      "expected": "expected/legacy-enum-casing.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "9d52dbfb721f4421d6f812fb962aa4bba11cede4d6ca3a1c0e464b3483baf6b0",
+      "id": "legacy-enum-casing",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!upsilon.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/legacy-enum-casing/01-receiver.example!upsilon.example!1785888000!1785974399.xml",
+          "sha256": "2f845002197d92c7ada18ec69b1ec58ccc91a38e0d11b64fbdace5d3e5188e41"
+        }
+      ],
+      "phase": "baseline",
+      "semantic_group": "legacy-enums",
+      "source_case_id": "legacy-enum-casing",
+      "validity": "real_world_extension"
+    },
+    {
+      "delivery_order": 330,
+      "expected": "expected/routing-multi-client.json",
+      "expected_outcome": "inserted",
+      "expected_sha256": "180c5eeb2357b86c36a8048ea73338c3e576634aebfde0b62ff85b410713e75c",
+      "id": "routing-multi-client",
+      "payloads": [
+        {
+          "container": "plain",
+          "filename": "receiver.example!client-a.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/routing-multi-client/01-receiver.example!client-a.example!1785888000!1785974399.xml",
+          "sha256": "4cea69fcbfb55d4113f24aba0b82eaa26fbd2d92b68e3948c6a2ebd1addafa4f"
+        },
+        {
+          "container": "plain",
+          "filename": "receiver.example!client-b.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/routing-multi-client/02-receiver.example!client-b.example!1785888000!1785974399.xml",
+          "sha256": "d7e6492affa8bf2b6049300c67245cc7a44316b1e5a387983c6c9c0997be247e"
+        },
+        {
+          "container": "plain",
+          "filename": "receiver.example!unowned.example!1785888000!1785974399.xml",
+          "media_type": "text/xml",
+          "path": "payloads/routing-multi-client/03-receiver.example!unowned.example!1785888000!1785974399.xml",
+          "sha256": "cf93fb7763a1f6129aa257ec646bc053bc65f628f5f68953fb6b058602c1a12f"
+        }
+      ],
+      "phase": "routing",
+      "routing_setup": {
+        "default_client_slug": "client-default",
+        "owned_domains": {
+          "client-a.example": "client-a",
+          "client-b.example": "client-b"
+        }
+      },
+      "semantic_group": "multi-client-routing",
+      "source_case_id": "routing-multi-client",
+      "validity": "conformant"
+    }
+  ],
+  "corpus_id": "dmarc-analyzer-synthetic-rfc9990-v1",
+  "generation": {
+    "gzip_mtime": 0,
+    "source_date_epoch": 0,
+    "zip_entry_order": "manifest",
+    "zip_entry_time": "1980-01-01T00:00:00Z"
+  },
+  "provenance": {
+    "conformance_basis": [
+      "https://www.rfc-editor.org/rfc/rfc7489.html",
+      "https://www.rfc-editor.org/rfc/rfc9990.html"
+    ],
+    "contains_customer_data": false,
+    "fixture_origin": "independently-authored-synthetic",
+    "recoverable_source": {
+      "commit": "258d606e1f8ce859fff5422d550d469c3b666111",
+      "generator_path": "scripts/generate-dmarc-bakeoff-corpus.py",
+      "repository": "MTG-Thomas/bifrost-infra"
+    }
+  },
+  "schema": "dmarc-analyzer.conformance-corpus/v1",
+  "schemas": {
+    "expected_state": {
+      "path": "expected-state.schema.json",
+      "sha256": "f701b4549df27ff711b19c9b67c64eeec4e3f85e14fd1873fe3add8a0ec7fdba"
+    },
+    "manifest": {
+      "path": "manifest.schema.json",
+      "sha256": "226b700bb1f9525e593426af44e8dc3bd5e2f404cdeb682ca746cc2ed5053cf8"
+    }
+  }
+}
