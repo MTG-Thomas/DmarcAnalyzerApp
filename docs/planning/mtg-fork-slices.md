@@ -154,6 +154,8 @@ anticipates this seam.
 
 ## 3. Bounded raw-payload ingestion orchestrator
 
+Status: complete in the MTG fork on 2026-08-11.
+
 Add `IReportPayloadIngestor` as the one deep entry point used by mailbox and
 future HTTP callers. It owns format classification, bounded container
 extraction, parser selection, and composition of the DMARC/TLS persistence
@@ -175,12 +177,17 @@ PR boundary A — bounded extractor (implemented 2026-08-11):
   persistence, backup/import, or HTTP behavior; callers move onto it in the
   dependent orchestrator boundary.
 
-PR boundary B — orchestrator (after slice 2):
+PR boundary B — orchestrator (implemented 2026-08-11):
 
 - compose the bounded extractor, DMARC/TLS parsers, and parsed ingestors;
 - make IMAP obtain bytes/metadata and map structured outcomes to its existing
   counters without owning persistence; and
 - preserve checkpoint, archive-before-parse, timeout, and retry behavior.
+
+Mailbox ingestion now opens MimeKit's transfer-decoded attachment stream
+directly into `IReportPayloadIngestor`; it no longer materializes or classifies
+attachments on a separate unbounded path. Both DMARC and TLS persistence receive
+the same trusted `ReportSourceContext` contract that the upload boundary will use.
 
 Acceptance tests cover mislabeled input, junk before a valid ZIP entry, multiple
 valid entries, exact and cross-container replay, corrupt/truncated containers,

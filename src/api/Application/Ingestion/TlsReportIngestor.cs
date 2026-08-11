@@ -1,7 +1,6 @@
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
-using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
@@ -10,6 +9,7 @@ public enum TlsReportIngestOutcome
 {
     Inserted,
     Duplicate,
+    Rejected,
 }
 
 public interface ITlsReportIngestor
@@ -22,7 +22,7 @@ public interface ITlsReportIngestor
     /// whole thing back and report as such.
     /// </summary>
     Task<TlsReportIngestOutcome> IngestAsync(
-        TlsRptParseResult parsed, MailboxSource source, CancellationToken ct);
+        ReportSourceContext source, TlsRptParseResult parsed, CancellationToken ct);
 }
 
 /// <summary>
@@ -38,8 +38,13 @@ public sealed class TlsReportIngestor(
     IDomainIngestResolver domainResolver) : ITlsReportIngestor
 {
     public async Task<TlsReportIngestOutcome> IngestAsync(
-        TlsRptParseResult parsed, MailboxSource source, CancellationToken ct)
+        ReportSourceContext source, TlsRptParseResult parsed, CancellationToken ct)
     {
+        if (source.SourceId == Guid.Empty || source.DefaultClientId == Guid.Empty)
+        {
+            return TlsReportIngestOutcome.Rejected;
+        }
+
         var organizationName = Truncate(parsed.OrganizationName.Trim(), 255)!;
         var reportId = Truncate(parsed.ReportId.Trim(), 255)!;
         var contactInfo = Truncate(parsed.ContactInfo?.Trim(), 320);
@@ -59,7 +64,7 @@ public sealed class TlsReportIngestor(
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var reportEntityId = await TryInsertReportAsync(
-            source.Id, organizationName, reportId, contactInfo, parsed, totalSuccessful, totalFailed, ct);
+            source.SourceId, organizationName, reportId, contactInfo, parsed, totalSuccessful, totalFailed, ct);
 
         if (!reportEntityId.HasValue)
         {
@@ -112,7 +117,7 @@ public sealed class TlsReportIngestor(
     }
 
     private async Task TryInsertLedgerAsync(
-        MailboxSource source, string organizationName, string reportId, string? contactInfo,
+        ReportSourceContext source, string organizationName, string reportId, string? contactInfo,
         TlsRptParseResult parsed, long totalSuccessful, long totalFailed, CancellationToken ct)
     {
         var policyDomains = Truncate(
@@ -122,7 +127,7 @@ public sealed class TlsReportIngestor(
             INSERT INTO tls_report_ingest
                 (""Id"", ""ClientId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""PolicyDomains"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""ContactInfo"", ""IngestedAtUtc"")
             VALUES
-                ({Guid.NewGuid()}, {source.DefaultClientId}, {source.Id}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {policyDomains ?? string.Empty}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {contactInfo}, {DateTime.UtcNow})
+                ({Guid.NewGuid()}, {source.DefaultClientId}, {source.SourceId}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {policyDomains ?? string.Empty}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {contactInfo}, {DateTime.UtcNow})
             ON CONFLICT (""ClientId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;
             ", ct);
     }

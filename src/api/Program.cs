@@ -123,6 +123,7 @@ if (mode == AppMode.Worker)
         .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
         .ValidateOnStart();
     workerBuilder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
+    workerBuilder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
     // Backup offload runs on the loop, so the worker host needs the whole chain — the
     // export service included. Registering it only on the API host would leave the pass
     // throwing from GetRequiredService in worker mode, visible as nothing but a caught log
@@ -279,6 +280,7 @@ builder.Services.AddOptions<ReportPayloadExtractionOptions>()
     .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
     .ValidateOnStart();
 builder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
+builder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();

@@ -1,6 +1,4 @@
-using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.Common;
-using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using MailKit;
@@ -10,19 +8,14 @@ using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MimeKit;
-using System.IO.Compression;
 using System.Linq;
 using DmarcAnalyzer.Api.Workers;
-using System.Threading.Tasks;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed class MailboxSyncService(
     DmarcAnalyzerDbContext db,
-    IDmarcReportParser parser,
-    IDmarcReportIngestor dmarcIngestor,
-    ITlsRptReportParser tlsParser,
-    ITlsReportIngestor tlsIngestor,
+    IReportPayloadIngestor payloadIngestor,
     Security.ICredentialProtector credentialProtector,
     Backup.IReportMailArchive reportMailArchive,
     IOptions<WorkerOptions> options,
@@ -206,92 +199,45 @@ public sealed class MailboxSyncService(
                 {
                     operationToken.ThrowIfCancellationRequested();
 
-                    IReadOnlyList<ExtractedReportPayload> payloads;
+                    using var attachmentStream = OpenDecodedAttachmentStream(attachment);
+                    if (attachmentStream is null)
+                    {
+                        continue;
+                    }
+
                     try
                     {
-                        payloads = await ExtractReportPayloadsAsync(attachment, logger, operationToken);
+                        var outcome = await payloadIngestor.IngestAsync(
+                            new ReportSourceContext(mailboxSource.Id, mailboxSource.DefaultClientId),
+                            attachmentStream,
+                            new ReportPayloadMetadata(
+                                GetAttachmentFileName(attachment),
+                                attachment.ContentType?.MimeType),
+                            operationToken);
+
+                        var mappedCounters = MapPayloadOutcomeCounters(outcome);
+                        attachmentsProcessed += mappedCounters.AttachmentsProcessed;
+                        reportsInserted += outcome.DmarcInserted;
+                        reportsSkippedAsDuplicate += outcome.DmarcDuplicates;
+                        tlsReportsInserted += outcome.TlsInserted;
+                        tlsReportsSkippedAsDuplicate += outcome.TlsDuplicates;
+                        parseFailures += mappedCounters.ParseFailures;
+
+                        foreach (var rejection in outcome.Rejections)
+                        {
+                            logger.LogWarning(
+                                "Rejected report payload {RejectionCode} from attachment {AttachmentName} for mailbox source {MailboxSourceId}",
+                                rejection.Code,
+                                rejection.SourceName ?? GetAttachmentFileName(attachment),
+                                mailboxSource.Id);
+                        }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         parseFailures++;
                         logger.LogWarning(ex,
-                            "Failed to extract report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
+                            "Failed to ingest report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
                             GetAttachmentFileName(attachment), mailboxSource.Id);
-                        continue;
-                    }
-
-                    if (payloads.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    foreach (var payload in payloads)
-                    {
-                        await using (payload.Stream)
-                        {
-                            attachmentsProcessed++;
-
-                            if (payload.Kind == ReportPayloadKind.SmtpTlsReportJson)
-                            {
-                                try
-                                {
-                                    var tlsResult = tlsParser.Parse(payload.Stream);
-                                    var outcome = await tlsIngestor.IngestAsync(
-                                        tlsResult, mailboxSource, operationToken);
-
-                                    if (outcome == TlsReportIngestOutcome.Inserted)
-                                    {
-                                        tlsReportsInserted++;
-                                    }
-                                    else
-                                    {
-                                        tlsReportsSkippedAsDuplicate++;
-                                    }
-                                }
-                                catch (Exception ex) when (ex is not OperationCanceledException)
-                                {
-                                    // Folded into the same counter as DMARC failures: a
-                                    // report that arrived and could not be stored is the
-                                    // same operator signal regardless of format, and the
-                                    // log line names which one it was.
-                                    parseFailures++;
-                                    logger.LogWarning(ex,
-                                        "Failed to parse TLS report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
-                                        payload.SourceName, mailboxSource.Id);
-                                }
-
-                                continue;
-                            }
-
-                            var xmlStream = payload.Stream;
-
-                            try
-                            {
-                                var result = parser.Parse(xmlStream);
-                                var outcome = await dmarcIngestor.IngestParsedAsync(
-                                    new ReportSourceContext(mailboxSource.Id, mailboxSource.DefaultClientId),
-                                    result,
-                                    operationToken);
-
-                                if (outcome == DmarcIngestOutcome.Inserted)
-                                {
-                                    reportsInserted++;
-                                }
-                                else if (outcome == DmarcIngestOutcome.Duplicate)
-                                {
-                                    reportsSkippedAsDuplicate++;
-                                }
-                                else
-                                {
-                                    parseFailures++;
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                parseFailures++;
-                                logger.LogWarning(ex, "Failed to parse DMARC attachment for mailbox source {MailboxSourceId}", mailboxSource.Id);
-                            }
-                        }
                     }
                 }
 
@@ -468,6 +414,46 @@ public sealed class MailboxSyncService(
             .ToLowerInvariant();
 
     /// <summary>
+    /// Opens a MimePart's transfer-decoded content without materialising it first.
+    /// MessagePart is deliberately unsupported: serialising an attached RFC 822
+    /// message does not produce a report payload and previously required an
+    /// unbounded intermediate buffer.
+    /// </summary>
+    public static Stream? OpenDecodedAttachmentStream(MimeEntity attachment)
+        => attachment is MimePart { Content: not null } mimePart
+            ? mimePart.Content.Open()
+            : null;
+
+    public static (int AttachmentsProcessed, int ParseFailures) MapPayloadOutcomeCounters(
+        ReportPayloadIngestResult outcome)
+    {
+        var legacyGzipPayload = outcome.Container == ReportPayloadContainer.Gzip
+            && outcome.ReportsProcessed == 0
+            && outcome.Rejections.Any(rejection => rejection.Code is
+                ReportPayloadRejectionCode.EmptyContainer
+                or ReportPayloadRejectionCode.UnsupportedFormat
+                or ReportPayloadRejectionCode.NestedContainer);
+
+        var extractionFailures = outcome.Rejections.Count(rejection =>
+            rejection.SourceName is null
+            && (rejection.Code is ReportPayloadRejectionCode.RequestTooLarge
+                or ReportPayloadRejectionCode.CorruptContainer
+                or ReportPayloadRejectionCode.EncryptedContainer
+                or ReportPayloadRejectionCode.NestedContainer
+                or ReportPayloadRejectionCode.ArchiveEntryLimitExceeded
+                or ReportPayloadRejectionCode.EntryTooLarge
+                or ReportPayloadRejectionCode.ExpandedSizeLimitExceeded
+                or ReportPayloadRejectionCode.CompressionRatioExceeded
+                || outcome.Container == ReportPayloadContainer.Gzip
+                && rejection.Code is ReportPayloadRejectionCode.EmptyContainer
+                    or ReportPayloadRejectionCode.UnsupportedFormat));
+
+        return (
+            outcome.ReportsProcessed + (legacyGzipPayload ? 1 : 0),
+            outcome.DmarcRejected + outcome.TlsRejected + extractionFailures);
+    }
+
+    /// <summary>
     /// The UIDs a pass should actually read: those past the checkpoint, oldest first.
     /// <para>
     /// Not redundant with the UID range already in the search, and leaving it out was a real
@@ -494,141 +480,5 @@ public sealed class MailboxSyncService(
         => [.. found
             .Where(x => !lastProcessedUid.HasValue || x.Id > lastProcessedUid.Value)
             .OrderBy(x => x.Id)];
-
-    private static async Task<IReadOnlyList<ExtractedReportPayload>> ExtractReportPayloadsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
-    {
-        var result = new List<ExtractedReportPayload>();
-
-        await using var raw = new MemoryStream();
-
-        // Both of these are nullable: a malformed part can declare itself a message
-        // or a MIME part and carry nothing. We are parsing attachments that arrived
-        // from the internet, so treat that as an empty extraction — the same as an
-        // entity type we don't handle — rather than throwing.
-        if (attachment is MessagePart { Message: not null } embeddedMessagePart)
-        {
-            await embeddedMessagePart.Message.WriteToAsync(raw, ct);
-        }
-        else if (attachment is MimePart { Content: not null } mimePart)
-        {
-            await mimePart.Content.DecodeToAsync(raw, ct);
-        }
-        else
-        {
-            return result;
-        }
-
-        var fileName = GetAttachmentFileName(attachment);
-        var payload = raw.ToArray();
-
-        // Container detection prefers magic bytes over filename: DMARC senders
-        // frequently misname attachments (.zip holding gzip data and vice versa).
-        if (IsZip(payload))
-        {
-            using var zipStream = new MemoryStream(payload, writable: false);
-            using var zip = SharpCompress.Archives.ArchiveFactory.OpenArchive(zipStream);
-            foreach (var entry in zip.Entries)
-            {
-                ct.ThrowIfCancellationRequested();
-                if (entry.IsDirectory || entry.Key is null)
-                {
-                    continue;
-                }
-
-                // The suffix pre-filter keeps skipping junk; the extracted bytes
-                // decide the format, same contract as everywhere else.
-                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
-                    && !entry.Key.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    await using var entryStream = entry.OpenEntryStream();
-                    var extracted = new MemoryStream();
-                    await entryStream.CopyToAsync(extracted, ct);
-                    extracted.Position = 0;
-
-                    var entryKind = ReportPayloadFormat.Classify(
-                        extracted.GetBuffer().AsSpan(0, (int)extracted.Length), entry.Key, null);
-                    if (entryKind == ReportPayloadKind.Unknown)
-                    {
-                        await extracted.DisposeAsync();
-                        logger.LogInformation(
-                            "Skipped unrecognisable zip entry {EntryName} in attachment {AttachmentName}",
-                            entry.Key, fileName);
-                        continue;
-                    }
-
-                    result.Add(new ExtractedReportPayload(entryKind, extracted, entry.Key));
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    logger.LogWarning(ex,
-                        "Failed to extract zip entry {EntryName} from attachment {AttachmentName}",
-                        entry.Key, fileName);
-                }
-            }
-
-            return result;
-        }
-
-        if (IsGzip(payload))
-        {
-            using var gzipSource = new MemoryStream(payload, writable: false);
-            await using var gzip = new GZipStream(gzipSource, CompressionMode.Decompress);
-            var decoded = new MemoryStream();
-            await gzip.CopyToAsync(decoded, ct);
-            decoded.Position = 0;
-
-            // Gzip is detected by magic bytes, so whatever was inside lands here
-            // regardless of format — TLS reports arrive exactly this way
-            // (application/tlsrpt+gzip). The filename fallback strips the .gz so
-            // report.json.gz still label-classifies when the bytes are inconclusive.
-            var innerName = StripGzipSuffix(fileName);
-            var kind = ReportPayloadFormat.Classify(
-                decoded.GetBuffer().AsSpan(0, (int)decoded.Length), innerName, null);
-
-            // Unknown keeps the legacy route: gzip content that is neither format
-            // always went to the DMARC parser, whose parse-failure accounting for
-            // garbage is behavior operators already understand.
-            result.Add(new ExtractedReportPayload(
-                kind == ReportPayloadKind.Unknown ? ReportPayloadKind.DmarcAggregateXml : kind,
-                decoded,
-                fileName));
-            return result;
-        }
-
-        var mimeType = attachment.ContentType?.MimeType ?? string.Empty;
-        var bareKind = ReportPayloadFormat.Classify(payload, fileName, mimeType);
-        if (bareKind != ReportPayloadKind.Unknown)
-        {
-            result.Add(new ExtractedReportPayload(
-                bareKind, new MemoryStream(payload, writable: false), fileName));
-        }
-
-        return result;
-    }
-
-    /// <summary>report.json.gz → report.json, so the label fallback still applies inside gzip.</summary>
-    private static string StripGzipSuffix(string fileName)
-    {
-        if (fileName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
-        {
-            return fileName[..^3];
-        }
-
-        return fileName.EndsWith(".gzip", StringComparison.OrdinalIgnoreCase)
-            ? fileName[..^5]
-            : fileName;
-    }
-
-    private static bool IsZip(byte[] payload)
-        => payload.Length >= 4 && payload[0] == 0x50 && payload[1] == 0x4B &&
-           (payload[2] == 0x03 || payload[2] == 0x05 || payload[2] == 0x07);
-
-    private static bool IsGzip(byte[] payload)
-        => payload.Length >= 2 && payload[0] == 0x1F && payload[1] == 0x8B;
 
 }
