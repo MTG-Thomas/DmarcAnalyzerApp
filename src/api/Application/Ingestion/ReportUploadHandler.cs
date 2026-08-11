@@ -45,8 +45,6 @@ public sealed class ReportUploadHandler(
             return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
         }
 
-        ApplyServerRequestLimit(context, _limits.MaxRequestBytes);
-
         if (!TryGetExpectedDigest(context.Request.Headers, out var expectedDigest, out var headerRejection))
         {
             return await AuditedResponseAsync(sourceId, 422, headerRejection, ct);
@@ -59,6 +57,8 @@ public sealed class ReportUploadHandler(
 
         if (IsMultipart(context.Request.ContentType))
         {
+            ApplyServerRequestLimit(context, _limits.MaxRequestBytes);
+
             if (!HasValidMultipartBoundary(context.Request.ContentType))
             {
                 return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", ct);
@@ -78,6 +78,10 @@ public sealed class ReportUploadHandler(
                 }, ct);
             }
             catch (RequestBodyTooLargeException)
+            {
+                return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
+            }
+            catch (BadHttpRequestException ex) when (ex.StatusCode == 413)
             {
                 return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
             }
