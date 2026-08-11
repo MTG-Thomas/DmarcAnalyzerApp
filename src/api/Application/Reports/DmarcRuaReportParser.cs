@@ -50,6 +50,12 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             .Concat(DescribeDmarcBisTags(policyPublished))
             .ToArray();
 
+        // Captured RFC 9990 dispositions are positional. If deserialization dropped a
+        // record, using them would assign one record's disposition to another.
+        var actionDispositions = normalized.DmarcBisDispositions.Count == (feedback.Record?.Length ?? 0)
+            ? normalized.DmarcBisDispositions
+            : Array.Empty<string?>();
+
         var records = feedback.Record?
             .Select((record, index) =>
             {
@@ -74,7 +80,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 return new DmarcReportRecordParseResult(
                     record.Row?.SourceIp ?? string.Empty,
                     record.Row?.Count ?? 0,
-                    normalized.DmarcBisDispositions.ElementAtOrDefault(index)
+                    actionDispositions.ElementAtOrDefault(index)
                         ?? record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant()
                         ?? string.Empty,
                     record.Row?.PolicyEvaluated?.Dkim.ToString().ToLowerInvariant() ?? string.Empty,
