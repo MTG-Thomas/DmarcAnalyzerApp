@@ -37,6 +37,7 @@ public sealed record AnalyticsReporterDto(
 
 public sealed record AnalyticsDispositionsDto(
     long None,
+    long Pass,
     long Quarantine,
     long Reject);
 

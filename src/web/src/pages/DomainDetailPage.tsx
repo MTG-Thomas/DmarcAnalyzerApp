@@ -1431,7 +1431,7 @@ type SourceDetailPanelProps = {
   days: AnalyticsDays
 }
 
-function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps) {
+export function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps) {
   const [detail, setDetail] = useState<SourceDetail | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -1505,6 +1505,7 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span className="font-medium text-secondary">Dispositions</span>
           <Badge variant="neutral">none · {formatCompact(detail.dispositions.none)}</Badge>
+          <Badge variant="success">pass · {formatCompact(detail.dispositions.pass)}</Badge>
           <Badge variant="warning">quarantine · {formatCompact(detail.dispositions.quarantine)}</Badge>
           <Badge variant="danger">reject · {formatCompact(detail.dispositions.reject)}</Badge>
         </div>
