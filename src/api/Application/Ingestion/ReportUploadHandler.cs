@@ -1,6 +1,7 @@
 using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Audit;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using AuthenticationHeaderValue = System.Net.Http.Headers.AuthenticationHeaderValue;
@@ -64,55 +65,18 @@ public sealed class ReportUploadHandler(
                 return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", ct);
             }
 
-            IFormCollection form;
-            var requestBody = context.Request.Body;
-            context.Request.Body = new BoundedRequestBodyStream(
-                requestBody,
-                _limits.MaxRequestBytes);
             try
             {
-                form = await context.Request.ReadFormAsync(new FormOptions
-                {
-                    MultipartBodyLengthLimit = _limits.MaxRequestBytes,
-                    ValueCountLimit = 1,
-                }, ct);
+                var multipart = await ReadSingleMultipartFileAsync(context, ct);
+                payload = multipart.Payload;
+                ownedPayload = payload;
+                fileName = multipart.FileName;
+                mediaType = multipart.MediaType;
             }
-            catch (RequestBodyTooLargeException)
+            catch (MultipartUploadException ex)
             {
-                return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
+                return await AuditedResponseAsync(sourceId, ex.StatusCode, ex.RejectionCode, ct);
             }
-            catch (BadHttpRequestException ex) when (ex.StatusCode == 413)
-            {
-                return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
-            }
-            catch (InvalidDataException ex) when (IsBodyLimitExceeded(ex))
-            {
-                return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
-            }
-            catch (InvalidDataException)
-            {
-                return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", ct);
-            }
-            finally
-            {
-                context.Request.Body = requestBody;
-            }
-
-            if (form.Count != 0 || form.Files.Count != 1)
-            {
-                return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", ct);
-            }
-
-            var file = form.Files[0];
-            if (file.Length > _limits.MaxRequestBytes)
-            {
-                return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
-            }
-
-            payload = file.OpenReadStream();
-            ownedPayload = payload;
-            fileName = file.FileName;
-            mediaType = file.ContentType;
         }
         else if (IsOtherMultipart(context.Request.ContentType))
         {
@@ -307,6 +271,92 @@ public sealed class ReportUploadHandler(
     private static bool IsBodyLimitExceeded(InvalidDataException exception)
         => exception.Message.Contains("length limit", StringComparison.OrdinalIgnoreCase);
 
+    private async Task<MultipartUpload> ReadSingleMultipartFileAsync(
+        HttpContext context,
+        CancellationToken ct)
+    {
+        MediaTypeHeaderValue.TryParse(context.Request.ContentType, out var mediaType);
+        var boundary = HeaderUtilities.RemoveQuotes(mediaType!.Boundary).Value!;
+        var requestBody = context.Request.Body;
+        var boundedBody = new BoundedRequestBodyStream(
+            requestBody,
+            _limits.MaxRequestBytes);
+        FileBufferingReadStream? bufferedFile = null;
+
+        try
+        {
+            var reader = new MultipartReader(boundary, boundedBody)
+            {
+                BodyLengthLimit = _limits.MaxRequestBytes,
+            };
+            var section = await reader.ReadNextSectionAsync(ct);
+            if (section is null
+                || !ContentDispositionHeaderValue.TryParse(section.ContentDisposition, out var disposition)
+                || !string.Equals(disposition.DispositionType.Value, "form-data", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new MultipartUploadException(415, "UnsupportedMultipartBody");
+            }
+
+            var fileName = HeaderUtilities.RemoveQuotes(
+                disposition.FileNameStar.HasValue
+                    ? disposition.FileNameStar
+                    : disposition.FileName).Value;
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                throw new MultipartUploadException(415, "UnsupportedMultipartBody");
+            }
+
+            bufferedFile = new FileBufferingReadStream(
+                section.Body,
+                memoryThreshold: 64 * 1024,
+                bufferLimit: _limits.MaxRequestBytes,
+                tempFileDirectory: Path.GetTempPath());
+            await bufferedFile.CopyToAsync(Stream.Null, 64 * 1024, ct);
+            bufferedFile.Position = 0;
+
+            // The first file body is drained, so reading one more section is
+            // enough to reject fields or extra files without buffering them.
+            if (await reader.ReadNextSectionAsync(ct) is not null)
+            {
+                throw new MultipartUploadException(415, "UnsupportedMultipartBody");
+            }
+
+            var upload = new MultipartUpload(bufferedFile, fileName, section.ContentType);
+            bufferedFile = null;
+            return upload;
+        }
+        catch (RequestBodyTooLargeException)
+        {
+            throw new MultipartUploadException(413, "RequestTooLarge");
+        }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == 413)
+        {
+            throw new MultipartUploadException(413, "RequestTooLarge");
+        }
+        catch (InvalidDataException ex) when (IsBodyLimitExceeded(ex))
+        {
+            throw new MultipartUploadException(413, "RequestTooLarge");
+        }
+        catch (InvalidDataException)
+        {
+            throw new MultipartUploadException(415, "UnsupportedMultipartBody");
+        }
+        catch (IOException ex) when (
+            ex.Message.Contains("Buffer limit", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new MultipartUploadException(413, "RequestTooLarge");
+        }
+        finally
+        {
+            if (bufferedFile is not null)
+            {
+                await bufferedFile.DisposeAsync();
+            }
+
+            context.Request.Body = requestBody;
+        }
+    }
+
     private static void ApplyServerRequestLimit(HttpContext context, long maxBytes)
     {
         var feature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
@@ -322,6 +372,19 @@ public sealed class ReportUploadHandler(
            && parsed.MediaType.Value?.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase) == true;
 
     private sealed class RequestBodyTooLargeException : IOException;
+
+    private sealed class MultipartUploadException(
+        int statusCode,
+        string rejectionCode) : Exception
+    {
+        public int StatusCode { get; } = statusCode;
+        public string RejectionCode { get; } = rejectionCode;
+    }
+
+    private sealed record MultipartUpload(
+        Stream Payload,
+        string FileName,
+        string? MediaType);
 
     private sealed class BoundedRequestBodyStream(Stream inner, long maxBytes) : Stream
     {

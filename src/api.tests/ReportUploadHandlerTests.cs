@@ -184,11 +184,11 @@ public sealed class ReportUploadHandlerTests
     }
 
     [Fact]
-    public async Task MultipartAggregateLimitRejectsManySmallSectionsWithoutContentLength()
+    public async Task MultipartRejectsSecondSectionBeforeReadingTheRemainingBody()
     {
-        const int maxBytes = 512;
+        const int maxBytes = 1024 * 1024;
         using var multipart = new MultipartFormDataContent();
-        for (var index = 0; index < 10; index++)
+        for (var index = 0; index < 100; index++)
         {
             multipart.Add(
                 new ByteArrayContent(new byte[32]),
@@ -198,20 +198,47 @@ public sealed class ReportUploadHandlerTests
 
         var context = await MultipartRequestAsync(multipart);
         context.Request.ContentLength = null;
+        var body = Assert.IsType<MemoryStream>(context.Request.Body);
         var ingestor = new StubIngestor(_ => Success(inserted: 1));
 
         var result = await Handler(authenticated: true, ingestor, maxBytes)
             .HandleAsync(context, SourceId, default);
 
-        Assert.Equal(413, Status(result));
-        Assert.Equal(["RequestTooLarge"], Response(result).RejectionCodes);
+        Assert.Equal(415, Status(result));
+        Assert.Equal(["UnsupportedMultipartBody"], Response(result).RejectionCodes);
+        Assert.True(body.Position < body.Length);
         Assert.False(ingestor.WasCalled);
+    }
+
+    [Fact]
+    public async Task AuditContainsOnlySourceOutcomeAndCounts()
+    {
+        var bytes = "<feedback>private-payload</feedback>"u8.ToArray();
+        var digest = Sha256(bytes);
+        var context = Request(bytes);
+        SetIntegrityHeaders(context, digest);
+        var audit = new RecordingAuditLog();
+
+        var result = await Handler(
+                authenticated: true,
+                new StubIngestor(_ => Success(inserted: 1)),
+                audit: audit)
+            .HandleAsync(context, SourceId, default);
+
+        Assert.Equal(201, Status(result));
+        Assert.Equal(AuditEvents.ApiSourceReportUploaded, audit.EventType);
+        Assert.Contains(SourceId.ToString(), audit.Details);
+        Assert.Contains("inserted=1", audit.Details);
+        Assert.DoesNotContain(Token, $"{audit.Summary}{audit.Details}");
+        Assert.DoesNotContain(digest, $"{audit.Summary}{audit.Details}");
+        Assert.DoesNotContain("private-payload", $"{audit.Summary}{audit.Details}");
     }
 
     private static ReportUploadHandler Handler(
         bool authenticated,
         StubIngestor ingestor,
-        int maxRequestBytes = 1024 * 1024)
+        int maxRequestBytes = 1024 * 1024,
+        IAuditLog? audit = null)
         => new(
             new StubAuthenticator(authenticated ? Source : null),
             ingestor,
@@ -221,7 +248,7 @@ public sealed class ReportUploadHandlerTests
                 MaxEntryBytes = maxRequestBytes,
                 MaxExpandedBytes = maxRequestBytes,
             }),
-            new NullAuditLog());
+            audit ?? new NullAuditLog());
 
     private static DefaultHttpContext Request(byte[] body)
     {
@@ -299,6 +326,24 @@ public sealed class ReportUploadHandlerTests
 
         public Task RecordSystemAsync(string eventType, string summary, string? details = null, Guid? clientId = null, CancellationToken ct = default)
             => Task.CompletedTask;
+    }
+
+    private sealed class RecordingAuditLog : IAuditLog
+    {
+        public string? EventType { get; private set; }
+        public string? Summary { get; private set; }
+        public string? Details { get; private set; }
+
+        public Task RecordAsync(string eventType, string summary, string? targetType = null, Guid? targetId = null, Guid? clientId = null, string? details = null, string? actorEmailOverride = null, Guid? actorUserIdOverride = null, CancellationToken ct = default)
+            => throw new InvalidOperationException("Machine uploads must use system audit events.");
+
+        public Task RecordSystemAsync(string eventType, string summary, string? details = null, Guid? clientId = null, CancellationToken ct = default)
+        {
+            EventType = eventType;
+            Summary = summary;
+            Details = details;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ThrowingAuthService : IAuthService

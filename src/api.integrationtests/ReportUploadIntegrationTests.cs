@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Domains;
@@ -88,6 +90,73 @@ public sealed class ReportUploadIntegrationTests(PostgreSqlDatabaseFixture datab
     }
 
     [Fact]
+    public async Task ApiSourceCannotRouteDmarcIntoAnExistingOtherClientDomain()
+    {
+        var seeded = await ResetMigrateAndSeedAsync();
+        var xml = Fixture();
+        var policyDomain = new DmarcRuaReportParser()
+            .Parse(new MemoryStream(xml, writable: false))
+            .PolicyDomain;
+
+        await using var db = database.CreateDbContext();
+        db.Domains.Add(new Domain
+        {
+            ClientId = seeded.ClientBId,
+            Name = policyDomain,
+        });
+        await db.SaveChangesAsync();
+        var tokenA = (await new ApiSourceCredentialService(db)
+            .IssueAsync(seeded.SourceAId, default)).Value!.Token;
+
+        var result = await Handler(db).HandleAsync(
+            Request(xml, tokenA), seeded.SourceAId, default);
+
+        Assert.Equal(422, Status(result));
+        Assert.Equal(["InvalidDmarcReport"], Response(result).RejectionCodes);
+        await using var verification = database.CreateDbContext();
+        var domain = await verification.Domains.SingleAsync();
+        Assert.Equal(seeded.ClientBId, domain.ClientId);
+        Assert.Empty(await verification.DmarcReports.ToListAsync());
+        Assert.Empty(await verification.DmarcReportIngests.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ApiSourceTlsConflictDoesNotLeaveEarlierNewDomainBehind()
+    {
+        var seeded = await ResetMigrateAndSeedAsync();
+        const string existingDomain = "company-y.example";
+        const string newDomain = "new-a.example";
+        var json = JsonNode.Parse(Fixture("sample-rfc8460-tls.json"))!.AsObject();
+        var policies = json["policies"]!.AsArray();
+        var existingPolicy = policies[0]!.DeepClone();
+        policies[0]!["policy"]!["policy-domain"] = newDomain;
+        policies.Add(existingPolicy);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(json);
+
+        await using var db = database.CreateDbContext();
+        db.Domains.Add(new Domain
+        {
+            ClientId = seeded.ClientBId,
+            Name = existingDomain,
+        });
+        await db.SaveChangesAsync();
+        var tokenA = (await new ApiSourceCredentialService(db)
+            .IssueAsync(seeded.SourceAId, default)).Value!.Token;
+
+        var result = await Handler(db).HandleAsync(
+            Request(payload, tokenA), seeded.SourceAId, default);
+
+        Assert.Equal(422, Status(result));
+        Assert.Equal(["InvalidTlsReport"], Response(result).RejectionCodes);
+        await using var verification = database.CreateDbContext();
+        Assert.Equal([existingDomain], await verification.Domains.Select(x => x.Name).ToListAsync());
+        Assert.Empty(await verification.SmtpTlsReports.ToListAsync());
+        Assert.Empty(await verification.SmtpTlsReportPolicies.ToListAsync());
+        Assert.Empty(await verification.TlsReportIngests.ToListAsync());
+        Assert.DoesNotContain(await verification.Domains.ToListAsync(), x => x.Name == newDomain);
+    }
+
+    [Fact]
     public async Task DigestMismatchAndLyingContentLengthLimitWriteNothing()
     {
         var seeded = await ResetMigrateAndSeedAsync();
@@ -150,6 +219,42 @@ public sealed class ReportUploadIntegrationTests(PostgreSqlDatabaseFixture datab
         Assert.Equal(1, await verification.DmarcReports.CountAsync());
         Assert.Equal(1, await verification.DmarcReportRecords.CountAsync());
         Assert.Equal(1, await verification.DmarcReportIngests.CountAsync());
+    }
+
+    [Fact]
+    public async Task CancellationDuringChildWriteRollsBackTheCompleteGraph()
+    {
+        var seeded = await ResetMigrateAndSeedAsync();
+        var xml = Fixture();
+
+        await using var db = database.CreateDbContext();
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE FUNCTION delay_report_record_insert() RETURNS trigger AS $$
+            BEGIN
+                PERFORM pg_sleep(10);
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER delay_report_record_insert
+                BEFORE INSERT ON dmarc_report_record
+                FOR EACH ROW EXECUTE FUNCTION delay_report_record_insert();
+            """);
+        var token = (await new ApiSourceCredentialService(db)
+            .IssueAsync(seeded.SourceAId, default)).Value!.Token;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Handler(db).HandleAsync(
+            Request(xml, token),
+            seeded.SourceAId,
+            cancellation.Token));
+        Assert.True(cancellation.IsCancellationRequested);
+
+        await using var verification = database.CreateDbContext();
+        Assert.Empty(await verification.DmarcReports.ToListAsync());
+        Assert.Empty(await verification.DmarcReportRecords.ToListAsync());
+        Assert.Empty(await verification.DmarcReportRecordDkimAuthResults.ToListAsync());
+        Assert.Empty(await verification.DmarcReportRecordSpfAuthResults.ToListAsync());
+        Assert.Empty(await verification.DmarcReportIngests.ToListAsync());
     }
 
     private static ReportUploadHandler Handler(
@@ -229,10 +334,13 @@ public sealed class ReportUploadIntegrationTests(PostgreSqlDatabaseFixture datab
     }
 
     private static byte[] Fixture()
+        => Fixture("sample-yahoo-aggregate.xml");
+
+    private static byte[] Fixture(string name)
         => File.ReadAllBytes(Path.Combine(
             AppContext.BaseDirectory,
             "Fixtures",
-            "sample-yahoo-aggregate.xml"));
+            name));
 
     private static int Status(IResult result)
         => Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode!.Value;

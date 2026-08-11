@@ -67,6 +67,7 @@ public sealed class ApiSourceCredentialTests
         Assert.NotNull(authenticated);
         Assert.Equal(source.Id, authenticated.SourceId);
         Assert.Equal(client.Id, authenticated.DefaultClientId);
+        Assert.True(authenticated.RestrictToDefaultClient);
 
         Assert.Null(await authenticator.AuthenticateAsync(source.Id, null, default));
         Assert.Null(await authenticator.AuthenticateAsync(source.Id, "wrong", default));
