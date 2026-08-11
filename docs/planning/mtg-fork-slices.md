@@ -62,7 +62,7 @@ knows neither MailKit nor HTTP authentication.
 | 3 | Add bounded raw-payload ingestion orchestrator | 2 | bounded containers and parsing |
 | 4 | Add API report-source model and reveal-once keys | 1 | source-scoped machine identity |
 | 5 | Add authenticated raw upload endpoint | 3, 4 | safe internal machine ingestion |
-| 6 | Make the synthetic Analyzer corpus a CI gate | 1, 3, 5 | replay, isolation, routing, limits |
+| 6 | Make the synthetic Analyzer corpus a CI gate | 1, 3, 4 | replay, isolation, routing, limits |
 | 7 | Integrate the Bifrost Graph adapter privately | 5, 6 | end-to-end dogfood readiness |
 
 Slices 0 and 1 may run in parallel. The bounded extractor portion of slice 3
@@ -263,6 +263,15 @@ Upstream disposition: fork-first, then a contract-focused upstream proposal or
 pull request only with operator approval.
 
 ## 6. Analyzer conformance corpus in CI
+
+Status: implemented in the fork on 2026-08-11.
+
+The repo-owned deterministic recipe produces 33 ordered cases from 35 raw
+payloads and pins their hashes and normalized expected state. The PostgreSQL
+acceptance invokes the production `IReportPayloadIngestor`, compares the exact
+durable graph and routing after every case, and separately proves cross-source
+and concurrent replay. Slice 5 retains endpoint authentication/authorization;
+this gate intentionally tests the shared runtime service beneath it.
 
 Promote the synthetic cases that selected the fork into a repo-owned,
 deterministic Analyzer acceptance suite. Fixtures contain only `.example`

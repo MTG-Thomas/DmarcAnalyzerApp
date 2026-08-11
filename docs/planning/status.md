@@ -96,6 +96,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   total and per-entry expansion, entry count, and compression ratio. Mailbox
   ingestion passes MimeKit's transfer-decoded stream directly into this seam,
   while preserving archive-before-parse, counters, checkpoints, and run control.
+- A deterministic 33-case Analyzer conformance corpus now gates that same
+  production raw-ingestion seam against disposable PostgreSQL. It pins raw
+  payload and expected-state hashes, validates synthetic-only fixture content,
+  exercises ordered recovery after malformed/resource inputs, and compares the
+  exact report/record/auth-result/ledger/source/client graph. Additional direct
+  cases prove concurrent replay and cross-source provenance preservation.
 - Sync operational history persisted in `mailbox_sync_run`.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing

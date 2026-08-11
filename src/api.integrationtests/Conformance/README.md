@@ -29,8 +29,11 @@ python src/api.integrationtests/Conformance/generate_conformance_corpus.py
 python src/api.integrationtests/Conformance/generate_conformance_corpus.py --check
 ```
 
-This corpus-data commit intentionally stops before the final Slice 6 runner. A
-follow-up must invoke `IReportPayloadIngestor` directly against disposable real
-PostgreSQL and compare exact report, record, DKIM, SPF, ingest-ledger, source,
-and client state. Slice 5 endpoint authentication/authorization assertions must
-reuse that same production path instead of reimplementing ingestion.
+`DmarcConformanceCorpusIntegrationTests` invokes the production
+`IReportPayloadIngestor` path against disposable real PostgreSQL. It compares
+exact report, record, range, DKIM, SPF, ingest-ledger, source, domain-owner, and
+client-routing state after every ordered case. Separate direct tests cover
+concurrent replay and the same business key arriving through a second source.
+
+HTTP authentication and endpoint behavior remain Slice 5 responsibilities;
+this corpus gate does not duplicate ingestion at that boundary.
