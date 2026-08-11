@@ -63,8 +63,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   SHA-256 hash persist, rotation keys overlap until explicit revocation, and
   inactive, revoked, wrong-source, or invalid tokens all fail authentication
   identically. Credential material is excluded from configuration artifacts, so
-  restored API sources require reissue. The upload endpoint remains in MTG fork
-  slice 5.
+  restored API sources require reissue. API sources can upload bounded raw or
+  single-file multipart payloads through the internal machine endpoint. That
+  endpoint ignores cookie sessions, authenticates the route's source id with the
+  source-scoped bearer token, accepts optional coherent content-digest and
+  idempotency headers, and delegates unchanged bytes to the shared raw-payload
+  ingestor.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`

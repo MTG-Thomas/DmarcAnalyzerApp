@@ -36,6 +36,16 @@ staff (`agency_admin` or `agency_analyst`).
 | GET | `/auth/oidc/complete` | public (external-temp scheme) |
 | GET | `/auth/me` | any |
 
+### Machine ingestion
+
+This route is deliberately outside `/api/v1` and never uses the cookie-session
+public-path list. It accepts only a source-scoped API bearer credential; a valid
+cookie does not grant access.
+
+| Method | Path | Access |
+|---|---|---|
+| POST | `/api/ingest/v1/sources/{sourceId}/reports` | source-scoped bearer token for the same active API source |
+
 ### Clients, domains, users
 | Method | Path | Access |
 |---|---|---|
@@ -345,6 +355,40 @@ List sync run history.
 
 ## 6) Ingestion and Sync
 
+### POST `/api/ingest/v1/sources/{sourceId}/reports`
+
+Internal-first machine upload. `Authorization: Bearer
+dmarc_v1.<22-character-prefix>.<43-character-secret>` must authenticate the
+active API source named by the route. Missing, invalid, revoked, inactive, and
+wrong-source credentials all return the same `401`; a cookie session cannot
+bypass this check. The authenticated source supplies the trusted default client
+context, and the request has no client selector.
+
+The body is either a raw payload or `multipart/form-data` containing exactly one
+file and no fields. Raw bytes are passed unchanged into the same bounded
+`IReportPayloadIngestor` used by mailbox ingestion. Request bytes, expanded
+bytes, entry bytes, ZIP entry count, and compression ratio retain the configured
+ingestion limits.
+
+`X-Content-SHA256: <64 lowercase-or-uppercase hex characters>` and
+`Idempotency-Key: sha256:<same digest>` are optional. If either is present it
+must be well formed and is checked against the server-computed digest; if both
+are present they must agree. Bifrost sends both.
+
+The response exposes only `inserted`, `duplicates`, `rejected`, and
+`rejectionCodes`. ZIP entry names, report content, tokens, digest values, and
+report provenance are not returned or logged.
+
+- `201` — at least one DMARC or TLS report inserted; partial entry rejections
+  remain visible in `rejectionCodes`.
+- `200` — no inserts and at least one duplicate report.
+- `401` — uniform machine-authentication failure.
+- `413` — request, entry, expansion, archive-entry, or compression-ratio limit.
+- `415` — unsupported media, multipart shape, format, or container nesting.
+- `422` — malformed/coherency-failed integrity headers, digest mismatch, parse
+  rejection, corrupt/empty/encrypted container, or another bounded payload with
+  no valid report.
+
 ### GET `/mailbox-sync-runs`
 
 List sync run history across mailbox sources.
@@ -381,8 +425,8 @@ policy-less — the policies it would delete still exist when the sweep counts.
 ## 7) Reports and Records
 
 > **Partially implemented.** Report data is currently read through the
-> `/analytics/*` endpoints in §8; there are no `/reports` routes yet, and no
-> upload endpoint (see the backlog's "report upload" item).
+> `/analytics/*` endpoints in §8, and machine upload is implemented in §6;
+> there are no `/reports` query routes yet.
 
 ### GET `/reports`
 

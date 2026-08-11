@@ -236,6 +236,8 @@ the contract is stable in dogfood.
 
 ## 5. Authenticated raw upload endpoint
 
+Status: complete in the MTG fork on 2026-08-11.
+
 Add `POST /api/ingest/v1/sources/{sourceId}/reports` as an internal-first machine
 endpoint. Dedicated middleware or endpoint metadata authenticates the API key;
 the route is deliberately outside the cookie-session `/api/v1` surface and is
@@ -257,7 +259,10 @@ Contract:
 Acceptance: cookie authentication cannot bypass machine authentication; source A
 cannot address source B or route to client B; replay is idempotent; partial
 container outcomes are explicit; cancellation/rollback leaves no partial child
-rows.
+rows. Focused endpoint tests and real-PostgreSQL acceptance cover the cookie
+bypass, uniform authentication failure, insert/duplicate replay, source/client
+routing, digest mismatch, lying Content-Length limits, persistence rollback,
+and corrected replay.
 
 Upstream disposition: fork-first, then a contract-focused upstream proposal or
 pull request only with operator approval.
