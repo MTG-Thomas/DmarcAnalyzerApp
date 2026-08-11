@@ -170,6 +170,15 @@ Sequenced; each step is independently shippable.
       no payloads; empty, nested, and unsupported ZIP entries can be rejected
       alongside valid siblings. Parser, persistence, mailbox, and HTTP wiring
       remain in MTG fork slice 3B after the parsed persistence seam lands.
+- [x] (done 2026-08-11) **Add the API report-source model.**
+      `mailbox_source.Protocol=api` retains source activation and default-client
+      ownership without fake IMAP fields. A real-PostgreSQL constraint protects
+      both API and mailbox row shapes, the down migration refuses while API rows
+      exist, API rows stay out of mailbox operations, and backup format v2 keeps
+      them round-trippable while still accepting format v1.
+- [ ] (todo) **Add reveal-once credentials for API report sources.** Support
+      overlapping rotation keys, store only prefix plus hash, and keep raw tokens
+      out of logs and backup artifacts before exposing the upload endpoint.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).

@@ -54,6 +54,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   proves parsed DMARC report/record/auth-result/ledger atomicity, exact and
   concurrent replay, rejection, and routed ownership through the production
   `IDmarcReportIngestor`; the harness does not emulate IMAP.
+- API report sources use `Protocol=api` with an authoritative default client and
+  no placeholder mailbox connection. PostgreSQL enforces the protocol-specific
+  shape; mailbox polling, health totals, manual-sync UI, and mailbox retention
+  exclude API rows. Configuration artifact v2 preserves these nullable fields
+  while continuing to read v1 mailbox artifacts. Reveal-once source credentials
+  and the upload endpoint remain in MTG fork slices 4B and 5.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`

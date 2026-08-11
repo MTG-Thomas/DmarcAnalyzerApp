@@ -132,13 +132,16 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
         modelBuilder.Entity<MailboxSource>(entity =>
         {
-            entity.ToTable("mailbox_source");
+            entity.ToTable("mailbox_source", table => table.HasCheckConstraint(
+                "CK_mailbox_source_ProtocolConfiguration",
+                "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR " +
+                "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)"));
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Protocol).HasMaxLength(20).IsRequired();
-            entity.Property(x => x.Host).HasMaxLength(255).IsRequired();
-            entity.Property(x => x.Username).HasMaxLength(255).IsRequired();
-            entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048).IsRequired();
+            entity.Property(x => x.Host).HasMaxLength(255);
+            entity.Property(x => x.Username).HasMaxLength(255);
+            entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048);
             entity.Property(x => x.LastProcessedUid);
             entity.Property(x => x.LastProcessedUidValidity);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);

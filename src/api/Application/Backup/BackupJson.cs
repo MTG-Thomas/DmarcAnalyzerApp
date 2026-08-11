@@ -22,7 +22,7 @@ public static class BackupJson
     /// Bumped only for a change an older reader could not handle. Adding an optional
     /// property is not such a change; removing or renaming one is.
     /// </summary>
-    public const int FormatVersion = 1;
+    public const int FormatVersion = 2;
 
     /// <summary>
     /// Indented on purpose. These files get read by people mid-incident, diffed between

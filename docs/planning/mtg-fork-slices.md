@@ -199,10 +199,15 @@ retention actions.
 
 PR boundary A — source model:
 
-- permit an API source without pretending it has an IMAP host/user/password;
-- retain source activation, client ownership, audit fields, and backup/export
+- [x] permit an API source without pretending it has an IMAP host/user/password;
+- [x] retain source activation, client ownership, audit fields, and backup/export
   behavior; and
-- add a focused, reversible migration.
+- [x] add a focused migration whose down path refuses while API rows exist.
+
+Boundary A also excludes API rows from mailbox health, retention, and manual
+sync actions, and advances the configuration artifact to format v2 while
+retaining format-v1 import compatibility. Boundary B remains required before an
+API source can authenticate or upload a report.
 
 PR boundary B — key lifecycle:
 

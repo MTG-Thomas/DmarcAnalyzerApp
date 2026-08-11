@@ -109,7 +109,9 @@ public sealed class BackupImportService(
         // the protector the app is actually running rather than inferring one.
         var runningKey = configuration[CredentialProtectionExtensions.KeyConfigPath];
 
-        if (artifact.MailboxSources.Count > 0
+        var credentialBearingSourceCount = artifact.MailboxSources.Count(
+            source => !string.IsNullOrWhiteSpace(source.PasswordEncrypted));
+        if (credentialBearingSourceCount > 0
             && !CredentialKeyFingerprint.Matches(artifact.Manifest.EncryptionKeyFingerprint, runningKey))
         {
             if (!allowKeyFingerprintMismatch)
@@ -130,7 +132,7 @@ public sealed class BackupImportService(
 
             credentialsWillNotDecrypt = true;
             warnings.Add(
-                $"{artifact.MailboxSources.Count} mailbox source(s) were imported with credentials " +
+                $"{credentialBearingSourceCount} mailbox source(s) were imported with credentials " +
                 "this install holds no key for; each one needs its password re-entered before it will " +
                 "sync.");
         }
@@ -473,6 +475,7 @@ public sealed class BackupImportService(
                 existing.IsActive = source.IsActive;
                 existing.CreatedAtUtc = source.CreatedAtUtc;
                 existing.UpdatedAtUtc = source.UpdatedAtUtc;
+                existing.NormalizeProtocolState();
                 tally.Updated++;
                 continue;
             }
@@ -499,6 +502,7 @@ public sealed class BackupImportService(
                 LastProcessedUid = null,
                 LastProcessedUidValidity = null,
             };
+            row.NormalizeProtocolState();
 
             db.MailboxSources.Add(row);
             state.SourcesById[row.Id] = row;

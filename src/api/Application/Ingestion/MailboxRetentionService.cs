@@ -113,14 +113,24 @@ public sealed class MailboxRetentionService(
         CancellationToken ct)
     {
         var source = await db.MailboxSources.SingleAsync(x => x.Id == plan.MailboxSourceId, ct);
+        if (source.Protocol == "api"
+            || string.IsNullOrWhiteSpace(source.Host)
+            || source.Port is not > 0
+            || !source.UseTls.HasValue
+            || string.IsNullOrWhiteSpace(source.Username)
+            || string.IsNullOrWhiteSpace(source.PasswordEncrypted))
+        {
+            throw new InvalidOperationException("mailbox retention source configuration is incomplete");
+        }
+
         var password = credentialProtector.Unprotect(source.PasswordEncrypted);
 
         using var client = new ImapClient();
-        var socketOptions = source.UseTls
+        var socketOptions = source.UseTls.Value
             ? SecureSocketOptions.SslOnConnect
             : SecureSocketOptions.StartTlsWhenAvailable;
 
-        await client.ConnectAsync(source.Host, source.Port, socketOptions, ct);
+        await client.ConnectAsync(source.Host, source.Port.Value, socketOptions, ct);
         await client.AuthenticateAsync(source.Username, password, ct);
 
         // Read-write, unlike the sync pass. This is the only place in the application that
