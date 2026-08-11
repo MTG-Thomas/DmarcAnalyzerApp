@@ -11,11 +11,11 @@ namespace DmarcAnalyzer.Api.IntegrationTests;
 [Trait("Category", "Migration")]
 public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database)
 {
-    // v0.9.0 and v0.10.0 contain the same migration set. Keeping the release
-    // pin separate makes that no-op upgrade contract explicit and gives the
-    // next schema-bearing release one place to advance it.
-    private const string PreviousReleaseLatestMigration = "20260806191701_AddSmtpTlsReportIngestion";
-    private const string ExpectedLatestMigration = "20260811195529_AddApiMailboxSource";
+    // Keep the release pin separate from the expected latest migration so the
+    // upgrade test proves this schema-bearing slice preserves configuration.
+    private const string BeforeApiSourceMigration = "20260806191701_AddSmtpTlsReportIngestion";
+    private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
+    private const string ExpectedLatestMigration = "20260811205233_AddApiSourceCredentials";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
@@ -152,13 +152,13 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var db = database.CreateDbContext())
         {
             var error = await Assert.ThrowsAsync<PostgresException>(() => db.GetService<IMigrator>()
-                .MigrateAsync(PreviousReleaseLatestMigration));
+                .MigrateAsync(BeforeApiSourceMigration));
             Assert.Contains("while API sources exist", error.MessageText, StringComparison.Ordinal);
         }
 
         await using (var verification = database.CreateDbContext())
         {
-            Assert.Equal(ExpectedLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
+            Assert.Equal(PreviousReleaseLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
             Assert.Equal(1, await verification.MailboxSources.CountAsync(x => x.Protocol == "api"));
         }
     }
@@ -186,11 +186,68 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
                 DefaultClientId = client.Id,
             });
             await db.SaveChangesAsync();
-            await db.GetService<IMigrator>().MigrateAsync(PreviousReleaseLatestMigration);
+            await db.GetService<IMigrator>().MigrateAsync(BeforeApiSourceMigration);
         }
 
         await using var verification = database.CreateDbContext();
-        Assert.Equal(PreviousReleaseLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.Equal(BeforeApiSourceMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
         Assert.Equal("imap.example", (await verification.MailboxSources.SingleAsync(x => x.Id == sourceId)).Host);
+    }
+
+    [Fact]
+    public async Task CredentialMigration_EnforcesShapeAndRefusesDestructiveDownMigration()
+    {
+        await database.ResetDatabaseAsync();
+        await database.MigrateToLatestAsync();
+
+        await using (var db = database.CreateDbContext())
+        {
+            var client = new Client { Name = "Credential fixture", Slug = "credential-fixture", Timezone = "UTC" };
+            var source = new MailboxSource
+            {
+                Name = "API source",
+                Protocol = "api",
+                UseTls = null,
+                DefaultClientId = client.Id,
+            };
+            db.AddRange(client, source, new ApiSourceCredential
+            {
+                MailboxSourceId = source.Id,
+                Prefix = "abcdefghijklmnopqrstuv",
+                TokenHash = new byte[32],
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var invalid = database.CreateDbContext())
+        {
+            var sourceId = await invalid.MailboxSources.Select(x => x.Id).SingleAsync();
+            invalid.ApiSourceCredentials.Add(new ApiSourceCredential
+            {
+                MailboxSourceId = sourceId,
+                Prefix = "too-short",
+                TokenHash = new byte[31],
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        }
+
+        await using (var duplicate = database.CreateDbContext())
+        {
+            var sourceId = await duplicate.MailboxSources.Select(x => x.Id).SingleAsync();
+            duplicate.ApiSourceCredentials.Add(new ApiSourceCredential
+            {
+                MailboxSourceId = sourceId,
+                Prefix = "abcdefghijklmnopqrstuv",
+                TokenHash = Enumerable.Repeat((byte)1, 32).ToArray(),
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync());
+        }
+
+        await using (var down = database.CreateDbContext())
+        {
+            var error = await Assert.ThrowsAsync<PostgresException>(() => down.GetService<IMigrator>()
+                .MigrateAsync(PreviousReleaseLatestMigration));
+            Assert.Contains("while credential rows exist", error.MessageText, StringComparison.Ordinal);
+        }
     }
 }

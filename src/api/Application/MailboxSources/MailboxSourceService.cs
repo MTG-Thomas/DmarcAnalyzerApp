@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Common;
+using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
 using DmarcAnalyzer.Api.Data;
@@ -193,6 +194,11 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             return ServiceResult<MailboxSourceDto>.Failure(
                 "host, port, useTls, username, and password are required when changing an API source to a mailbox source", 400);
+        }
+
+        if (source.Protocol == "api" && protocol != "api")
+        {
+            await ApiSourceCredentialLifecycle.RevokeActiveAsync(db, source.Id, ct);
         }
 
         source.Protocol = protocol;

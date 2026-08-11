@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Data;
@@ -796,10 +797,14 @@ public sealed class BackupImportTests
         };
         db.AddRange(client, existing);
         await db.SaveChangesAsync();
+        var issued = (await new ApiSourceCredentialService(db)
+            .IssueAsync(existing.Id, default)).Value!;
 
         var artifact = Artifact(sources: [ExportedSource(existing.Id, client.Id)]);
         var preview = await Service(db).PreviewAsync(
             artifact, BackupImportModes.Merge, false, default);
+        Assert.Null((await db.ApiSourceCredentials.AsNoTracking().SingleAsync()).RevokedAtUtc);
+
         var applied = await Service(db).ImportAsync(
             artifact, BackupImportModes.Merge, false, default);
 
@@ -812,6 +817,17 @@ public sealed class BackupImportTests
         Assert.True(source.UseTls);
         Assert.Equal("dmarc@example", source.Username);
         Assert.Equal("enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", source.PasswordEncrypted);
+        Assert.NotNull((await db.ApiSourceCredentials.AsNoTracking().SingleAsync()).RevokedAtUtc);
+
+        // Switching back to API must not resurrect the old reveal-once token.
+        var changedBack = await Service(db).ImportAsync(
+            Artifact(sources: [ExportedApiSource(existing.Id, client.Id)]),
+            BackupImportModes.Merge,
+            false,
+            default);
+        Assert.True(changedBack.IsSuccess);
+        Assert.Null(await new ApiSourceAuthenticator(db)
+            .AuthenticateAsync(existing.Id, issued.Token, default));
     }
 
     /// <summary>
