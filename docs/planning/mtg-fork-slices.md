@@ -71,8 +71,12 @@ slice 2 so the HTTP edge never invents a second parser or persistence path.
 
 ## 0. RFC 9990 `pass` analytics and UI
 
-The parser and database now preserve `policy_evaluated.disposition=pass`, but
-the analytics DTO, query projections, TypeScript contract, and UI omit it.
+Status: implemented in the fork on 2026-08-11.
+
+The parser, database, analytics DTOs and query projections, TypeScript contract,
+and source-detail UI preserve `policy_evaluated.disposition=pass` end to end.
+Compliance remains aligned-DKIM/SPF based, while blocked totals remain
+`quarantine + reject`.
 
 PR boundary:
 

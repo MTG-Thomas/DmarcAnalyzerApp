@@ -105,6 +105,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/analytics/summary` (compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup)
   - `GET /api/v1/analytics/domains` (per-domain compliance, DKIM/SPF pass rates, volume, sources, reporters, status classification)
   - relative windows anchored to newest report data (`days` query parameter)
+  - action-disposition rollups preserve `none`, RFC 9990 `pass`, `quarantine`,
+    and `reject` in both summary and source-detail responses; compliance remains
+    DKIM/SPF-alignment based and blocked totals remain `quarantine + reject`
 - Dashboard frontpage with compliance overview and URL routing for all console pages.
 - Published DMARC policy persistence:
   - parse & store `policy_published` (p, sp, pct, adkim, aspf) per report on `dmarc_report`
