@@ -156,14 +156,13 @@ Sequenced; each step is independently shippable.
       upgrade, preserve seeded configuration, and exercise the DMARC report and
       ingest-ledger unique indexes plus concurrent `DomainIngestResolver` raw
       SQL with two contexts.
-- [ ] (todo) **Move DMARC persistence acceptance onto a callable service.**
-      Atomic report/record/auth-result/ledger rollback, exact and concurrent
-      replay, and routed-owner behavior remain private to `MailboxSyncService`
-      behind a concrete MailKit connection. MTG fork slice 2 extracts
-      `IDmarcReportIngestor` and moves those assertions onto that production
-      seam using the PostgreSQL fixture; do not introduce a test-only IMAP
-      architecture or treat database constraint tests as proof of the current
-      mailbox write transaction.
+- [x] (done 2026-08-11) **Move DMARC persistence acceptance onto a callable
+      service.** `IDmarcReportIngestor` now owns domain routing, the report graph
+      transaction, deduplication, and ingest-ledger writes. PostgreSQL tests
+      prove full graph persistence, mid-child rollback, exact and concurrent
+      replay with separate contexts, invalid-contract rejection, and both new-
+      and existing-domain ownership. `MailboxSyncService` only parses and maps
+      the inserted/duplicate/rejected outcome to its existing counters.
 - [x] (done 2026-08-11) **Add the bounded raw-report extractor.** Bare
       XML/JSON, GZIP, and multi-entry ZIP payloads now share one standalone
       classifier with configuration-backed request, expanded, entry-count,
@@ -365,13 +364,12 @@ zero undocumented. The problems are everywhere else.
       login lockout on an unauthenticated endpoint; DNS policy caching;
       reverse-proxy trust ordering; the migration strategy split three ways; and
       the Apache-2.0 licence choice.
-- [ ] (todo) **ADR 0005's routing decision is half-implemented, and the two
-      halves can disagree.** Domain resolution honours ownership, but
-      `MailboxSyncService.cs:200` writes the ingest ledger with the *receiving
-      source's* `DefaultClientId` unconditionally — so the ledger (and the
-      retention purge scope keyed off it) can attribute a report to a different
-      client than `DmarcReport` does. Either resolve the owner before writing,
-      or amend the ADR to say the ledger is per-source by design.
+- [x] (done 2026-08-11) **Make ADR 0005 routing ownership consistent.**
+      `DomainIngestResolver` returns both the domain and its authoritative
+      client. Parsed DMARC persistence uses that owner for the ingest ledger,
+      while a new domain still uses the source's default client. PostgreSQL
+      tests prove an existing domain is neither reassigned nor attributed to
+      the source default.
 
 ### Planning docs and entry points
 

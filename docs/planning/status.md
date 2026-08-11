@@ -50,9 +50,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   database; CI runs the complete lane on PostgreSQL 16 and the migration
   category on PostgreSQL 18. It pins the expected latest migration, exercises
   the currently no-op v0.9.0/v0.10.0 upgrade contract, and proves real unique
-  indexes plus concurrent `DomainIngestResolver` raw SQL. Direct DMARC
-  report/record/auth-result/ledger atomicity and replay move onto the parsed
-  persistence service in MTG fork slice 2; the harness does not emulate IMAP.
+  indexes plus concurrent `DomainIngestResolver` raw SQL. The same lane now
+  proves parsed DMARC report/record/auth-result/ledger atomicity, exact and
+  concurrent replay, rejection, and routed ownership through the production
+  `IDmarcReportIngestor`; the harness does not emulate IMAP.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`
@@ -86,6 +87,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Sync operational history persisted in `mailbox_sync_run`.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing
+  - one `IDmarcReportIngestor` owns DMARC routing, deduplication, transaction,
+    report graph, and ingest-ledger writes for the mailbox and future callers
+  - existing domain ownership overrides a source's default client for both the
+    report and ingest ledger
   - full-fidelity DMARC storage in:
     - `dmarc_report`
     - `dmarc_report_record`

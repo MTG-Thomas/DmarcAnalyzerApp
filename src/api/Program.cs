@@ -94,6 +94,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
     workerBuilder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
+    workerBuilder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
     workerBuilder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.AddHttpContextAccessor();
@@ -244,6 +245,7 @@ builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
 builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
 builder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
 builder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
+builder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
 builder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();

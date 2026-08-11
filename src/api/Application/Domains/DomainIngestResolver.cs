@@ -10,8 +10,11 @@ public interface IDomainIngestResolver
     /// default client when it does not exist yet. Takes a normalized (trimmed,
     /// lowercased) name and does not care which report format produced it.
     /// </summary>
-    Task<Guid> ResolveOrCreateAsync(Guid defaultClientId, string normalizedDomain, CancellationToken ct);
+    Task<DomainIngestResolution> ResolveOrCreateAsync(
+        Guid defaultClientId, string normalizedDomain, CancellationToken ct);
 }
+
+public sealed record DomainIngestResolution(Guid DomainId, Guid ClientId);
 
 /// <summary>
 /// Hoisted verbatim from MailboxSyncService so DMARC and TLS ingestion share
@@ -24,18 +27,18 @@ public interface IDomainIngestResolver
 /// </summary>
 public sealed class DomainIngestResolver(DmarcAnalyzerDbContext db) : IDomainIngestResolver
 {
-    public async Task<Guid> ResolveOrCreateAsync(
+    public async Task<DomainIngestResolution> ResolveOrCreateAsync(
         Guid defaultClientId, string normalizedDomain, CancellationToken ct)
     {
         var existing = await db.Domains
             .AsNoTracking()
             .Where(x => x.Name == normalizedDomain)
-            .Select(x => new { x.Id })
+            .Select(x => new DomainIngestResolution(x.Id, x.ClientId))
             .SingleOrDefaultAsync(ct);
 
         if (existing is not null)
         {
-            return existing.Id;
+            return existing;
         }
 
         var createdId = Guid.NewGuid();
@@ -52,9 +55,9 @@ public sealed class DomainIngestResolver(DmarcAnalyzerDbContext db) : IDomainIng
         var resolved = await db.Domains
             .AsNoTracking()
             .Where(x => x.Name == normalizedDomain)
-            .Select(x => new { x.Id })
+            .Select(x => new DomainIngestResolution(x.Id, x.ClientId))
             .SingleAsync(ct);
 
-        return resolved.Id;
+        return resolved;
     }
 }
