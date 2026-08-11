@@ -79,13 +79,25 @@ jobs:
       - name: API tests with coverage
         run: dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj --configuration Release --no-build --nologo --collect:"XPlat Code Coverage" --results-directory "$GITHUB_WORKSPACE/TestResults"
 
+      - name: Preserve coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-coverage
+          path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload coverage to Codecov
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        if: vars.CODECOV_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           use_oidc: true
           directory: TestResults
           fail_ci_if_error: true
+
+      - name: Note pending Codecov onboarding
+        if: vars.CODECOV_ENABLED != 'true'
+        run: echo "::warning::Coverage is preserved as api-coverage. Onboard this fork in Codecov, then set CODECOV_ENABLED=true to activate the fail-closed upload."
 
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0

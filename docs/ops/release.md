@@ -96,12 +96,15 @@ how a Job that could never create a pod got as far as a real cluster once.
 
 ### Optional Sonar gate
 
-Codecov uses GitHub OIDC and needs no repository token. Sonar does require a
-SonarCloud project. Until that external project exists, `sonar.yml` is manual
-and fails closed. To activate it, create the project, add a `SONAR_TOKEN` secret
-and `SONAR_ORGANIZATION` plus `SONAR_PROJECT_KEY` repository variables, run the
-workflow once, then add `push` and `pull_request` triggers and require its
-`analyze` check. Do not make it automatic before that first authenticated run.
+Coverage is always retained as the `api-coverage` workflow artifact. Codecov
+uses GitHub OIDC and needs no repository token, but each fork must first be
+onboarded in Codecov; set `CODECOV_ENABLED=true` only after activation. Sonar
+also requires a SonarCloud project. Until that external project exists,
+`sonar.yml` is manual and fails closed. To activate it, create the project, add
+a `SONAR_TOKEN` secret and `SONAR_ORGANIZATION` plus `SONAR_PROJECT_KEY`
+repository variables, run the workflow once, then add `push` and `pull_request`
+triggers and require its `analyze` check. Do not make either service automatic
+before its first authenticated run.
 
 ## Versioning
 
