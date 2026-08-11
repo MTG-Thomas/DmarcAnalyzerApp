@@ -45,6 +45,8 @@ public sealed class ReportUploadHandler(
             return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
         }
 
+        ApplyServerRequestLimit(context, _limits.MaxRequestBytes);
+
         if (!TryGetExpectedDigest(context.Request.Headers, out var expectedDigest, out var headerRejection))
         {
             return await AuditedResponseAsync(sourceId, 422, headerRejection, ct);
@@ -63,6 +65,10 @@ public sealed class ReportUploadHandler(
             }
 
             IFormCollection form;
+            var requestBody = context.Request.Body;
+            context.Request.Body = new BoundedRequestBodyStream(
+                requestBody,
+                _limits.MaxRequestBytes);
             try
             {
                 form = await context.Request.ReadFormAsync(new FormOptions
@@ -71,6 +77,10 @@ public sealed class ReportUploadHandler(
                     ValueCountLimit = 1,
                 }, ct);
             }
+            catch (RequestBodyTooLargeException)
+            {
+                return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
+            }
             catch (InvalidDataException ex) when (IsBodyLimitExceeded(ex))
             {
                 return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
@@ -78,6 +88,10 @@ public sealed class ReportUploadHandler(
             catch (InvalidDataException)
             {
                 return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", ct);
+            }
+            finally
+            {
+                context.Request.Body = requestBody;
             }
 
             if (form.Count != 0 || form.Files.Count != 1)
@@ -289,7 +303,85 @@ public sealed class ReportUploadHandler(
     private static bool IsBodyLimitExceeded(InvalidDataException exception)
         => exception.Message.Contains("length limit", StringComparison.OrdinalIgnoreCase);
 
+    private static void ApplyServerRequestLimit(HttpContext context, long maxBytes)
+    {
+        var feature = context.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (feature is { IsReadOnly: false }
+            && (feature.MaxRequestBodySize is null || feature.MaxRequestBodySize > maxBytes))
+        {
+            feature.MaxRequestBodySize = maxBytes;
+        }
+    }
+
     private static bool IsOtherMultipart(string? contentType)
         => MediaTypeHeaderValue.TryParse(contentType, out var parsed)
            && parsed.MediaType.Value?.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase) == true;
+
+    private sealed class RequestBodyTooLargeException : IOException;
+
+    private sealed class BoundedRequestBodyStream(Stream inner, long maxBytes) : Stream
+    {
+        private long _bytesRead;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+            => Count(inner.Read(buffer, offset, BoundedCount(count)));
+
+        public override async Task<int> ReadAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken)
+            => Count(await inner.ReadAsync(
+                buffer.AsMemory(offset, BoundedCount(count)),
+                cancellationToken));
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+            => Count(await inner.ReadAsync(
+                buffer[..BoundedCount(buffer.Length)],
+                cancellationToken));
+
+        public override int ReadByte()
+        {
+            var value = inner.ReadByte();
+            if (value >= 0)
+            {
+                Count(1);
+            }
+
+            return value;
+        }
+
+        private int BoundedCount(int requested)
+            => (int)Math.Min(requested, Math.Max(1, maxBytes - _bytesRead + 1));
+
+        private int Count(int read)
+        {
+            _bytesRead += read;
+            if (_bytesRead > maxBytes)
+            {
+                throw new RequestBodyTooLargeException();
+            }
+
+            return read;
+        }
+
+        public override void Flush() => inner.Flush();
+        public override Task FlushAsync(CancellationToken cancellationToken)
+            => inner.FlushAsync(cancellationToken);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 }

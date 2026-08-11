@@ -183,6 +183,31 @@ public sealed class ReportUploadHandlerTests
         Assert.False(ingestor.WasCalled);
     }
 
+    [Fact]
+    public async Task MultipartAggregateLimitRejectsManySmallSectionsWithoutContentLength()
+    {
+        const int maxBytes = 512;
+        using var multipart = new MultipartFormDataContent();
+        for (var index = 0; index < 10; index++)
+        {
+            multipart.Add(
+                new ByteArrayContent(new byte[32]),
+                $"report{index}",
+                $"report{index}.xml");
+        }
+
+        var context = await MultipartRequestAsync(multipart);
+        context.Request.ContentLength = null;
+        var ingestor = new StubIngestor(_ => Success(inserted: 1));
+
+        var result = await Handler(authenticated: true, ingestor, maxBytes)
+            .HandleAsync(context, SourceId, default);
+
+        Assert.Equal(413, Status(result));
+        Assert.Equal(["RequestTooLarge"], Response(result).RejectionCodes);
+        Assert.False(ingestor.WasCalled);
+    }
+
     private static ReportUploadHandler Handler(
         bool authenticated,
         StubIngestor ingestor,
