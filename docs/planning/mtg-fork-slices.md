@@ -161,7 +161,7 @@ The input is a trusted source context plus a stream, file name, and optional
 media type. The result summarizes inserted, duplicate, and rejected DMARC/TLS
 reports.
 
-PR boundary A — bounded extractor (may start with slice 1):
+PR boundary A — bounded extractor (implemented 2026-08-11):
 
 - classify from content/magic as well as labels;
 - support bare XML/JSON, GZIP, and multi-entry ZIP;
@@ -169,8 +169,9 @@ PR boundary A — bounded extractor (may start with slice 1):
   count, per-entry bytes, and compression-ratio limits while streaming;
 - reject encrypted, corrupt, empty, unsupported, nested, and limit-exceeding
   containers deterministically; and
-- move both mailbox ingestion and backup/import extraction through the shared
-  bounded primitives where their contracts overlap.
+- expose the standalone bounded contract without changing mailbox, parser,
+  persistence, backup/import, or HTTP behavior; callers move onto it in the
+  dependent orchestrator boundary.
 
 PR boundary B — orchestrator (after slice 2):
 

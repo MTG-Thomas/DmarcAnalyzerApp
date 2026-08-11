@@ -117,6 +117,11 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
     workerBuilder.Services.AddMtaStsMonitoring(workerBuilder.Configuration);
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
+    workerBuilder.Services.AddOptions<ReportPayloadExtractionOptions>()
+        .Bind(workerBuilder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
+        .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
+        .ValidateOnStart();
+    workerBuilder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
     // Backup offload runs on the loop, so the worker host needs the whole chain — the
     // export service included. Registering it only on the API host would leave the pass
     // throwing from GetRequiredService in worker mode, visible as nothing but a caught log
@@ -267,6 +272,11 @@ builder.Services.AddMtaStsMonitoring(builder.Configuration);
 builder.Services.AddScoped<IMtaStsPolicyHostService, MtaStsPolicyHostService>();
 builder.Services.AddScoped<IMtaStsPolicyAdminService, MtaStsPolicyAdminService>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+builder.Services.AddOptions<ReportPayloadExtractionOptions>()
+    .Bind(builder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
+    .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
