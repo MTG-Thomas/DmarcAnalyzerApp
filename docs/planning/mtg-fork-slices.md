@@ -123,6 +123,8 @@ changing product behavior.
 
 ## 2. Parsed DMARC persistence service
 
+Status: complete in the MTG fork on 2026-08-11.
+
 Extract the transaction, domain resolution, deduplication, and entity writes
 from `MailboxSyncService` behind `IDmarcReportIngestor`, mirroring the existing
 `ITlsReportIngestor` shape. This is a refactor, not the final upload seam.
