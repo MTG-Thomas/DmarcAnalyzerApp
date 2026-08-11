@@ -351,7 +351,7 @@ public sealed class DmarcRuaReportParserTests
                   <source_ip>127.0.0.1</source_ip>
                   <count>2</count>
                   <policy_evaluated>
-                    <disposition>none</disposition>
+                    <disposition>pass</disposition>
                     <dkim>pass</dkim>
                     <spf>pass</spf>
                   </policy_evaluated>
@@ -384,7 +384,11 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal(1, result.RecordCount);
         Assert.Single(result.Records);
         Assert.Equal(2, result.Records[0].MessageCount);
+        Assert.Equal("pass", result.Records[0].Disposition);
         Assert.Contains(result.ValidationMessages, x => x.Contains("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0'", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            result.ValidationMessages,
+            x => x.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
     }
 
     [Fact]
