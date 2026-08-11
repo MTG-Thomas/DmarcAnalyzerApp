@@ -16,6 +16,15 @@ public enum ReportPayloadRejectionCode
     CompressionRatioExceeded,
     InvalidDmarcReport,
     InvalidTlsReport,
+    ContentSha256Mismatch,
+}
+
+public enum ReportPayloadContainer
+{
+    Unknown,
+    Bare,
+    Gzip,
+    Zip,
 }
 
 /// <summary>
@@ -36,7 +45,8 @@ public sealed record ReportPayloadExtractionResult(
     IReadOnlyList<ExtractedReportPayload> Payloads,
     IReadOnlyList<ReportPayloadRejection> Rejections,
     string? ContentSha256,
-    long PayloadBytes)
+    long PayloadBytes,
+    ReportPayloadContainer Container = ReportPayloadContainer.Unknown)
 {
     public bool HasPayloads => Payloads.Count > 0;
 }

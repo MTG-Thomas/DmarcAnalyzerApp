@@ -96,10 +96,13 @@ public sealed class ReportPayloadIngestorIntegrationTests(PostgreSqlDatabaseFixt
         Assert.Equal(1, duplicate.TlsDuplicates);
 
         await using var verification = database.CreateDbContext();
-        Assert.Equal(1, await verification.SmtpTlsReports.CountAsync());
+        var persistedReport = await verification.SmtpTlsReports.SingleAsync();
+        var persistedLedger = await verification.TlsReportIngests.SingleAsync();
+        Assert.Equal(source.SourceId, persistedReport.MailboxSourceId);
+        Assert.Equal(source.SourceId, persistedLedger.MailboxSourceId);
+        Assert.Equal(source.DefaultClientId, persistedLedger.ClientId);
         Assert.Equal(1, await verification.SmtpTlsReportPolicies.CountAsync());
         Assert.Equal(3, await verification.SmtpTlsFailureDetails.CountAsync());
-        Assert.Equal(1, await verification.TlsReportIngests.CountAsync());
     }
 
     private async Task<ReportSourceContext> ResetMigrateAndSeedAsync()

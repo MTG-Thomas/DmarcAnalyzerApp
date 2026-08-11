@@ -215,13 +215,13 @@ public sealed class MailboxSyncService(
                                 attachment.ContentType?.MimeType),
                             operationToken);
 
-                        attachmentsProcessed += outcome.ReportsProcessed;
+                        var mappedCounters = MapPayloadOutcomeCounters(outcome);
+                        attachmentsProcessed += mappedCounters.AttachmentsProcessed;
                         reportsInserted += outcome.DmarcInserted;
                         reportsSkippedAsDuplicate += outcome.DmarcDuplicates;
                         tlsReportsInserted += outcome.TlsInserted;
                         tlsReportsSkippedAsDuplicate += outcome.TlsDuplicates;
-                        parseFailures += outcome.DmarcRejected + outcome.TlsRejected;
-                        parseFailures += outcome.Rejections.Count(CountsAsMailboxExtractionFailure);
+                        parseFailures += mappedCounters.ParseFailures;
 
                         foreach (var rejection in outcome.Rejections)
                         {
@@ -424,16 +424,34 @@ public sealed class MailboxSyncService(
             ? mimePart.Content.Open()
             : null;
 
-    private static bool CountsAsMailboxExtractionFailure(ReportPayloadRejection rejection)
-        => rejection.SourceName is null
-           && rejection.Code is ReportPayloadRejectionCode.RequestTooLarge
-               or ReportPayloadRejectionCode.CorruptContainer
-               or ReportPayloadRejectionCode.EncryptedContainer
-               or ReportPayloadRejectionCode.NestedContainer
-               or ReportPayloadRejectionCode.ArchiveEntryLimitExceeded
-               or ReportPayloadRejectionCode.EntryTooLarge
-               or ReportPayloadRejectionCode.ExpandedSizeLimitExceeded
-               or ReportPayloadRejectionCode.CompressionRatioExceeded;
+    public static (int AttachmentsProcessed, int ParseFailures) MapPayloadOutcomeCounters(
+        ReportPayloadIngestResult outcome)
+    {
+        var legacyGzipPayload = outcome.Container == ReportPayloadContainer.Gzip
+            && outcome.ReportsProcessed == 0
+            && outcome.Rejections.Any(rejection => rejection.Code is
+                ReportPayloadRejectionCode.EmptyContainer
+                or ReportPayloadRejectionCode.UnsupportedFormat
+                or ReportPayloadRejectionCode.NestedContainer);
+
+        var extractionFailures = outcome.Rejections.Count(rejection =>
+            rejection.SourceName is null
+            && (rejection.Code is ReportPayloadRejectionCode.RequestTooLarge
+                or ReportPayloadRejectionCode.CorruptContainer
+                or ReportPayloadRejectionCode.EncryptedContainer
+                or ReportPayloadRejectionCode.NestedContainer
+                or ReportPayloadRejectionCode.ArchiveEntryLimitExceeded
+                or ReportPayloadRejectionCode.EntryTooLarge
+                or ReportPayloadRejectionCode.ExpandedSizeLimitExceeded
+                or ReportPayloadRejectionCode.CompressionRatioExceeded
+                || outcome.Container == ReportPayloadContainer.Gzip
+                && rejection.Code is ReportPayloadRejectionCode.EmptyContainer
+                    or ReportPayloadRejectionCode.UnsupportedFormat));
+
+        return (
+            outcome.ReportsProcessed + (legacyGzipPayload ? 1 : 0),
+            outcome.DmarcRejected + outcome.TlsRejected + extractionFailures);
+    }
 
     /// <summary>
     /// The UIDs a pass should actually read: those past the checkpoint, oldest first.

@@ -53,30 +53,45 @@ public sealed class BoundedReportPayloadExtractor(
 
         if (magic == ContainerKind.Zip)
         {
-            return await ExtractZipAsync(bytes, digest, ct);
+            return (await ExtractZipAsync(bytes, digest, ct)) with
+            {
+                Container = ReportPayloadContainer.Zip,
+            };
         }
 
         if (magic == ContainerKind.Gzip)
         {
-            return await ExtractGzipAsync(bytes, metadata, digest, ct);
+            return (await ExtractGzipAsync(bytes, metadata, digest, ct)) with
+            {
+                Container = ReportPayloadContainer.Gzip,
+            };
         }
 
         // Recognisable body content beats misleading .zip/.gz labels.
         var contentKind = ReportPayloadFormat.Classify(bytes);
         if (contentKind != ReportPayloadKind.Unknown)
         {
-            return Accepted(contentKind, bytes, metadata.FileName, digest, bytes.Length);
+            return Accepted(contentKind, bytes, metadata.FileName, digest, bytes.Length) with
+            {
+                Container = ReportPayloadContainer.Bare,
+            };
         }
 
         var labelledContainer = DetectContainerLabel(metadata.FileName, metadata.MediaType);
         if (labelledContainer == ContainerKind.Zip)
         {
-            return await ExtractZipAsync(bytes, digest, ct);
+            return (await ExtractZipAsync(bytes, digest, ct)) with
+            {
+                Container = ReportPayloadContainer.Zip,
+            };
         }
 
         if (labelledContainer == ContainerKind.Gzip)
         {
-            return await ExtractGzipAsync(bytes, metadata, digest, ct);
+            return (await ExtractGzipAsync(bytes, metadata, digest, ct)) with
+            {
+                Container = ReportPayloadContainer.Gzip,
+            };
         }
 
         if (labelledContainer == ContainerKind.Unsupported)
@@ -85,9 +100,12 @@ public sealed class BoundedReportPayloadExtractor(
         }
 
         var labelledKind = ReportPayloadFormat.Classify(bytes, metadata.FileName, metadata.MediaType);
-        return labelledKind == ReportPayloadKind.Unknown
+        return (labelledKind == ReportPayloadKind.Unknown
             ? Fatal(ReportPayloadRejectionCode.UnsupportedFormat, digest, bytes.Length)
-            : Accepted(labelledKind, bytes, metadata.FileName, digest, bytes.Length);
+            : Accepted(labelledKind, bytes, metadata.FileName, digest, bytes.Length)) with
+        {
+            Container = ReportPayloadContainer.Bare,
+        };
     }
 
     private async Task<ReportPayloadExtractionResult> ExtractGzipAsync(

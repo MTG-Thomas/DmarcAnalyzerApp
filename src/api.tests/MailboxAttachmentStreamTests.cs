@@ -32,4 +32,29 @@ public sealed class MailboxAttachmentStreamTests
 
         Assert.Null(MailboxSyncService.OpenDecodedAttachmentStream(part));
     }
+
+    [Theory]
+    [InlineData(ReportPayloadContainer.Gzip, ReportPayloadRejectionCode.UnsupportedFormat, 1, 1)]
+    [InlineData(ReportPayloadContainer.Gzip, ReportPayloadRejectionCode.EmptyContainer, 1, 1)]
+    [InlineData(ReportPayloadContainer.Gzip, ReportPayloadRejectionCode.NestedContainer, 1, 1)]
+    [InlineData(ReportPayloadContainer.Bare, ReportPayloadRejectionCode.UnsupportedFormat, 0, 0)]
+    [InlineData(ReportPayloadContainer.Zip, ReportPayloadRejectionCode.EmptyContainer, 0, 0)]
+    public void LegacyGzipFailureCountersRemainStable(
+        ReportPayloadContainer container,
+        ReportPayloadRejectionCode rejection,
+        int expectedProcessed,
+        int expectedFailures)
+    {
+        var outcome = new ReportPayloadIngestResult(
+            0, 0, 0, 0, 0, 0,
+            [new(rejection)],
+            "digest",
+            1,
+            container);
+
+        var counters = MailboxSyncService.MapPayloadOutcomeCounters(outcome);
+
+        Assert.Equal(expectedProcessed, counters.AttachmentsProcessed);
+        Assert.Equal(expectedFailures, counters.ParseFailures);
+    }
 }

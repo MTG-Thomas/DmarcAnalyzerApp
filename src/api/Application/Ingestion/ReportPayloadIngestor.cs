@@ -25,7 +25,8 @@ public sealed record ReportPayloadIngestResult(
     int TlsRejected,
     IReadOnlyList<ReportPayloadRejection> Rejections,
     string? ContentSha256,
-    long PayloadBytes)
+    long PayloadBytes,
+    ReportPayloadContainer Container)
 {
     public int ReportsProcessed =>
         DmarcInserted + DmarcDuplicates + DmarcRejected
@@ -61,6 +62,21 @@ public sealed class ReportPayloadIngestor(
 
         try
         {
+            if (metadata.ExpectedContentSha256 is not null
+                && !string.Equals(
+                    metadata.ExpectedContentSha256,
+                    extraction.ContentSha256,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                rejections.Add(new(ReportPayloadRejectionCode.ContentSha256Mismatch));
+                return new(
+                    0, 0, 0, 0, 0, 0,
+                    rejections,
+                    extraction.ContentSha256,
+                    extraction.PayloadBytes,
+                    extraction.Container);
+            }
+
             foreach (var report in extraction.Payloads)
             {
                 ct.ThrowIfCancellationRequested();
@@ -125,6 +141,18 @@ public sealed class ReportPayloadIngestor(
                     rejections.Add(new(ReportPayloadRejectionCode.InvalidDmarcReport, report.SourceName));
                 }
             }
+
+            return new(
+                dmarcInserted,
+                dmarcDuplicates,
+                dmarcRejected,
+                tlsInserted,
+                tlsDuplicates,
+                tlsRejected,
+                rejections,
+                extraction.ContentSha256,
+                extraction.PayloadBytes,
+                extraction.Container);
         }
         finally
         {
@@ -134,15 +162,5 @@ public sealed class ReportPayloadIngestor(
             }
         }
 
-        return new(
-            dmarcInserted,
-            dmarcDuplicates,
-            dmarcRejected,
-            tlsInserted,
-            tlsDuplicates,
-            tlsRejected,
-            rejections,
-            extraction.ContentSha256,
-            extraction.PayloadBytes);
     }
 }

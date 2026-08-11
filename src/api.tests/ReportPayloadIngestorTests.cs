@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.Reports;
 using Microsoft.Extensions.Options;
@@ -81,6 +82,8 @@ public sealed class ReportPayloadIngestorTests
 
         Assert.Equal(1, inserted.DmarcInserted);
         Assert.Equal(1, duplicate.DmarcDuplicates);
+        Assert.Equal(ReportPayloadContainer.Bare, inserted.Container);
+        Assert.Equal(ReportPayloadContainer.Gzip, duplicate.Container);
         Assert.Equal(2, dmarc.Reports.Count);
     }
 
@@ -100,6 +103,40 @@ public sealed class ReportPayloadIngestorTests
         Assert.Equal(0, result.ReportsProcessed);
         Assert.Empty(dmarc.Reports);
         Assert.Empty(tls.Reports);
+    }
+
+    [Fact]
+    public async Task ExpectedDigestGatesParsingAndPersistence()
+    {
+        var dmarc = new StubDmarcIngestor(_ => DmarcIngestOutcome.Inserted);
+        var tls = new StubTlsIngestor(_ => TlsReportIngestOutcome.Inserted);
+        var ingestor = CreateIngestor(dmarc, tls);
+        var xml = Fixture("sample-yahoo-aggregate.xml");
+
+        await using var payload = new MemoryStream(xml, writable: false);
+        var result = await ingestor.IngestAsync(
+            Source,
+            payload,
+            new("report.xml", ExpectedContentSha256: new string('0', 64)),
+            CancellationToken.None);
+
+        Assert.Equal(
+            Convert.ToHexStringLower(SHA256.HashData(xml)),
+            result.ContentSha256);
+        Assert.Equal(ReportPayloadRejectionCode.ContentSha256Mismatch, Assert.Single(result.Rejections).Code);
+        Assert.Equal(0, result.ReportsProcessed);
+        Assert.Empty(dmarc.Reports);
+        Assert.Empty(tls.Reports);
+
+        await using var matchingPayload = new MemoryStream(xml, writable: false);
+        var matching = await ingestor.IngestAsync(
+            Source,
+            matchingPayload,
+            new("report.xml", ExpectedContentSha256: result.ContentSha256),
+            CancellationToken.None);
+
+        Assert.Equal(1, matching.DmarcInserted);
+        Assert.Single(dmarc.Reports);
     }
 
     [Fact]
