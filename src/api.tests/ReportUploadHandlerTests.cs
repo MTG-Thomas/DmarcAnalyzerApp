@@ -9,6 +9,7 @@ using DmarcAnalyzer.Api.Contracts.Auth;
 using DmarcAnalyzer.Api.Middleware;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
@@ -76,6 +77,65 @@ public sealed class ReportUploadHandlerTests
 
         Assert.Equal(422, Status(result));
         Assert.Equal(["InvalidIdempotencyKey"], Response(result).RejectionCodes);
+        Assert.False(ingestor.WasCalled);
+    }
+
+    [Fact]
+    public async Task MalformedAuthorizationVariantsAreUniformlyUnauthorized()
+    {
+        var contexts = new[]
+        {
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+        };
+        contexts[0].Request.Headers.Remove("Authorization");
+        contexts[1].Request.Headers.Authorization = "not a header";
+        contexts[2].Request.Headers.Authorization = "Basic credentials";
+        contexts[3].Request.Headers.Authorization = new StringValues([Token, Token]);
+        var ingestor = new StubIngestor(_ => Success(inserted: 1));
+        var handler = Handler(authenticated: true, ingestor);
+
+        foreach (var context in contexts)
+        {
+            var result = await handler.HandleAsync(context, SourceId, default);
+            Assert.Equal(401, Status(result));
+            Assert.Equal(["Unauthorized"], Response(result).RejectionCodes);
+        }
+
+        Assert.False(ingestor.WasCalled);
+    }
+
+    [Fact]
+    public async Task MalformedIntegrityHeaderVariantsAreRejectedBeforeReadingBody()
+    {
+        var contexts = new[]
+        {
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+            Request("payload"u8.ToArray()),
+        };
+        contexts[0].Request.Headers["X-Content-SHA256"] = "short";
+        contexts[1].Request.Headers["X-Content-SHA256"] = new string('g', 64);
+        contexts[2].Request.Headers["X-Content-SHA256"] = new StringValues([new string('a', 64), new string('b', 64)]);
+        contexts[3].Request.Headers["Idempotency-Key"] = "not-sha256";
+        contexts[4].Request.Headers["Idempotency-Key"] = new StringValues(["sha256:" + new string('a', 64), "sha256:" + new string('b', 64)]);
+        var ingestor = new StubIngestor(_ => Success(inserted: 1));
+        var handler = Handler(authenticated: true, ingestor);
+        var results = new List<IResult>();
+
+        foreach (var context in contexts)
+        {
+            var result = await handler.HandleAsync(context, SourceId, default);
+            results.Add(result);
+            Assert.Equal(422, Status(result));
+        }
+
+        Assert.Equal(["InvalidContentSha256"], Response(results[0]).RejectionCodes);
+        Assert.Equal(["InvalidIdempotencyKey"], Response(results[3]).RejectionCodes);
         Assert.False(ingestor.WasCalled);
     }
 
@@ -181,6 +241,48 @@ public sealed class ReportUploadHandlerTests
         Assert.Equal(413, Status(result));
         Assert.Equal(["RequestTooLarge"], Response(result).RejectionCodes);
         Assert.False(ingestor.WasCalled);
+    }
+
+    [Fact]
+    public async Task EarlyLengthAndUnsupportedMultipartMediaReturnStableStatuses()
+    {
+        const int maxBytes = 64;
+        var oversized = Request(new byte[maxBytes + 1]);
+        var multipartMixed = Request("payload"u8.ToArray());
+        multipartMixed.Request.ContentType = "multipart/mixed; boundary=test";
+        var ingestor = new StubIngestor(_ => Success(inserted: 1));
+        var handler = Handler(authenticated: true, ingestor, maxBytes);
+
+        var oversizedResult = await handler.HandleAsync(oversized, SourceId, default);
+        var mediaResult = await handler.HandleAsync(multipartMixed, SourceId, default);
+
+        Assert.Equal(413, Status(oversizedResult));
+        Assert.Equal(["RequestTooLarge"], Response(oversizedResult).RejectionCodes);
+        Assert.Equal(415, Status(mediaResult));
+        Assert.Equal(["UnsupportedMediaType"], Response(mediaResult).RejectionCodes);
+        Assert.False(ingestor.WasCalled);
+    }
+
+    [Theory]
+    [InlineData(ReportPayloadRejectionCode.RequestTooLarge, 413)]
+    [InlineData(ReportPayloadRejectionCode.UnsupportedContainer, 415)]
+    [InlineData(ReportPayloadRejectionCode.InvalidDmarcReport, 422)]
+    public async Task TypedIngestRejectionsMapToStableStatuses(
+        ReportPayloadRejectionCode code,
+        int expectedStatus)
+    {
+        var resultValue = new ReportPayloadIngestResult(
+            0, 0, 0, 0, 0, 0,
+            [new(code)],
+            new string('a', 64),
+            100,
+            ReportPayloadContainer.Bare);
+
+        var result = await Handler(authenticated: true, new StubIngestor(_ => resultValue))
+            .HandleAsync(Request("payload"u8.ToArray()), SourceId, default);
+
+        Assert.Equal(expectedStatus, Status(result));
+        Assert.Equal([code.ToString()], Response(result).RejectionCodes);
     }
 
     [Fact]
@@ -291,7 +393,7 @@ public sealed class ReportUploadHandlerTests
     private sealed class StubAuthenticator(ReportSourceContext? result) : IApiSourceAuthenticator
     {
         public Task<ReportSourceContext?> AuthenticateAsync(Guid sourceId, string? bearerToken, CancellationToken ct)
-            => Task.FromResult(result);
+            => Task.FromResult(bearerToken == Token ? result : null);
     }
 
     private sealed class StubIngestor : IReportPayloadIngestor
