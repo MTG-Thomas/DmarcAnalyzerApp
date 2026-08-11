@@ -199,6 +199,8 @@ then orchestrator) after fork proof.
 
 ## 4. API report source and reveal-once keys
 
+Status: implemented in the MTG fork on 2026-08-11.
+
 Represent machine ingestion as a source with `Protocol=api` and an authoritative
 `DefaultClientId`. Keep current non-null report/source foreign keys. API rows are
 excluded from mailbox polling, mailbox-health failure calculations, and mailbox
@@ -218,12 +220,12 @@ API source can authenticate or upload a report.
 
 PR boundary B — key lifecycle:
 
-- add a credential table keyed to the source so two keys may overlap during a
+- [x] add a credential table keyed to the source so two keys may overlap during a
   safe rotation;
-- generate a high-entropy reveal-once token;
-- persist only prefix plus SHA-256 hash and created/revoked timestamps;
-- compare hashes in fixed time; and
-- add agency-admin create/rotate/revoke operations with audit events and tests.
+- [x] generate a high-entropy reveal-once token;
+- [x] persist only prefix plus SHA-256 hash and created/revoked timestamps;
+- [x] compare hashes in fixed time; and
+- [x] add agency-admin create/rotate/revoke operations with audit events and tests.
 
 Acceptance: the raw token is never returned after creation, stored, logged, or
 included in backup artifacts. A restored source requires token reissue.

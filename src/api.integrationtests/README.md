@@ -16,10 +16,9 @@ Each xUnit collection creates a randomly named database and drops it on
 completion. Never point the variable at a server where the test identity cannot
 safely create and drop disposable databases.
 
-The previous-release migration test currently targets the same latest migration
-for v0.9.0 and v0.10.0. That upgrade is intentionally a no-op until the next
-schema-bearing release, while still proving seeded configuration survives and
-the current model has no pending migration.
+The previous-release migration test starts at the API report-source schema and
+upgrades through the reveal-once credential table while proving seeded
+configuration survives and the current model has no pending migration.
 
 Direct DMARC report/record/auth-result/ledger atomicity and replay remain outside
 this harness PR because those writes are still private to `MailboxSyncService`
