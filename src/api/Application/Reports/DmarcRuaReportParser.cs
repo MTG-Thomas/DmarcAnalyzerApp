@@ -49,6 +49,15 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             .Concat(DescribeDmarcBisTags(policyPublished))
             .ToArray();
 
+        // The captured RFC 9990 dispositions are keyed by position among the document's own
+        // <record> elements, so they are only safe to use while the deserializer produced
+        // exactly that many records. Nothing observed makes the two disagree, but if they ever
+        // did, an index would carry one record's disposition onto another — storing a value the
+        // reporter never sent for that source, which is worse than falling back to the v1 enum.
+        var actionDispositions = normalized.DmarcBisDispositions.Count == (feedback.Record?.Length ?? 0)
+            ? normalized.DmarcBisDispositions
+            : Array.Empty<string?>();
+
         var records = feedback.Record?
             .Select((record, index) =>
             {
@@ -73,7 +82,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 return new DmarcReportRecordParseResult(
                     record.Row?.SourceIp ?? string.Empty,
                     record.Row?.Count ?? 0,
-                    normalized.DmarcBisDispositions.ElementAtOrDefault(index)
+                    actionDispositions.ElementAtOrDefault(index)
                         ?? record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant()
                         ?? string.Empty,
                     record.Row?.PolicyEvaluated?.Dkim.ToString().ToLowerInvariant() ?? string.Empty,
@@ -539,6 +548,11 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 // DispositionType and added "pass". DmarcRua still models this field with
                 // the v1 enum, so feed it a compatible transport value; the canonical v2
                 // value captured above is restored when mapping each deserialized record.
+                //
+                // Upstream as danielsen/DmarcRua#12, with a patch verified against its own
+                // corpus. Deserialization *throws* there rather than degrading the value, so
+                // without this the whole document is lost, not just the field. Treat this as
+                // the fix rather than a stopgap: 2.0.1 is 18 months old and unanswered.
                 if (isDmarcBisReport
                     && parent == "policy_evaluated"
                     && element.Name.LocalName == "disposition"

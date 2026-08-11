@@ -391,6 +391,87 @@ public sealed class DmarcRuaReportParserTests
             x => x.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// The captured action dispositions are matched to records by position, so a one-record
+    /// report cannot show they land on the right record. Three records, three different values.
+    /// </summary>
+    [Fact]
+    public void Parse_WithDmarcBisNamespace_KeepsEachRecordsOwnDisposition()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback xmlns="urn:ietf:params:xml:ns:dmarc-2.0">
+              <version>1.0</version>
+              <report_metadata>
+                <org_name>bis-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>bis-2</report_id>
+                <date_range>
+                  <begin>1737446400</begin>
+                  <end>1737532800</end>
+                </date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <adkim>r</adkim>
+                <aspf>r</aspf>
+                <p>reject</p>
+                <pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>192.0.2.1</source_ip>
+                  <count>1</count>
+                  <policy_evaluated>
+                    <disposition>reject</disposition>
+                    <dkim>fail</dkim>
+                    <spf>fail</spf>
+                  </policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>fail</result></spf></auth_results>
+              </record>
+              <record>
+                <row>
+                  <source_ip>192.0.2.2</source_ip>
+                  <count>2</count>
+                  <policy_evaluated>
+                    <disposition>pass</disposition>
+                    <dkim>pass</dkim>
+                    <spf>pass</spf>
+                  </policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+              <record>
+                <row>
+                  <source_ip>192.0.2.3</source_ip>
+                  <count>3</count>
+                  <policy_evaluated>
+                    <disposition>quarantine</disposition>
+                    <dkim>fail</dkim>
+                    <spf>pass</spf>
+                  </policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(
+            ["192.0.2.1=reject", "192.0.2.2=pass", "192.0.2.3=quarantine"],
+            result.Records.Select(x => $"{x.SourceIp}={x.Disposition}").ToArray());
+        Assert.DoesNotContain(
+            result.ValidationMessages,
+            x => x.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Parse_ExtractsPublishedPolicy()
     {
