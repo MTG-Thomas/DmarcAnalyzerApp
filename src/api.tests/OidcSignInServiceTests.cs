@@ -3,6 +3,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -21,7 +22,11 @@ public sealed class OidcSignInServiceTests
         return new DmarcAnalyzerDbContext(options);
     }
 
-    private static OidcSignInService NewService(DmarcAnalyzerDbContext db, bool autoProvision, bool trustUnverifiedEmail = false)
+    private static OidcSignInService NewService(
+        DmarcAnalyzerDbContext db,
+        bool autoProvision,
+        bool trustUnverifiedEmail = false,
+        ILogger<OidcSignInService>? logger = null)
     {
         var opts = Options.Create(new OidcOptions
         {
@@ -31,7 +36,7 @@ public sealed class OidcSignInServiceTests
             DefaultRole = Roles.ClientViewer,
             TrustUnverifiedEmail = trustUnverifiedEmail,
         });
-        return new OidcSignInService(db, new AuthService(db), opts, NullLogger<OidcSignInService>.Instance);
+        return new OidcSignInService(db, new AuthService(db), opts, logger ?? NullLogger<OidcSignInService>.Instance);
     }
 
     private static ClaimsPrincipal Principal(string subject, string? email, bool emailVerified, string name = "Ext User")
@@ -128,6 +133,22 @@ public sealed class OidcSignInServiceTests
         Assert.False(result.IsSuccess);
         Assert.Equal("email_not_verified", result.ErrorCode);
         Assert.Equal(0, await db.UserIdentities.CountAsync());
+    }
+
+    [Fact]
+    public async Task DoesNotWriteExternalIdentityDetailsToApplicationLogs()
+    {
+        await using var db = NewDb();
+        db.AgencyUsers.Add(NewUser("private@agency.tld", Roles.AgencyAdmin));
+        await db.SaveChangesAsync();
+        var logger = new RecordingLogger<OidcSignInService>();
+
+        await NewService(db, autoProvision: false, logger: logger)
+            .SignInAsync(Principal("private-subject", "private@agency.tld", emailVerified: false), null, null, CancellationToken.None);
+
+        var output = string.Join(Environment.NewLine, logger.Messages);
+        Assert.DoesNotContain("private@agency.tld", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("private-subject", output, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -309,5 +330,21 @@ public sealed class OidcSignInServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("account_disabled", result.ErrorCode);
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) => Messages.Add(formatter(state, exception));
     }
 }

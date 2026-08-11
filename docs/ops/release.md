@@ -36,7 +36,7 @@ A release tag also publishes the chart as an OCI artifact:
 oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer
 ```
 
-Chart publication waits for the multi-architecture image, runtime smoke test,
+Chart publication waits for the amd64 image, runtime smoke test,
 provenance attestation and SBOM attestation. Validation still runs in parallel;
 only the write is ordered behind the image.
 
@@ -99,12 +99,10 @@ how a Job that could never create a pod got as far as a real cluster once.
 Coverage is always retained as the `api-coverage` workflow artifact. Codecov
 uses GitHub OIDC and needs no repository token, but each fork must first be
 onboarded in Codecov; set `CODECOV_ENABLED=true` only after activation. Sonar
-also requires a SonarCloud project. Until that external project exists,
-`sonar.yml` is manual and fails closed. To activate it, create the project, add
-a `SONAR_TOKEN` secret and `SONAR_ORGANIZATION` plus `SONAR_PROJECT_KEY`
-repository variables, run the workflow once, then add `push` and `pull_request`
-triggers and require its `analyze` check. Do not make either service automatic
-before its first authenticated run.
+runs on pushes and pull requests against the `MTG-Thomas_DmarcAnalyzerApp`
+SonarCloud project and waits for the quality gate. It requires the
+`SONAR_TOKEN` secret and `SONAR_ORGANIZATION` plus `SONAR_PROJECT_KEY`
+repository variables.
 
 ## Versioning
 
@@ -228,8 +226,7 @@ git tag -a v0.2.0 -m "v0.2.0 — retention purge, CSV export"
 git push origin v0.2.0
 ```
 
-CI then builds and pushes the image to both registries for `linux/amd64` and
-`linux/arm64`.
+CI then builds and pushes the image to both registries for `linux/amd64`.
 
 ## Verifying the published image
 
@@ -238,7 +235,7 @@ Do this as an anonymous user — logged-in pulls hide a private-package mistake:
 ```bash
 docker logout ghcr.io
 docker manifest inspect ghcr.io/dmarc-analyzer-net/dmarc-analyzer:0.2.0 \
-  | grep -o '"architecture": "[a-z0-9]*"' | sort -u   # expect amd64 + arm64
+  | grep -o '"architecture": "[a-z0-9]*"' | sort -u   # expect amd64
 docker manifest inspect dmarcanalyzernet/dmarc-analyzer:0.2.0 > /dev/null && echo "mirror ok"
 ```
 
