@@ -168,8 +168,13 @@ Sequenced; each step is independently shippable.
       classifier with configuration-backed request, expanded, entry-count,
       per-entry, and compression-ratio limits. Fatal container failures yield
       no payloads; empty, nested, and unsupported ZIP entries can be rejected
-      alongside valid siblings. Parser, persistence, mailbox, and HTTP wiring
-      remain in MTG fork slice 3B after the parsed persistence seam lands.
+      alongside valid siblings.
+- [x] (done 2026-08-11) **Route runtime ingestion through the bounded seam.**
+      `IReportPayloadIngestor` composes extraction, both parsers, and the parsed
+      DMARC/TLS ingestors behind one trusted `ReportSourceContext`. Mailbox MIME
+      decoding now streams directly into it and no longer owns classification,
+      archive expansion, parsing, routing, or persistence. PostgreSQL tests pin
+      cross-container replay, rollback/recovery, and TLS source provenance.
 - [x] (done 2026-08-11) **Add the API report-source model.**
       `mailbox_source.Protocol=api` retains source activation and default-client
       ownership without fake IMAP fields. A real-PostgreSQL constraint protects

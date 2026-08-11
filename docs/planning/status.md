@@ -85,11 +85,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
-- A standalone bounded raw-payload extractor classifies bare XML/JSON, GZIP,
-  and multi-entry ZIP content before parsing. Configuration caps request bytes,
-  total and per-entry expansion, entry count, and compression ratio; fatal
-  container failures return no payloads while valid ZIP siblings survive typed
-  per-entry rejections. Runtime callers move to this seam in MTG fork slice 3B.
+- One `IReportPayloadIngestor` now owns bounded extraction, format routing,
+  DMARC/TLS parsing, and dispatch to parsed persistence. It classifies bare
+  XML/JSON, GZIP, and multi-entry ZIP content; configuration caps request bytes,
+  total and per-entry expansion, entry count, and compression ratio. Mailbox
+  ingestion passes MimeKit's transfer-decoded stream directly into this seam,
+  while preserving archive-before-parse, counters, checkpoints, and run control.
 - Sync operational history persisted in `mailbox_sync_run`.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing
