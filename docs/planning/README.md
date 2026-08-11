@@ -44,6 +44,9 @@ Planning artifacts for `DmarcAnalyzerApp`, a DMARC analyzer platform in the spir
   **Check here first** before assuming a feature exists.
 - [`backlog.md`](backlog.md) - prioritized implementation tasks. **The source of
   truth for what to pick up next.**
+- [`mtg-fork-slices.md`](mtg-fork-slices.md) - MTG fork dogfood and pre-live
+  slices, with PR boundaries and acceptance gates. It does not replace the
+  upstream backlog.
 - [`roadmap.md`](roadmap.md) - milestone delivery plan with per-item status.
 - [`architecture.md`](architecture.md) - system architecture, runtime modes, and
   component responsibilities.
