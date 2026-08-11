@@ -46,7 +46,7 @@ public sealed class DispositionAnalyticsTests
     {
         var report = new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = domainId, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = domainId, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "google.com", ReportId = Guid.NewGuid().ToString("N"),
             RangeBeginUtc = DateTime.UtcNow.AddDays(-1),
             RangeEndUtc = DateTime.UtcNow.AddDays(-1).AddHours(23),
