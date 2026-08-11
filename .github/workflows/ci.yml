@@ -77,13 +77,87 @@ jobs:
           npm test
           npm run build
 
+  postgres-integration:
+    name: PostgreSQL 16 integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg16
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Prepare masked test connection
+        shell: bash
+        run: |
+          connection="Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg16"
+          echo "::add-mask::$connection"
+          echo "DMARC_TEST_POSTGRES=$connection" >> "$GITHUB_ENV"
+
+      - name: PostgreSQL integration tests
+        run: dotnet test src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj --nologo
+
+  postgres-18-migration-smoke:
+    name: PostgreSQL 18 migration smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg18
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Prepare masked test connection
+        shell: bash
+        run: |
+          connection="Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg18"
+          echo "::add-mask::$connection"
+          echo "DMARC_TEST_POSTGRES=$connection" >> "$GITHUB_ENV"
+
+      - name: PostgreSQL migration tests
+        run: dotnet test src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj --nologo --filter Category=Migration
+
 
   # The chart is checked on every run and published only on a release tag. The
   # checks matter more than the publish: a chart is templating, so nothing but
   # rendering it proves it still works, and a broken one fails at `helm install`
   # in someone else's cluster rather than here.
   chart:
-    needs: [test]
+    needs: [test, postgres-integration, postgres-18-migration-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -278,7 +352,7 @@ jobs:
           fi
 
   image:
-    needs: [test, changes]
+    needs: [test, postgres-integration, postgres-18-migration-smoke, changes]
     if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     permissions:
