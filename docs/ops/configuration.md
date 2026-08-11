@@ -47,7 +47,21 @@ Worker mode does **not** apply migrations, whatever this is set to — only the 
 host reads it. That is why the split Compose overlay gates the worker on the app
 being healthy.
 
-## Ingestion (`Worker`)
+## Raw report extraction (`Ingestion`)
+
+Applied before a raw report reaches a parser. Container-wide limit failures
+return no extracted payloads; a ZIP may still return valid reports alongside
+typed rejections for individual empty, nested, or unsupported entries.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Ingestion__MaxRequestBytes` | `26214400` | Maximum bytes read from one bare or compressed payload. |
+| `Ingestion__MaxExpandedBytes` | `104857600` | Maximum expanded bytes across all entries in one payload. |
+| `Ingestion__MaxArchiveEntries` | `100` | Maximum ZIP directory and file entries. |
+| `Ingestion__MaxEntryBytes` | `26214400` | Maximum expanded bytes for one report entry. Must not exceed `MaxExpandedBytes`. |
+| `Ingestion__MaxCompressionRatio` | `100` | Maximum expanded-to-compressed ratio for GZIP and ZIP content. |
+
+## Mailbox ingestion (`Worker`)
 
 Read in `worker` and `all` modes.
 

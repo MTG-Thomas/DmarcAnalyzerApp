@@ -29,6 +29,7 @@ public sealed class ConfigurationContractTests
     private static readonly (string Section, Type Type)[] BoundSections =
     [
         ("Worker", typeof(DmarcAnalyzer.Api.Workers.WorkerOptions)),
+        ("Ingestion", typeof(DmarcAnalyzer.Api.Application.Ingestion.ReportPayloadExtractionOptions)),
         ("Email", typeof(DmarcAnalyzer.Api.Application.Notifications.EmailOptions)),
         ("Alerts", typeof(DmarcAnalyzer.Api.Application.Notifications.AlertOptions)),
         ("Digest", typeof(DmarcAnalyzer.Api.Application.Notifications.DigestOptions)),
