@@ -41,6 +41,7 @@ public sealed class DmarcReportIngestor(
             || string.IsNullOrEmpty(reportId)
             || string.IsNullOrEmpty(organizationName)
             || report.RangeEndUtc < report.RangeBeginUtc
+            || report.RecordCount <= 0
             || report.RecordCount != report.Records.Count)
         {
             return DmarcIngestOutcome.Rejected;

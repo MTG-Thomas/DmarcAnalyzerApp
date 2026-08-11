@@ -28,6 +28,27 @@ public sealed class DmarcRuaReportParserTests
     }
 
     [Fact]
+    public void Parse_AcceptsUtf8BomAndWhitespaceBeforeXmlDeclaration()
+    {
+        var xml = System.Text.Encoding.UTF8.GetString(
+                File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "sample-yahoo-aggregate.xml")))
+            .Replace("<adkim>r</adkim>", string.Empty, StringComparison.Ordinal)
+            .Replace("<aspf>r</aspf>", string.Empty, StringComparison.Ordinal);
+        var payload = new byte[] { 0xEF, 0xBB, 0xBF, (byte)' ', (byte)'\r', (byte)'\n', (byte)'\t' }
+            .Concat(System.Text.Encoding.UTF8.GetBytes(xml))
+            .ToArray();
+
+        using var stream = new MemoryStream(payload, writable: false);
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("1737770612.289931", result.ReportId);
+        Assert.Single(result.Records);
+        Assert.Equal("relaxed", result.DkimAlignment);
+        Assert.Equal("relaxed", result.SpfAlignment);
+        Assert.False(result.HasValidationErrors);
+    }
+
+    [Fact]
     public void Parse_WithZohoFixture_MapsMetadataAndMultipleRecords()
     {
         using var stream = OpenFixture("sample-zoho-aggregate.xml");

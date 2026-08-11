@@ -160,6 +160,48 @@ public sealed class DmarcReportIngestorIntegrationTests(PostgreSqlDatabaseFixtur
         Assert.Equal(0, await verification.DmarcReportIngests.CountAsync());
     }
 
+    [Fact]
+    public async Task IngestParsed_RejectsZeroRecordsWithoutWritesAndAcceptsSubsequentSentinel()
+    {
+        var seeded = await ResetMigrateAndSeedAsync();
+        var reportId = "zero-records-recovery";
+        var policyDomain = "zero-records.example";
+
+        await using (var db = database.CreateDbContext())
+        {
+            var outcome = await CreateIngestor(db).IngestParsedAsync(
+                seeded.Source,
+                CreateReport(reportId, policyDomain, recordCount: 0),
+                CancellationToken.None);
+
+            Assert.Equal(DmarcIngestOutcome.Rejected, outcome);
+        }
+
+        await using (var verification = database.CreateDbContext())
+        {
+            Assert.Equal(0, await verification.Domains.CountAsync());
+            Assert.Equal(0, await verification.DmarcReports.CountAsync());
+            Assert.Equal(0, await verification.DmarcReportRecords.CountAsync());
+            Assert.Equal(0, await verification.DmarcReportIngests.CountAsync());
+        }
+
+        await using (var db = database.CreateDbContext())
+        {
+            var outcome = await CreateIngestor(db).IngestParsedAsync(
+                seeded.Source,
+                CreateReport(reportId, policyDomain),
+                CancellationToken.None);
+
+            Assert.Equal(DmarcIngestOutcome.Inserted, outcome);
+        }
+
+        await using var sentinelVerification = database.CreateDbContext();
+        Assert.Equal(1, await sentinelVerification.Domains.CountAsync());
+        Assert.Equal(1, await sentinelVerification.DmarcReports.CountAsync());
+        Assert.Equal(1, await sentinelVerification.DmarcReportRecords.CountAsync());
+        Assert.Equal(1, await sentinelVerification.DmarcReportIngests.CountAsync());
+    }
+
     private static Task<DmarcIngestOutcome> StartAtBarrierAsync(
         IDmarcReportIngestor ingestor,
         ReportSourceContext source,

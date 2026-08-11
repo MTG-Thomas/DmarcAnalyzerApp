@@ -146,11 +146,13 @@ public sealed class ReportPayloadIngestorTests
         var ingestor = CreateIngestor(
             dmarc,
             new StubTlsIngestor(_ => TlsReportIngestOutcome.Inserted));
-        var xml = """
-            <?xml version="1.0"?>
-            <!DOCTYPE feedback [<!ENTITY xxe SYSTEM "file:///not-readable">]>
-            <feedback><report_metadata><org_name>&xxe;</org_name></report_metadata></feedback>
-            """u8.ToArray();
+        var xml = new byte[] { 0xEF, 0xBB, 0xBF, (byte)' ', (byte)'\n' }
+            .Concat("""
+                <?xml version="1.0"?>
+                <!DOCTYPE feedback [<!ENTITY xxe SYSTEM "file:///not-readable">]>
+                <feedback><report_metadata><org_name>&xxe;</org_name></report_metadata></feedback>
+                """u8.ToArray())
+            .ToArray();
 
         await using var payload = new MemoryStream(xml, writable: false);
         var result = await ingestor.IngestAsync(
