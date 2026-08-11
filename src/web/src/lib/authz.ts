@@ -12,7 +12,7 @@ export function isAdmin(user: AuthUser | null | undefined): boolean {
   return user?.role === 'agency_admin'
 }
 
-/** Agency staff (admin or analyst): sees all clients and operational pages. */
+/** MSP staff (admin or analyst): sees all clients and operational pages. */
 export function isStaff(user: AuthUser | null | undefined): boolean {
   return user?.role === 'agency_admin' || user?.role === 'agency_analyst'
 }
