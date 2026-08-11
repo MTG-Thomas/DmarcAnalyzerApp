@@ -1,0 +1,59 @@
+name: Sonar analysis
+
+# Activate push/pull_request triggers only after SONAR_TOKEN and the two
+# repository variables below exist. A manual run fails closed until then.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require Sonar configuration
+        run: |
+          set -euo pipefail
+          [ -n "$SONAR_TOKEN" ] || { echo "::error::SONAR_TOKEN is not configured."; exit 1; }
+          [ -n "$SONAR_ORGANIZATION" ] || { echo "::error::SONAR_ORGANIZATION is not configured."; exit 1; }
+          [ -n "$SONAR_PROJECT_KEY" ] || { echo "::error::SONAR_PROJECT_KEY is not configured."; exit 1; }
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json
+
+      - name: Install pinned Sonar scanner
+        run: dotnet tool install --tool-path .sonar-scanner dotnet-sonarscanner --version 11.2.1
+
+      - name: Analyze
+        run: |
+          set -euo pipefail
+          dotnet restore DmarcAnalyzerApp.slnx --locked-mode --nologo
+          .sonar-scanner/dotnet-sonarscanner begin \
+            /k:"$SONAR_PROJECT_KEY" \
+            /o:"$SONAR_ORGANIZATION" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.cs.opencover.reportsPaths="TestResults/**/coverage.opencover.xml"
+          dotnet build DmarcAnalyzerApp.slnx --configuration Release --no-restore --no-incremental --nologo
+          dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj \
+            --configuration Release --no-build --nologo \
+            --collect:"XPlat Code Coverage" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          .sonar-scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
