@@ -22,7 +22,8 @@ helm install dmarc ./deploy/helm/dmarc-analyzer -n dmarc --create-namespace \
 ```
 
 A published chart's `version` and `appVersion` are equal and come from the release
-tag, so the chart version alone determines which application version you get.
+tag, so the chart version determines the default application version. Setting
+`image.tag` or `image.digest` deliberately overrides that default.
 
 Then reach the console and create the first admin account:
 
@@ -55,8 +56,13 @@ helm install dmarc ./deploy/helm/dmarc-analyzer -n dmarc \
   --set postgres.enabled=false \
   --set externalDatabase.host=db.internal \
   --set externalDatabase.username=dmarc \
-  --set image.tag=0.10.0
+  --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ```
+
+Replace the example digest with the published digest for the image you intend
+to run. `image.digest` renders an immutable
+`repository@sha256:...` reference. Leave it empty to use `image.tag`, whose empty
+default resolves to the chart's `appVersion`.
 
 Five things worth doing deliberately:
 
@@ -73,7 +79,10 @@ Five things worth doing deliberately:
   a configuration export shipped to S3-compatible object storage, refused
   outright if the credential key above isn't set. See
   [`docs/ops/configuration.md`](../../../docs/ops/configuration.md#backup-offload-backup).
-- **Pin `image.tag`.** `latest` and `edge` make a rollback ambiguous.
+- **Pin `image.digest` for immutable deployments.** A tag is still convenient
+  for evaluation, and an empty `image.tag` follows the chart's `appVersion`, but
+  tags can be moved. The chart refuses a non-empty tag and digest together so
+  the selected image is unambiguous.
 
 ## Migrations
 
@@ -111,6 +120,10 @@ dmarc-analyzer:
 accept: base64 decoding to exactly 32 bytes. Getting that wrong used to surface as
 a crash loop after install.
 
+`image.digest` is likewise restricted to a complete lowercase SHA-256 digest
+(`sha256:` plus 64 hexadecimal characters), so a shortened or malformed pin is
+rejected before Kubernetes sees it.
+
 The cross-field rules below stay in the templates, because they need to explain
 themselves rather than just fail.
 
@@ -126,6 +139,7 @@ is hard to attribute. The chart fails at template time instead, with the reason:
 | `migrations.strategy=startup` with `app.replicas > 1` | Replicas race to apply the same migration. |
 | `postgres.enabled=false` with no `externalDatabase.host` | Nowhere to connect. |
 | No `auth.encryptionKey` and no `auth.existingSecret` | Mailbox credentials would be stored in plaintext. |
+| Both `image.tag` and `image.digest` | A mutable tag and immutable digest name two competing image-selection strategies. Leave the tag empty when using a digest. |
 
 ## Scaling
 

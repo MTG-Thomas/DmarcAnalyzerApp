@@ -9,6 +9,9 @@ image:
   # Empty means the chart's appVersion. Pin a version for production; `latest`
   # and `edge` make a rollback ambiguous.
   tag: ""
+  # Immutable alternative to tag. When set, every app, worker, migration and
+  # database-wait container uses repository@digest, and tag must stay empty.
+  digest: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
