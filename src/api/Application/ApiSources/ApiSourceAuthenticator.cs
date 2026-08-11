@@ -57,7 +57,10 @@ public sealed class ApiSourceAuthenticator(DmarcAnalyzerDbContext db) : IApiSour
             return null;
         }
 
-        return new ReportSourceContext(sourceId, credential.DefaultClientId);
+        return new ReportSourceContext(
+            sourceId,
+            credential.DefaultClientId,
+            RestrictToDefaultClient: true);
     }
 
     private static bool TryGetPrefix(string? token, out string prefix)

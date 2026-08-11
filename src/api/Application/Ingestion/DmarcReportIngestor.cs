@@ -2,10 +2,14 @@ using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
-public sealed record ReportSourceContext(Guid SourceId, Guid DefaultClientId);
+public sealed record ReportSourceContext(
+    Guid SourceId,
+    Guid DefaultClientId,
+    bool RestrictToDefaultClient = false);
 
 public enum DmarcIngestOutcome
 {
@@ -47,38 +51,82 @@ public sealed class DmarcReportIngestor(
             return DmarcIngestOutcome.Rejected;
         }
 
-        // Domains are shared independently of any one report transaction. The
-        // returned client is authoritative when the domain already exists.
-        var domain = await domainResolver.ResolveOrCreateAsync(
-            source.DefaultClientId, policyDomain, ct);
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-        var reportEntityId = await TryInsertReportAsync(
-            domain.DomainId,
-            source.SourceId,
-            organizationName,
-            reportId,
-            report,
-            ct);
-
-        if (!reportEntityId.HasValue)
+        IDbContextTransaction? transaction = null;
+        try
         {
-            return DmarcIngestOutcome.Duplicate;
+            // API uploads resolve inside the report transaction so a rejected
+            // cross-client route also rolls back a just-created domain.
+            if (source.RestrictToDefaultClient)
+            {
+                transaction = await db.Database.BeginTransactionAsync(ct);
+            }
+
+            // Mailbox ingestion retains the established behavior: domains are
+            // shared independently of a report transaction and an existing
+            // domain's owner is authoritative.
+            var domain = await domainResolver.ResolveOrCreateAsync(
+                source.DefaultClientId, policyDomain, ct);
+
+            if (source.RestrictToDefaultClient
+                && !await LockAndVerifyOwnershipAsync(domain, source.DefaultClientId, ct))
+            {
+                return DmarcIngestOutcome.Rejected;
+            }
+
+            transaction ??= await db.Database.BeginTransactionAsync(ct);
+
+            var reportEntityId = await TryInsertReportAsync(
+                domain.DomainId,
+                source.SourceId,
+                organizationName,
+                reportId,
+                report,
+                ct);
+
+            if (!reportEntityId.HasValue)
+            {
+                return DmarcIngestOutcome.Duplicate;
+            }
+
+            await InsertRecordsAsync(reportEntityId.Value, report, ct);
+            await InsertLedgerAsync(
+                domain.ClientId,
+                source.SourceId,
+                policyDomain,
+                reportId,
+                organizationName,
+                report,
+                ct);
+
+            await transaction.CommitAsync(ct);
+            return DmarcIngestOutcome.Inserted;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
+            }
+        }
+    }
+
+    private async Task<bool> LockAndVerifyOwnershipAsync(
+        DomainIngestResolution domain,
+        Guid expectedClientId,
+        CancellationToken ct)
+    {
+        if (domain.ClientId != expectedClientId)
+        {
+            return false;
         }
 
-        await InsertRecordsAsync(reportEntityId.Value, report, ct);
-        await InsertLedgerAsync(
-            domain.ClientId,
-            source.SourceId,
-            policyDomain,
-            reportId,
-            organizationName,
-            report,
-            ct);
-
-        await transaction.CommitAsync(ct);
-        return DmarcIngestOutcome.Inserted;
+        var lockedClientId = await db.Database.SqlQuery<Guid>($"""
+            SELECT "ClientId" AS "Value"
+            FROM domain
+            WHERE "Id" = {domain.DomainId}
+            FOR UPDATE
+            """).SingleAsync(ct);
+        return lockedClientId == expectedClientId;
     }
 
     private async Task<Guid?> TryInsertReportAsync(

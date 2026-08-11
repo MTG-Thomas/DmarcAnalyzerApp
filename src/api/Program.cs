@@ -284,6 +284,7 @@ builder.Services.AddOptions<ReportPayloadExtractionOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
 builder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
+builder.Services.AddScoped<ReportUploadHandler>();
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();

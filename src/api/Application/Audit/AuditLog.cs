@@ -24,6 +24,7 @@ public static class AuditEvents
     public const string ApiSourceCredentialCreated = "api_source_credential.created";
     public const string ApiSourceCredentialRotated = "api_source_credential.rotated";
     public const string ApiSourceCredentialRevoked = "api_source_credential.revoked";
+    public const string ApiSourceReportUploaded = "api_source.report.uploaded";
 
     public const string UserCreated = "user.created";
     public const string UserUpdated = "user.updated";

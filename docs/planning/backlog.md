@@ -21,8 +21,8 @@ all shipped. The near-term sequence below turns it from "works" into
    packaged so the combinations stay in step instead of drifting.
 
 Smaller, independent items to slot in opportunistically: **POP3 ingestion**, the
-**report upload/query API endpoints** (which would also make seeding test data
-far easier), and **CSV/JSON export**. Larger, deferred until a deployment calls
+**report query API endpoints** (authenticated machine upload is complete), and
+**CSV/JSON export**. Larger, deferred until a deployment calls
 for them: **branded PDF reports** and **M365/Google Workspace connectors**.
 (The console **visual redesign** is done — shipped as the new ink-green/teal
 design system.) See the categorized lists below for the full inventory.
@@ -187,8 +187,16 @@ Sequenced; each step is independently shippable.
       source/client context. Admin issue/rotate/revoke operations are audited;
       raw tokens are revealed once and all credential material stays out of logs
       and backup artifacts. A restored source requires reissue.
+- [x] (done 2026-08-11) **Add the authenticated raw-report upload endpoint.**
+      `POST /api/ingest/v1/sources/{sourceId}/reports` accepts bounded raw bodies
+      or exactly one multipart file. Source-scoped bearer authentication is the
+      only identity path; cookie sessions cannot bypass it. Optional digest and
+      idempotency headers are verified against the unchanged payload, and the
+      shared raw ingestor owns extraction, parsing, routing, transactions, and
+      replay deduplication. PostgreSQL acceptance covers insert, replay,
+      rollback, source/client isolation, digest mismatch, and size limits.
 
-- [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
+- [ ] (todo) Implement API endpoints for report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
 - [x] (done) Add initial client/domain CRUD baseline endpoints for API vertical slice.
 - [x] (done) Add mailbox source CRUD baseline endpoints for API vertical slice.
