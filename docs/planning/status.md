@@ -68,7 +68,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   endpoint ignores cookie sessions, authenticates the route's source id with the
   source-scoped bearer token, accepts optional coherent content-digest and
   idempotency headers, and delegates unchanged bytes to the shared raw-payload
-  ingestor.
+  ingestor. API-authenticated source contexts refuse existing domains owned by a
+  different client while mailbox contexts retain multi-client domain routing.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`

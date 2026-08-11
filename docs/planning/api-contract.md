@@ -362,7 +362,8 @@ dmarc_v1.<22-character-prefix>.<43-character-secret>` must authenticate the
 active API source named by the route. Missing, invalid, revoked, inactive, and
 wrong-source credentials all return the same `401`; a cookie session cannot
 bypass this check. The authenticated source supplies the trusted default client
-context, and the request has no client selector.
+context, the request has no client selector, and a payload naming a domain owned
+by another client is rejected rather than routed across that boundary.
 
 The body is either a raw payload or `multipart/form-data` containing exactly one
 file and no fields. Raw bytes are passed unchanged into the same bounded
@@ -378,6 +379,7 @@ are present they must agree. Bifrost sends both.
 The response exposes only `inserted`, `duplicates`, `rejected`, and
 `rejectionCodes`. ZIP entry names, report content, tokens, digest values, and
 report provenance are not returned or logged.
+Each authenticated attempt records a source-id/count-only audit event.
 
 - `201` — at least one DMARC or TLS report inserted; partial entry rejections
   remain visible in `rejectionCodes`.
