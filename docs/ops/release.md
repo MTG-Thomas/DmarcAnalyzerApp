@@ -94,7 +94,7 @@ renders only without bundled Postgres and the worker Deployment only in split
 mode, so a single render leaves most of the chart unexercised — which is exactly
 how a Job that could never create a pod got as far as a real cluster once.
 
-### Optional Sonar gate
+### External quality gates
 
 Coverage is always retained as the `api-coverage` workflow artifact. Codecov
 uses GitHub OIDC and needs no repository token, but each fork must first be
