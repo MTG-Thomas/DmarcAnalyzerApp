@@ -200,6 +200,28 @@ public sealed class MailboxRetentionPlannerTests
         Assert.Contains(plans, p => !p.Suspended);
     }
 
+    [Fact]
+    public async Task ApiSourcesAreNotMailboxRetentionCandidates()
+    {
+        await using var db = NewDb();
+        var client = NewClient("acme", 12);
+        var source = new MailboxSource
+        {
+            Name = "API source",
+            Protocol = "api",
+            Host = null,
+            Port = null,
+            UseTls = null,
+            Username = null,
+            PasswordEncrypted = null,
+            DefaultClientId = client.Id,
+        };
+        db.AddRange(client, source);
+        await db.SaveChangesAsync();
+
+        Assert.Empty(await Planner(db).PlanAsync(default));
+    }
+
     [Theory]
     [InlineData(false, 1, "not enabled")]
     [InlineData(true, 0, "no client")]

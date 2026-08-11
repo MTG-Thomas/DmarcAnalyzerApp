@@ -253,7 +253,37 @@ public sealed class BackupExportTests
              "defaultClientId", "isActive", "createdAtUtc", "updatedAtUtc"],
             root.GetProperty("mailboxSources")[0].EnumerateObject().Select(p => p.Name).ToArray());
 
-        Assert.Equal(1, root.GetProperty("manifest").GetProperty("formatVersion").GetInt32());
+        Assert.Equal(2, root.GetProperty("manifest").GetProperty("formatVersion").GetInt32());
+    }
+
+    [Fact]
+    public async Task VersionTwoCarriesApiSourcesWithoutMailboxFields()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        db.AddRange(client, new MailboxSource
+        {
+            Name = "Bifrost upload",
+            Protocol = "api",
+            Host = null,
+            Port = null,
+            UseTls = null,
+            Username = null,
+            PasswordEncrypted = null,
+            DefaultClientId = client.Id,
+        });
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var source = Assert.Single(artifact.MailboxSources);
+
+        Assert.Equal(2, artifact.Manifest.FormatVersion);
+        Assert.Equal("api", source.Protocol);
+        Assert.Null(source.Host);
+        Assert.Null(source.Port);
+        Assert.Null(source.UseTls);
+        Assert.Null(source.Username);
+        Assert.Null(source.PasswordEncrypted);
     }
 
     [Fact]

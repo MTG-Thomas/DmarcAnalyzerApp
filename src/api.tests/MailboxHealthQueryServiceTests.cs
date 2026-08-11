@@ -50,6 +50,17 @@ public sealed class MailboxHealthQueryServiceTests
 
         db.Clients.Add(client);
         db.MailboxSources.Add(mailbox);
+        db.MailboxSources.Add(new MailboxSource
+        {
+            Name = "API source",
+            Protocol = "api",
+            Host = null,
+            Port = null,
+            UseTls = null,
+            Username = null,
+            PasswordEncrypted = null,
+            DefaultClientId = client.Id,
+        });
 
         db.MailboxSyncRuns.AddRange(
             new MailboxSyncRun
@@ -88,7 +99,7 @@ public sealed class MailboxHealthQueryServiceTests
         await db.SaveChangesAsync();
 
         var service = new MailboxHealthQueryService(db);
-        var result = await service.ListAsync(mailbox.Id, CancellationToken.None);
+        var result = await service.ListAsync(null, CancellationToken.None);
 
         Assert.Single(result);
         var item = result[0];

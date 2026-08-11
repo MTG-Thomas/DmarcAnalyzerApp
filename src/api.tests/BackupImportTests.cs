@@ -480,6 +480,30 @@ public sealed class BackupImportTests
         Assert.False(clean.Value!.MailboxCredentialsWillNotDecrypt);
     }
 
+    [Fact]
+    public async Task ApiOnlyArtifactDoesNotRequireAMailboxCredentialKey()
+    {
+        await using var db = NewDb();
+        var clientId = Guid.NewGuid();
+        var artifact = Artifact(
+            manifest: Manifest(keyForFingerprint: OtherKey),
+            clients: [ExportedClient(clientId, "acme")],
+            sources:
+            [
+                new BackupMailboxSource(
+                    Guid.NewGuid(), "Bifrost upload", "api", null, null, null, null, null,
+                    clientId, true, Stamp, Stamp),
+            ]);
+
+        var result = await Service(db).ImportAsync(artifact, BackupImportModes.Merge, false, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.MailboxCredentialsWillNotDecrypt);
+        var source = await db.MailboxSources.SingleAsync();
+        Assert.Equal("api", source.Protocol);
+        Assert.Null(source.PasswordEncrypted);
+    }
+
     /// <summary>
     /// A newer writer may have changed what a field means, so the version is a gate and not a
     /// hint. Guessing produces the worst outcome a backup has: a restore that looks complete
@@ -507,6 +531,22 @@ public sealed class BackupImportTests
             clients: [ExportedClient(Guid.NewGuid(), "acme")]);
 
         Assert.Equal(400, (await Service(db).ImportAsync(malformed, BackupImportModes.Merge, false, default)).StatusCode);
+    }
+
+    [Fact]
+    public async Task VersionOneMailboxArtifactStillImportsAfterVersionTwoAddsApiNulls()
+    {
+        await using var db = NewDb();
+        var clientId = Guid.NewGuid();
+        var artifact = Artifact(
+            manifest: Manifest(formatVersion: 1),
+            clients: [ExportedClient(clientId, "acme")],
+            sources: [ExportedSource(Guid.NewGuid(), clientId)]);
+
+        var result = await Service(db).ImportAsync(artifact, BackupImportModes.Merge, false, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("imap.example", (await db.MailboxSources.SingleAsync()).Host);
     }
 
     /// <summary>

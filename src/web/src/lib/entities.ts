@@ -49,11 +49,11 @@ export type Domain = {
 export type MailboxSource = {
   id: string
   name: string
-  protocol: 'imap' | 'pop3'
-  host: string
-  port: number
-  useTls: boolean
-  username: string
+  protocol: 'imap' | 'pop3' | 'api'
+  host: string | null
+  port: number | null
+  useTls: boolean | null
+  username: string | null
   defaultClientId: string
   defaultClientName: string | null
   isActive: boolean

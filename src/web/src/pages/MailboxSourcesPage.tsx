@@ -33,7 +33,7 @@ type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
 const initialMailboxForm = {
   name: '',
-  protocol: 'imap' as 'imap' | 'pop3',
+  protocol: 'imap' as 'imap' | 'pop3' | 'api',
   host: '',
   port: 993,
   useTls: true,
@@ -143,8 +143,8 @@ export function MailboxSourcesPage() {
     return mailboxSources.filter(
       (x) =>
         x.name.toLowerCase().includes(q) ||
-        x.host.toLowerCase().includes(q) ||
-        x.username.toLowerCase().includes(q),
+        x.host?.toLowerCase().includes(q) ||
+        x.username?.toLowerCase().includes(q),
     )
   }, [search, mailboxSources])
 
@@ -215,10 +215,10 @@ export function MailboxSourcesPage() {
       setMailboxForm({
         name: source.name,
         protocol: source.protocol,
-        host: source.host,
-        port: source.port,
-        useTls: source.useTls,
-        username: source.username,
+        host: source.host ?? '',
+        port: source.port ?? 993,
+        useTls: source.useTls ?? true,
+        username: source.username ?? '',
         password: '',
         defaultClientId: source.defaultClientId,
         isActive: source.isActive,
@@ -237,7 +237,17 @@ export function MailboxSourcesPage() {
     event.preventDefault()
     setError(null)
     try {
-      const payload = { ...mailboxForm }
+      const payload = mailboxForm.protocol === 'api'
+        ? {
+            ...mailboxForm,
+            host: null,
+            port: null,
+            useTls: null,
+            username: null,
+            password: null,
+            deleteAfterRetention: false,
+          }
+        : { ...mailboxForm }
       if (editingMailboxId && !payload.password) {
         delete (payload as { password?: string }).password
       }
@@ -282,26 +292,27 @@ export function MailboxSourcesPage() {
   }
 
   const count = mailboxSources.length
-  const subtitle = `${count} ${count === 1 ? 'mailbox' : 'mailboxes'} · ${healthyCount}/${count} healthy`
+  const mailboxCount = mailboxHealth.length
+  const subtitle = `${count} ${count === 1 ? 'source' : 'sources'} · ${healthyCount}/${mailboxCount} mailboxes healthy`
 
   return (
     <>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="font-display text-xl font-bold tracking-tight text-body">Mailbox sources</h1>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Report sources</h1>
           <p className="mt-1 text-sm text-secondary">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:shrink-0">
           <Input
             icon="search"
-            placeholder="Search mailboxes"
+            placeholder="Search sources"
             className="w-full sm:w-56"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {canManage && (
             <Button icon="plus" onClick={() => openMailboxDialog()}>
-              Add mailbox
+              Add source
             </Button>
           )}
         </div>
@@ -337,7 +348,9 @@ export function MailboxSourcesPage() {
                 <TableBody>
                   {filteredMailboxSources.map((source, index) => {
                     const health = healthBySourceId.get(source.id)
-                    const badge = source.isActive
+                    const badge = source.protocol === 'api'
+                      ? { label: source.isActive ? 'API source' : 'Inactive', variant: 'neutral' as const }
+                      : source.isActive
                       ? getHealthBadge(health?.lastRunStatus)
                       : { label: 'Inactive', variant: 'neutral' as const }
                     const isSyncing = syncingId === source.id
@@ -345,11 +358,13 @@ export function MailboxSourcesPage() {
                       <TableRow key={source.id} last={index === filteredMailboxSources.length - 1}>
                         <TableCell mono>{source.name}</TableCell>
                         <TableCell mono>
-                          {source.protocol}:{source.port}
+                          {source.protocol === 'api' ? 'api' : `${source.protocol}:${source.port}`}
                         </TableCell>
-                        <TableCell mono>{source.host}</TableCell>
+                        <TableCell mono>{source.host ?? '—'}</TableCell>
                         <TableCell>
-                          <span className="text-sm text-secondary">{lastSyncLabel(health)}</span>
+                          <span className="text-sm text-secondary">
+                            {source.protocol === 'api' ? 'Not applicable' : lastSyncLabel(health)}
+                          </span>
                         </TableCell>
                         <TableCell mono align="right">
                           {numOrDash(health?.lastRunMessagesScanned)}
@@ -374,19 +389,21 @@ export function MailboxSourcesPage() {
                                 Edit
                               </Button>
                             )}
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={isSyncing}
-                              onClick={() => void syncNow(source.id)}
-                            >
-                              <Icon
-                                name="refresh-cw"
-                                size={14}
-                                className={isSyncing ? 'animate-spin' : undefined}
-                              />
-                              {isSyncing ? 'Syncing' : 'Sync now'}
-                            </Button>
+                            {source.protocol !== 'api' ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={isSyncing}
+                                onClick={() => void syncNow(source.id)}
+                              >
+                                <Icon
+                                  name="refresh-cw"
+                                  size={14}
+                                  className={isSyncing ? 'animate-spin' : undefined}
+                                />
+                                {isSyncing ? 'Syncing' : 'Sync now'}
+                              </Button>
+                            ) : null}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -397,7 +414,7 @@ export function MailboxSourcesPage() {
             </div>
             {filteredMailboxSources.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-secondary">
-                No mailbox sources found{search ? ' for the current search' : ''}.
+                No report sources found{search ? ' for the current search' : ''}.
               </p>
             ) : null}
           </Card>
@@ -591,8 +608,8 @@ export function MailboxSourcesPage() {
       <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingMailboxId ? 'Edit mailbox source' : 'Add mailbox source'}</DialogTitle>
-            <DialogDescription>Configure mailbox transport and default routing client.</DialogDescription>
+            <DialogTitle>{editingMailboxId ? 'Edit report source' : 'Add report source'}</DialogTitle>
+            <DialogDescription>Configure transport and the authoritative default routing client.</DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={createOrUpdateMailboxSource}>
             <label className="grid gap-1.5 text-sm font-medium text-body">
@@ -609,53 +626,71 @@ export function MailboxSourcesPage() {
                 <Select
                   value={mailboxForm.protocol}
                   onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'pop3' }))
+                    setMailboxForm((x) => ({
+                      ...x,
+                      protocol: e.target.value as 'imap' | 'pop3' | 'api',
+                      deleteAfterRetention: e.target.value === 'api' ? false : x.deleteAfterRetention,
+                    }))
                   }
                 >
                   <option value="imap">IMAP</option>
                   <option value="pop3">POP3</option>
+                  <option value="api">API</option>
                 </Select>
               </label>
-              <label className="grid gap-1.5 text-sm font-medium text-body">
-                Port
-                <Input
-                  type="number"
-                  min={1}
-                  mono
-                  value={mailboxForm.port}
-                  onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
-                  }
-                  required
-                />
-              </label>
+              {mailboxForm.protocol !== 'api' ? (
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Port
+                  <Input
+                    type="number"
+                    min={1}
+                    mono
+                    value={mailboxForm.port}
+                    onChange={(e) =>
+                      setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
+                    }
+                    required
+                  />
+                </label>
+              ) : <div />}
             </div>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              Host
-              <Input
-                mono
-                value={mailboxForm.host}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
-                required
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              Username
-              <Input
-                value={mailboxForm.username}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
-                required
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              {editingMailboxId ? 'New password (optional)' : 'Password'}
-              <Input
-                type="password"
-                value={mailboxForm.password}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
-                required={!editingMailboxId}
-              />
-            </label>
+            {mailboxForm.protocol !== 'api' ? (
+              <>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Host
+                  <Input
+                    mono
+                    value={mailboxForm.host}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Username
+                  <Input
+                    value={mailboxForm.username}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  {editingMailboxId ? 'New password (optional)' : 'Password'}
+                  <Input
+                    type="password"
+                    value={mailboxForm.password}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
+                    required={!editingMailboxId || sourceById.get(editingMailboxId)?.protocol === 'api'}
+                  />
+                </label>
+              </>
+            ) : null}
+            {editingMailboxId && sourceById.get(editingMailboxId)?.protocol !== mailboxForm.protocol ? (
+              <Notice tone="warn" title="This changes how reports reach the source.">
+                {mailboxForm.protocol === 'api'
+                  ? 'The saved mailbox connection, checkpoint, last-success state, and mail-retention setting will be cleared.'
+                  : 'Enter a complete mailbox connection. API delivery state is not reused as a mailbox checkpoint.'}
+              </Notice>
+            ) : null}
             <label className="grid gap-1.5 text-sm font-medium text-body">
               Default client
               <Select
@@ -671,14 +706,16 @@ export function MailboxSourcesPage() {
                 ))}
               </Select>
             </label>
-            <label className="flex items-center gap-2 text-sm text-secondary">
-              <input
-                type="checkbox"
-                checked={mailboxForm.useTls}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
-              />
-              Use TLS
-            </label>
+            {mailboxForm.protocol !== 'api' ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={mailboxForm.useTls}
+                  onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
+                />
+                Use TLS
+              </label>
+            ) : null}
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input
                 type="checkbox"
@@ -687,17 +724,19 @@ export function MailboxSourcesPage() {
               />
               Active
             </label>
-            <label className="flex items-center gap-2 text-sm text-secondary">
-              <input
-                type="checkbox"
-                checked={mailboxForm.deleteAfterRetention}
-                onChange={(e) =>
-                  setMailboxForm((x) => ({ ...x, deleteAfterRetention: e.target.checked }))
-                }
-              />
-              Delete mail past the retention window
-            </label>
-            {mailboxForm.deleteAfterRetention ? (
+            {mailboxForm.protocol !== 'api' ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={mailboxForm.deleteAfterRetention}
+                  onChange={(e) =>
+                    setMailboxForm((x) => ({ ...x, deleteAfterRetention: e.target.checked }))
+                  }
+                />
+                Delete mail past the retention window
+              </label>
+            ) : null}
+            {mailboxForm.protocol !== 'api' && mailboxForm.deleteAfterRetention ? (
               <Notice tone="warn" title="This deletes mail from the mailbox.">
                 Report mail older than the widest retention window of the clients this source
                 serves, plus a grace margin, is expunged on a daily pass. It gives the system

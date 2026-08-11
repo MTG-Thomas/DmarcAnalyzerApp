@@ -54,6 +54,15 @@ public sealed class MailboxSyncService(
             return ServiceResult<MailboxSyncResult>.Failure("manual sync currently supports only IMAP", 400);
         }
 
+        if (string.IsNullOrWhiteSpace(mailboxSource.Host)
+            || mailboxSource.Port is not > 0
+            || !mailboxSource.UseTls.HasValue
+            || string.IsNullOrWhiteSpace(mailboxSource.Username)
+            || string.IsNullOrWhiteSpace(mailboxSource.PasswordEncrypted))
+        {
+            return ServiceResult<MailboxSyncResult>.Failure("IMAP source configuration is incomplete", 409);
+        }
+
         var messagesScanned = 0;
         var attachmentsProcessed = 0;
         var reportsInserted = 0;
@@ -87,9 +96,9 @@ public sealed class MailboxSyncService(
         try
         {
             using var client = new ImapClient();
-            var secureSocketOptions = mailboxSource.UseTls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+            var secureSocketOptions = mailboxSource.UseTls.Value ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
 
-            await client.ConnectAsync(mailboxSource.Host, mailboxSource.Port, secureSocketOptions, ct);
+            await client.ConnectAsync(mailboxSource.Host, mailboxSource.Port.Value, secureSocketOptions, ct);
             await client.AuthenticateAsync(mailboxSource.Username, mailboxPassword, operationToken);
 
             var inbox = client.Inbox;

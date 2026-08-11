@@ -9,6 +9,7 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
     {
         var mailboxSources = db.MailboxSources
             .AsNoTracking()
+            .Where(x => x.Protocol != "api")
             .AsQueryable();
 
         if (mailboxSourceId.HasValue)
