@@ -22,6 +22,12 @@ dmarcanalyzernet/dmarc-analyzer
 Documentation-only pushes to `main` skip the image build entirely. Release tags
 and pull requests always build it.
 
+Every pull request also runs actionlint, CodeQL, frontend lint/audit, unit tests
+with Codecov coverage, the real PostgreSQL lanes, a container health probe and a
+disposable Kubernetes install. The SDK feature band comes from `global.json`;
+package restores use the committed lockfiles and fail on high or critical NuGet
+advisories.
+
 ## The Helm chart
 
 A release tag also publishes the chart as an OCI artifact:
@@ -29,6 +35,10 @@ A release tag also publishes the chart as an OCI artifact:
 ```
 oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer
 ```
+
+Chart publication waits for the multi-architecture image, runtime smoke test,
+provenance attestation and SBOM attestation. Validation still runs in parallel;
+only the write is ordered behind the image.
 
 **Chart `version` and `appVersion` are both set from the tag** and are not read
 from the committed `Chart.yaml`, so "which application does chart 1.2.3 deploy"
@@ -62,7 +72,7 @@ from CI:
 1. **Add the repository** at artifacthub.io → Control Panel → Repositories → Add,
    kind *Helm charts*, URL `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`.
 2. **The Verified publisher badge** is already wired up. `deploy/helm/artifacthub-repo.yml`
-   holds the repository ID from that same screen, and the `chart` job pushes it to
+   holds the repository ID from that same screen, and the `chart-publish` job pushes it to
    the OCI namespace on every tag. Nothing to do by hand.
 
    Two things that are easy to get wrong here, both learned the hard way:
@@ -84,6 +94,18 @@ renders only without bundled Postgres and the worker Deployment only in split
 mode, so a single render leaves most of the chart unexercised — which is exactly
 how a Job that could never create a pod got as far as a real cluster once.
 
+### External quality gates
+
+Coverage is always retained as the `api-coverage` workflow artifact. Codecov
+uses GitHub OIDC and needs no repository token, but each fork must first be
+onboarded in Codecov; set `CODECOV_ENABLED=true` only after activation. Sonar
+also requires a SonarCloud project. Until that external project exists,
+`sonar.yml` is manual and fails closed. To activate it, create the project, add
+a `SONAR_TOKEN` secret and `SONAR_ORGANIZATION` plus `SONAR_PROJECT_KEY`
+repository variables, run the workflow once, then add `push` and `pull_request`
+triggers and require its `analyze` check. Do not make either service automatic
+before its first authenticated run.
+
 ## Versioning
 
 Semantic versioning. While on `0.x`:
@@ -97,7 +119,8 @@ Semantic versioning. While on `0.x`:
 
 ## Before tagging
 
-1. **CI is green on `main`.** Tests and the frontend build both pass.
+1. **CI is green on `main`.** Tests, analyzers, actionlint, CodeQL, coverage,
+   frontend checks, the container probe and both PostgreSQL lanes pass.
 2. **Migrations apply from the previous release**, not just from an empty
    database. Start the *previous* image against a fresh volume, put a row or two
    in it, then upgrade in place and confirm the count moved, the data survived and
@@ -195,7 +218,9 @@ Semantic versioning. While on `0.x`:
 ## Tagging
 
 Annotated tags only — the message is the first thing a maintainer sees in
-`git tag -n`:
+`git tag -n`. CI also refuses a lightweight tag or a tag whose commit is not
+reachable from protected `main`; the repository tag ruleset prevents deletion
+and non-fast-forward replacement of release tags:
 
 ```bash
 git checkout main && git pull
@@ -220,6 +245,18 @@ docker manifest inspect dmarcanalyzernet/dmarc-analyzer:0.2.0 > /dev/null && ech
 Then re-run the quick-start from step 3 above with the **published** image rather
 than a local build. That is the only check that proves what users will actually
 get.
+
+Verify GitHub's signed provenance and SBOM attestations against the immutable
+digest, not a mutable tag:
+
+```bash
+digest=$(docker buildx imagetools inspect \
+  ghcr.io/dmarc-analyzer-net/dmarc-analyzer:0.2.0 \
+  --format '{{json .Manifest.Digest}}' | tr -d '"')
+gh attestation verify \
+  "oci://ghcr.io/dmarc-analyzer-net/dmarc-analyzer@$digest" \
+  --repo dmarc-analyzer-net/DmarcAnalyzerApp
+```
 
 **And the chart**, which is published by the same tag and is easy to forget
 because nothing else references it:

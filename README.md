@@ -97,7 +97,8 @@ Run API and frontend directly for fast iteration and hot reload.
 
 Prerequisites:
 
-- .NET SDK 10
+- The .NET SDK selected by `global.json` (install the .NET 10 SDK; the CLI uses
+  the latest available patch in the pinned feature band)
 - Node.js 22+
 
 Terminal 1 - API (hot reload):
