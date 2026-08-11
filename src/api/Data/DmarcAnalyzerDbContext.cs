@@ -132,7 +132,12 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
         modelBuilder.Entity<MailboxSource>(entity =>
         {
-            entity.ToTable("mailbox_source");
+            // Named for what it is rather than for how the first implementation
+            // reached it: a row here is a place reports arrive from, and IMAP is
+            // one protocol among the ones Protocol can hold. The CLR type is still
+            // MailboxSource — renaming ~780 identifiers is a separate mechanical
+            // change, deliberately not mixed into a migration.
+            entity.ToTable("report_source");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Protocol).HasMaxLength(20).IsRequired();
@@ -158,7 +163,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.HasIndex(x => x.ClientId);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             entity.HasIndex(x => new
             {
                 x.ClientId,
@@ -175,7 +180,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
             entity.HasOne(x => x.MailboxSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -186,13 +191,13 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Trigger).HasMaxLength(32).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
             entity.Property(x => x.Error).HasMaxLength(4000);
-            entity.HasIndex(x => x.MailboxSourceId)
-                .HasDatabaseName("IX_mailbox_sync_run_MailboxSourceId");
+            entity.HasIndex(x => x.ReportSourceId)
+                .HasDatabaseName("IX_mailbox_sync_run_ReportSourceId");
             entity.HasIndex(x => x.StartedAtUtc);
 
             entity.HasOne(x => x.MailboxSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -208,7 +213,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.DkimAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.Property(x => x.SpfAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.HasIndex(x => x.DomainId);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             entity.HasIndex(x => new { x.DomainId, x.ReportId, x.RangeBeginUtc, x.RangeEndUtc }).IsUnique();
 
             entity.HasOne(x => x.Domain)
@@ -218,7 +223,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
             entity.HasOne(x => x.MailboxSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -410,7 +415,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ContactInfo).HasMaxLength(320);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             // The dedupe key. No policy domain — a report spans several — so the
             // organization name disambiguates report-id collisions across reporters.
             entity.HasIndex(x => new
@@ -425,7 +430,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
             entity.HasOne(x => x.MailboxSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -483,7 +488,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.PolicyDomains).HasMaxLength(2000).IsRequired();
             entity.Property(x => x.ContactInfo).HasMaxLength(320);
             entity.HasIndex(x => x.ClientId);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             // The TLS analogue of the DMARC ledger's five-column key, with the
             // policy domain (meaningless for a multi-domain report) replaced by
             // the organization name.
@@ -504,7 +509,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
             entity.HasOne(x => x.MailboxSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

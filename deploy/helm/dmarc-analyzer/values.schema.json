@@ -17,6 +17,11 @@
           "description": "Empty means the chart's appVersion, which is the intended default. Pin for production.",
           "pattern": "^$|^[\\w][\\w.-]{0,127}$"
         },
+        "digest": {
+          "type": "string",
+          "description": "Immutable image digest. When set, tag must be empty and the chart renders repository@digest.",
+          "pattern": "^$|^sha256:[a-f0-9]{64}$"
+        },
         "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
       }
     },

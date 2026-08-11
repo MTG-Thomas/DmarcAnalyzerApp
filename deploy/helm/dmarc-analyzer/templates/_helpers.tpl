@@ -32,7 +32,11 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 
 {{- define "dmarc.image" -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- else -}}
 {{- printf "%s:%s" .Values.image.repository (default .Chart.AppVersion .Values.image.tag) -}}
+{{- end -}}
 {{- end -}}
 
 {{- define "dmarc.secretName" -}}
@@ -114,6 +118,10 @@ template time instead.
 {{- define "dmarc.validate" -}}
 {{- if not (has .Values.mode (list "combined" "split")) -}}
 {{- fail (printf "mode must be \"combined\" or \"split\", got %q" .Values.mode) -}}
+{{- end -}}
+
+{{- if and .Values.image.tag .Values.image.digest -}}
+{{- fail "image.tag and image.digest are mutually exclusive. Leave tag empty when pinning the image by digest." -}}
 {{- end -}}
 
 {{- if and (eq .Values.mode "combined") (gt (int .Values.app.replicas) 1) -}}
