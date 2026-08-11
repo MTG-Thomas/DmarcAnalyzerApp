@@ -58,8 +58,13 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   no placeholder mailbox connection. PostgreSQL enforces the protocol-specific
   shape; mailbox polling, health totals, manual-sync UI, and mailbox retention
   exclude API rows. Configuration artifact v2 preserves these nullable fields
-  while continuing to read v1 mailbox artifacts. Reveal-once source credentials
-  and the upload endpoint remain in MTG fork slices 4B and 5.
+  while continuing to read v1 mailbox artifacts. Source-scoped API credentials
+  use `dmarc_v1.<prefix>.<secret>` reveal-once tokens: only the prefix and
+  SHA-256 hash persist, rotation keys overlap until explicit revocation, and
+  inactive, revoked, wrong-source, or invalid tokens all fail authentication
+  identically. Credential material is excluded from configuration artifacts, so
+  restored API sources require reissue. The upload endpoint remains in MTG fork
+  slice 5.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`

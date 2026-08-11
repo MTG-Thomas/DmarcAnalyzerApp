@@ -261,7 +261,7 @@ public sealed class BackupExportTests
     {
         await using var db = NewDb();
         var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
-        db.AddRange(client, new MailboxSource
+        var source = new MailboxSource
         {
             Name = "Bifrost upload",
             Protocol = "api",
@@ -271,19 +271,30 @@ public sealed class BackupExportTests
             Username = null,
             PasswordEncrypted = null,
             DefaultClientId = client.Id,
-        });
+        };
+        var credential = new ApiSourceCredential
+        {
+            MailboxSourceId = source.Id,
+            Prefix = "abcdefghijklmnopqrstuv",
+            TokenHash = Enumerable.Repeat((byte)7, 32).ToArray(),
+        };
+        db.AddRange(client, source, credential);
         await db.SaveChangesAsync();
 
         var artifact = (await Service(db).ExportAsync(false, default)).Value!;
-        var source = Assert.Single(artifact.MailboxSources);
+        var exportedSource = Assert.Single(artifact.MailboxSources);
+        var json = BackupJson.Serialize(artifact);
 
         Assert.Equal(2, artifact.Manifest.FormatVersion);
-        Assert.Equal("api", source.Protocol);
-        Assert.Null(source.Host);
-        Assert.Null(source.Port);
-        Assert.Null(source.UseTls);
-        Assert.Null(source.Username);
-        Assert.Null(source.PasswordEncrypted);
+        Assert.Equal("api", exportedSource.Protocol);
+        Assert.Null(exportedSource.Host);
+        Assert.Null(exportedSource.Port);
+        Assert.Null(exportedSource.UseTls);
+        Assert.Null(exportedSource.Username);
+        Assert.Null(exportedSource.PasswordEncrypted);
+        Assert.Equal(1, artifact.Manifest.Excluded["api_source_credential"]);
+        Assert.DoesNotContain(credential.Prefix, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(Convert.ToBase64String(credential.TokenHash), json, StringComparison.Ordinal);
     }
 
     [Fact]

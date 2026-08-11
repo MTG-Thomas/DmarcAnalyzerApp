@@ -59,6 +59,10 @@ staff (`agency_admin` or `agency_analyst`).
 | POST | `/mailbox-sources` | admin |
 | PATCH | `/mailbox-sources/{id}` | admin |
 | POST | `/mailbox-sources/{id}/sync` | staff — manual trigger |
+| GET | `/mailbox-sources/{id}/credentials` | admin — metadata only; never returns a token or hash |
+| POST | `/mailbox-sources/{id}/credentials` | admin — issue a reveal-once API token |
+| POST | `/mailbox-sources/{id}/credentials/rotate` | admin — issue an overlapping token; prior keys remain active |
+| DELETE | `/mailbox-sources/{id}/credentials/{credentialId}` | admin — idempotent revocation |
 | GET | `/mailbox-health` | staff |
 | GET | `/mailbox-sync-runs` | staff |
 
@@ -293,6 +297,31 @@ Notes:
 
 - Password is encrypted at rest server-side.
 - One source may serve multiple clients through domain routing.
+- `protocol: api` omits all mailbox connection fields and may receive
+  source-scoped credentials through the operations below.
+
+### API source credentials
+
+All four operations are agency-admin only and apply only to `protocol: api`
+sources. `POST /mailbox-sources/{sourceId}/credentials` creates the first or an
+additional credential. `POST .../credentials/rotate` has the same issuance
+semantics but records rotation intent; it does not revoke an existing key, so an
+operator can cut a caller over before revoking the old credential. Both return:
+
+```json
+{
+  "id": "00000000-0000-0000-0000-000000000000",
+  "sourceId": "00000000-0000-0000-0000-000000000000",
+  "prefix": "abcdefghijklmnopqrstuv",
+  "token": "dmarc_v1.abcdefghijklmnopqrstuv.<43-character-secret>",
+  "createdAtUtc": "2026-08-11T20:00:00Z"
+}
+```
+
+`token` is shown in this response only. The list and revoke responses expose
+only id, source id, prefix, created time, and revoked time. Configuration backup
+artifacts omit the credential table entirely; restored API sources require a new
+token.
 
 ### PATCH `/mailbox-sources/{sourceId}`
 ### DELETE `/mailbox-sources/{sourceId}`

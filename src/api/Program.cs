@@ -1,5 +1,6 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Clients;
@@ -243,6 +244,8 @@ builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();
 builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
+builder.Services.AddScoped<IApiSourceCredentialService, ApiSourceCredentialService>();
+builder.Services.AddScoped<IApiSourceAuthenticator, ApiSourceAuthenticator>();
 builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
 builder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
 builder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();

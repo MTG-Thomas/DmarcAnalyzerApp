@@ -1,5 +1,6 @@
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Common;
+using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -182,7 +183,7 @@ public sealed class BackupImportService(
             ImportClients(artifact, state, clientTally);
             ImportDomains(artifact, state, domainTally);
             ImportMtaStsPolicies(artifact, state, mtaStsPolicyTally);
-            ImportMailboxSources(artifact, state, sourceTally);
+            await ImportMailboxSourcesAsync(artifact, state, sourceTally, dryRun, ct);
             userReport = ImportUsers(artifact, state, userTally);
             ImportUserIdentities(artifact, state, identityTally);
             ImportGrants(artifact, state, grantTally);
@@ -445,7 +446,12 @@ public sealed class BackupImportService(
     /// username — different folders, different default clients — so host+username is not an
     /// identity and deduping on it would silently collapse two real sources into one.
     /// </summary>
-    private void ImportMailboxSources(BackupArtifact artifact, ImportState state, Tally tally)
+    private async Task ImportMailboxSourcesAsync(
+        BackupArtifact artifact,
+        ImportState state,
+        Tally tally,
+        bool dryRun,
+        CancellationToken ct)
     {
         foreach (var source in artifact.MailboxSources)
         {
@@ -464,6 +470,16 @@ public sealed class BackupImportService(
                 // The IMAP checkpoint is deliberately left alone rather than reset: it is this
                 // install's own record of how far it has read that mailbox, and clearing it
                 // would re-fetch the entire history for a config edit.
+                if (!dryRun
+                    && existing.Protocol == "api"
+                    && source.Protocol != "api")
+                {
+                    // A protocol change must permanently retire machine credentials.
+                    // Merely making them fail while the row is IMAP would let a later
+                    // switch back to API silently reactivate an old reveal-once token.
+                    await ApiSourceCredentialLifecycle.RevokeActiveAsync(db, existing.Id, ct);
+                }
+
                 existing.Name = source.Name;
                 existing.Protocol = source.Protocol;
                 existing.Host = source.Host;
