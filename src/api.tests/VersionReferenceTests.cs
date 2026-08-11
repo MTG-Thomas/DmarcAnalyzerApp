@@ -109,6 +109,18 @@ public sealed class VersionReferenceTests
             $"values.image.tag is \"{tag}\" but the chart's appVersion is {appVersion}. " +
             $"Leave the tag empty so it follows appVersion, or keep the two in step — otherwise " +
             $"`helm install ./deploy/helm/dmarc-analyzer` deploys an image nobody intended.");
+
+        // image.digest is the same bug by another route, and a worse one to spot:
+        // a committed digest overrides appVersion for every clone install, and it
+        // carries no version number, so nothing about it looks stale in a diff.
+        // It is an install-time flag, not a chart default.
+        var digest = Regex.Match(values, @"^\s{2}digest:\s*""(.*)""\s*$", RegexOptions.Multiline).Groups[1].Value;
+
+        Assert.True(
+            digest.Length == 0,
+            $"values.image.digest is \"{digest}\", so every install from a clone is pinned to that " +
+            $"image regardless of appVersion. Leave it empty here and pin at install time with " +
+            $"`--set-string image.digest=...`.");
     }
 
     public static TheoryData<string> Docs()
