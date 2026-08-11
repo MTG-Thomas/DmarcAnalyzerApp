@@ -77,6 +77,33 @@ public sealed class ReportPayloadIngestorIntegrationTests(PostgreSqlDatabaseFixt
     }
 
     [Fact]
+    public async Task DmarcBomAndWhitespaceBeforeXmlDeclarationPersistsThroughRawIngestor()
+    {
+        var source = await ResetMigrateAndSeedAsync();
+        var xml = Encoding.UTF8.GetString(Fixture("sample-yahoo-aggregate.xml"))
+            .Replace("<adkim>r</adkim>", string.Empty, StringComparison.Ordinal)
+            .Replace("<aspf>r</aspf>", string.Empty, StringComparison.Ordinal);
+        var payloadBytes = new byte[] { 0xEF, 0xBB, 0xBF, (byte)' ', (byte)'\r', (byte)'\n', (byte)'\t' }
+            .Concat(Encoding.UTF8.GetBytes(xml))
+            .ToArray();
+
+        await using var db = database.CreateDbContext();
+        var ingestor = CreateIngestor(db);
+        await using var payload = new MemoryStream(payloadBytes, writable: false);
+        var result = await ingestor.IngestAsync(
+            source, payload, new("optional-fields-omitted.xml"), CancellationToken.None);
+
+        Assert.Equal(1, result.DmarcInserted);
+        Assert.Empty(result.Rejections);
+
+        await using var verification = database.CreateDbContext();
+        Assert.Equal(1, await verification.Domains.CountAsync());
+        Assert.Equal(1, await verification.DmarcReports.CountAsync());
+        Assert.Equal(1, await verification.DmarcReportRecords.CountAsync());
+        Assert.Equal(1, await verification.DmarcReportIngests.CountAsync());
+    }
+
+    [Fact]
     public async Task TlsReplayThroughSourceContextCreatesOneCompleteGraph()
     {
         var source = await ResetMigrateAndSeedAsync();

@@ -23,6 +23,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         }
 
         using var sourceBuffer = CopyToMemory(xmlStream);
+        RemoveWhitespaceBeforeXmlDeclaration(sourceBuffer);
         var hasSubdomainPolicy = HasSubdomainPolicyTag(sourceBuffer);
         var normalizationMessages = new List<string>();
         var normalized = NormalizeReportXml(sourceBuffer, normalizationMessages);
@@ -261,6 +262,29 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         xmlStream.CopyTo(copy);
         copy.Position = 0;
         return copy;
+    }
+
+    private static void RemoveWhitespaceBeforeXmlDeclaration(MemoryStream xmlStream)
+    {
+        var bytes = xmlStream.GetBuffer().AsSpan(0, checked((int)xmlStream.Length));
+        var prefixLength = bytes.StartsWith("\uFEFF"u8) ? 3 : 0;
+        var declarationOffset = prefixLength;
+
+        while (declarationOffset < bytes.Length
+               && bytes[declarationOffset] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+        {
+            declarationOffset++;
+        }
+
+        if (declarationOffset == prefixLength || !bytes[declarationOffset..].StartsWith("<?xml"u8))
+        {
+            xmlStream.Position = 0;
+            return;
+        }
+
+        bytes[declarationOffset..].CopyTo(bytes[prefixLength..]);
+        xmlStream.SetLength(xmlStream.Length - (declarationOffset - prefixLength));
+        xmlStream.Position = 0;
     }
 
     /// <summary>
