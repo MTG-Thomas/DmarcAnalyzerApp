@@ -137,6 +137,7 @@ public sealed class AnalyticsQueryService(
 
         var dispositions = new AnalyticsDispositionsDto(
             dispositionRows.Where(x => x.Disposition == "none").Sum(x => x.Messages),
+            dispositionRows.Where(x => x.Disposition == "pass").Sum(x => x.Messages),
             dispositionRows.Where(x => x.Disposition == "quarantine").Sum(x => x.Messages),
             dispositionRows.Where(x => x.Disposition == "reject").Sum(x => x.Messages));
 
@@ -439,6 +440,7 @@ public sealed class AnalyticsQueryService(
 
         var dispositions = new AnalyticsDispositionsDto(
             evaluated.Where(x => x.Disposition == "none").Sum(x => x.Messages),
+            evaluated.Where(x => x.Disposition == "pass").Sum(x => x.Messages),
             evaluated.Where(x => x.Disposition == "quarantine").Sum(x => x.Messages),
             evaluated.Where(x => x.Disposition == "reject").Sum(x => x.Messages));
 
