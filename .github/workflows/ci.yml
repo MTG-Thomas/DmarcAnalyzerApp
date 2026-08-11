@@ -255,8 +255,8 @@ jobs:
           }
           render "bundled + combined"
           render "bundled + split"   --set mode=split
-          render "external + combined" --set postgres.enabled=false --set externalDatabase.host=db.example
-          render "external + split"    --set postgres.enabled=false --set externalDatabase.host=db.example --set mode=split
+          render "external + combined" --set postgres.enabled=false --set externalDatabase.host=db.example --set externalDatabase.password=test-only
+          render "external + split"    --set postgres.enabled=false --set externalDatabase.host=db.example --set externalDatabase.password=test-only --set mode=split
           render "ingress enabled"     --set ingress.enabled=true
           render "existingSecret"      --set auth.existingSecret=creds
 
@@ -270,6 +270,7 @@ jobs:
             --set auth.encryptionKey="$DUMMY_KEY" \
             --set postgres.enabled=false \
             --set externalDatabase.host=db.example \
+            --set externalDatabase.password=test-only \
             --set mode=split \
             --set image.repository="$test_repository" \
             --set-string image.digest="$test_digest")
@@ -304,6 +305,7 @@ jobs:
           refuses "worker.replicas=2"            --set auth.encryptionKey="$DUMMY_KEY" --set mode=split --set worker.replicas=2
           refuses "startup migrations, 3 app replicas" --set auth.encryptionKey="$DUMMY_KEY" --set mode=split --set app.replicas=3 --set migrations.strategy=startup
           refuses "external db without a host"   --set auth.encryptionKey="$DUMMY_KEY" --set postgres.enabled=false
+          refuses "external db without credentials" --set auth.encryptionKey="$DUMMY_KEY" --set postgres.enabled=false --set externalDatabase.host=db.example
           refuses "no encryption key"            --set mode=combined
           refuses "unknown mode"                 --set auth.encryptionKey="$DUMMY_KEY" --set mode=hybrid
           refuses "image tag plus digest"         --set auth.encryptionKey="$DUMMY_KEY" --set image.tag=0.10.0 --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
