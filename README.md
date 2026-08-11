@@ -55,8 +55,8 @@ Set `COMPOSE_FILE=compose.yml:compose.split.yml` in `.env` and day-to-day use
 stays `docker compose up -d`. Every combination reads the same environment
 variables.
 
-- Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer`, for `linux/amd64` +
-  `linux/arm64`. Mirrored to Docker Hub as `dmarcanalyzernet/dmarc-analyzer`;
+- Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer`, for `linux/amd64`.
+  Mirrored to Docker Hub as `dmarcanalyzernet/dmarc-analyzer`;
   GHCR is recommended because it has no anonymous pull rate limits.
 - Tags: **`latest`** is the most recent release (what the compose file uses), or
   pin a version such as `0.10.0`. **`edge`** tracks `main` and is unreleased —

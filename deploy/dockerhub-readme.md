@@ -65,8 +65,7 @@ The two that matter on day one:
 it makes upgrades explicit and rollbacks unambiguous. `edge` tracks `main` and is
 unreleased.
 
-Built for `linux/amd64` and `linux/arm64`, so a Raspberry Pi or Apple Silicon
-machine works.
+Built for `linux/amd64`.
 
 ## Also available
 

@@ -68,22 +68,22 @@ public sealed class OidcSignInService(
             {
                 if (assurance is EmailAssurance.NotVerified)
                 {
-                    logger.LogWarning("OIDC login for {Email} refused: email not verified at IdP", email);
+                    logger.LogWarning("OIDC login refused: email not verified at IdP");
                     return OidcSignInResult.Failure("email_not_verified");
                 }
 
                 if (assurance is EmailAssurance.Unstated && !options.Value.TrustUnverifiedEmail)
                 {
                     logger.LogWarning(
-                        "OIDC login for {Email} refused: the provider asserted neither email_verified nor xms_edov, " +
+                        "OIDC login refused: the provider asserted neither email_verified nor xms_edov, " +
                         "so the address cannot be trusted to identify the existing account. Configure the xms_edov " +
                         "optional claim (Entra ID), or set Auth:Oidc:TrustUnverifiedEmail=true if this provider's " +
-                        "addresses are administered.", email);
+                        "addresses are administered.");
                     return OidcSignInResult.Failure("email_verification_unknown");
                 }
 
                 await AddIdentityAsync(existing.Id, issuer, subject, email, ct);
-                logger.LogInformation("Linked OIDC identity {Issuer}/{Subject} to existing user {UserId}", issuer, subject, existing.Id);
+                logger.LogInformation("Linked OIDC identity from {Issuer} to existing user {UserId}", issuer, existing.Id);
                 return await MintSessionAsync(existing.Id, ipAddress, userAgent, ct);
             }
         }
@@ -127,7 +127,7 @@ public sealed class OidcSignInService(
         await db.SaveChangesAsync(ct);
 
         await AddIdentityAsync(user.Id, issuer, subject, email, ct);
-        logger.LogInformation("Auto-provisioned user {UserId} ({Email}) with role {Role} from {Issuer}", user.Id, email, role, issuer);
+        logger.LogInformation("Auto-provisioned user {UserId} with role {Role} from {Issuer}", user.Id, role, issuer);
 
         // An SSO-only deployment can be bootstrapped entirely through here, never touching
         // local registration, so this path has to establish the default client as well —

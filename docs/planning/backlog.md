@@ -199,7 +199,7 @@ Sequenced; each step is independently shippable.
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [x] (done) Implement per-client retention rules with default 27 months plus purge job and legal-hold support (`RetentionPurgeService`, daily worker pass, `client.LegalHold`, admin preview/purge endpoints). Archival-before-delete was not implemented — purging is outright deletion.
-- [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64+arm64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
+- [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
 - [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [x] (done) Make the console usable on a phone. The shell was the whole problem: a permanent 230px sidebar plus `main`'s flat `px-8` left ~96px of content at 390px, and there was no breakpoint anywhere in `ConsoleLayout`. Below `lg` the sidebar is now an off-canvas drawer (backdrop, Escape, scroll lock, focus moved in and returned, `invisible` so the closed menu is not tabbable) behind a top bar; at `lg` and up the layout is byte-for-byte the old one. Per-page pass on top: headers and action rows stack, search fields go fluid, the three tables that lacked a scroll container got one, dialogs cap at `100dvh` and scroll internally (the taller forms previously pushed their submit button off a short viewport with no way to reach it), and inputs go 16px below `sm` because iOS Safari zooms the page on any smaller focused field. Verified at 320/390/1023/1024/1280 — zero horizontal overflow on all 11 routes at 320px.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
@@ -537,7 +537,7 @@ step is independently shippable.
 - [x] (done) Move the GitHub Actions off the Node 20 runtime. Every action is now
       pinned to the *first* major declaring `using: node24`, verified by reading
       `action.yml` at each tag: checkout/setup-node/setup-dotnet v4 -> v5,
-      login/setup-buildx/setup-qemu v3 -> v4, metadata v5 -> v6, build-push
+      login/setup-buildx v3 -> v4, metadata v5 -> v6, build-push
       v6 -> v7.
 
       Correction to the original note, which said the `docker/*` actions were

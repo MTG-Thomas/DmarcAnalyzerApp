@@ -1,8 +1,10 @@
 name: Sonar analysis
 
-# Activate push/pull_request triggers only after SONAR_TOKEN and the two
-# repository variables below exist. A manual run fails closed until then.
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -49,6 +51,8 @@ jobs:
             /k:"$SONAR_PROJECT_KEY" \
             /o:"$SONAR_ORGANIZATION" \
             /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.qualitygate.wait=true \
+            /d:sonar.qualitygate.timeout=300 \
             /d:sonar.cs.opencover.reportsPaths="TestResults/**/coverage.opencover.xml"
           dotnet build DmarcAnalyzerApp.slnx --configuration Release --no-restore --no-incremental --nologo
           dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj \
