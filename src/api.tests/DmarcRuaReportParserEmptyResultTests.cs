@@ -221,6 +221,19 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.Contains(result.ValidationMessages, x => x.Contains("'15'", StringComparison.Ordinal));
     }
 
+    /// <summary>Pass is an RFC 9990 action disposition, not a valid unnamespaced v1 value.</summary>
+    [Fact]
+    public void Parse_WithV1PassDisposition_StillFallsBackToNone()
+    {
+        using var stream = ReportWith("<disposition>pass</disposition><dkim>pass</dkim><spf>pass</spf>");
+
+        var result = _parser.Parse(stream);
+
+        var record = Assert.Single(result.Records, x => x.SourceIp == "192.0.2.1");
+        Assert.Equal("none", record.Disposition);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("'pass'", StringComparison.Ordinal));
+    }
+
     /// <summary>The substituted value has to be named, or the repair is untraceable.</summary>
     [Fact]
     public void Parse_NamesTheOffendingValueInTheWarning()
