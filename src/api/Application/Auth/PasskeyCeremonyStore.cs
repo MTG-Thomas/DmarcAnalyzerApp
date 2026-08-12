@@ -26,7 +26,6 @@ public sealed record PasskeyCeremony(
 
 public sealed class PasskeyCeremonyStore(
     IDataProtectionProvider dataProtectionProvider,
-    IHostEnvironment environment,
     TimeProvider timeProvider) : IPasskeyCeremonyStore
 {
     private const string CookieName = "dmarc_passkey_ceremony";
@@ -49,7 +48,7 @@ public sealed class PasskeyCeremonyStore(
             return null;
         }
 
-        response.Cookies.Delete(CookieName, CookieOptions(request));
+        response.Cookies.Delete(CookieName, CookieOptions());
 
         string handle;
         try
@@ -89,13 +88,13 @@ public sealed class PasskeyCeremonyStore(
             _pending[handle] = new PendingCeremony(ceremony, now.Add(Lifetime));
         }
 
-        response.Cookies.Append(CookieName, _protector.Protect(handle), CookieOptions(request));
+        response.Cookies.Append(CookieName, _protector.Protect(handle), CookieOptions());
     }
 
-    private CookieOptions CookieOptions(HttpRequest request) => new()
+    private static CookieOptions CookieOptions() => new()
     {
         HttpOnly = true,
-        Secure = !environment.IsDevelopment() || request.IsHttps,
+        Secure = true,
         SameSite = SameSiteMode.Strict,
         MaxAge = Lifetime,
         Path = "/api/v1/",

@@ -18,7 +18,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
     private const string BeforeServicePermissionsMigration = "20260812012105_AddServiceApiCredentials";
     private const string BeforePasskeyMigration = "20260812025139_AddServiceApiCredentialPermissions";
-    private const string ExpectedLatestMigration = "20260812031904_AddUserPasskeys";
+    private const string ExpectedLatestMigration = "20260812033233_AddUserPasskeys";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
@@ -148,6 +148,30 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
                 PublicKey = new byte[64],
                 UserHandle = user.Id.ToByteArray(),
             });
+            await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        }
+
+        foreach (var invalidCredential in new[]
+        {
+            new UserPasskey
+            {
+                UserId = user.Id, Name = "Short public key", CredentialId = new byte[32],
+                PublicKey = new byte[31], UserHandle = user.Id.ToByteArray(),
+            },
+            new UserPasskey
+            {
+                UserId = user.Id, Name = "Wrong handle", CredentialId = Enumerable.Repeat((byte)2, 32).ToArray(),
+                PublicKey = new byte[64], UserHandle = new byte[15],
+            },
+            new UserPasskey
+            {
+                UserId = user.Id, Name = "Counter overflow", CredentialId = Enumerable.Repeat((byte)3, 32).ToArray(),
+                PublicKey = new byte[64], UserHandle = user.Id.ToByteArray(), SignCount = (long)uint.MaxValue + 1,
+            },
+        })
+        {
+            await using var invalid = database.CreateDbContext();
+            invalid.UserPasskeys.Add(invalidCredential);
             await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
         }
 

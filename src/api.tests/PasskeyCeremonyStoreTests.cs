@@ -52,9 +52,23 @@ public sealed class PasskeyCeremonyStoreTests
         Assert.Null(store.Consume(completion.Request, completion.Response, PasskeyCeremonyKind.Authentication));
     }
 
+    [Fact]
+    public void DevelopmentHttpCeremonyCookieStillRequiresSecureTransport()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var store = new PasskeyCeremonyStore(
+            new EphemeralDataProtectionProvider(),
+            clock);
+        var context = Context();
+        context.Request.Scheme = "http";
+
+        store.StartAuthentication(context.Response, context.Request, AssertionOptions(clock));
+
+        Assert.Contains("secure", context.Response.Headers.SetCookie.Single()!, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static PasskeyCeremonyStore CreateStore(TimeProvider clock) => new(
         new EphemeralDataProtectionProvider(),
-        new TestEnvironment(),
         clock);
 
     private static AssertionOptions AssertionOptions(TimeProvider _) => new Fido2(new Fido2Configuration
@@ -83,13 +97,4 @@ public sealed class PasskeyCeremonyStoreTests
         public void Advance(TimeSpan by) => now += by;
     }
 
-    private sealed class TestEnvironment : IWebHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Production";
-        public string ApplicationName { get; set; } = "Tests";
-        public string WebRootPath { get; set; } = string.Empty;
-        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
-        public string ContentRootPath { get; set; } = string.Empty;
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-    }
 }

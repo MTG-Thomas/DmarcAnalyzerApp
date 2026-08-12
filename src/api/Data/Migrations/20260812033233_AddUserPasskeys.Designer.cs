@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DmarcAnalyzer.Api.Data.Migrations
 {
     [DbContext(typeof(DmarcAnalyzerDbContext))]
-    [Migration("20260812031904_AddUserPasskeys")]
+    [Migration("20260812033233_AddUserPasskeys")]
     partial class AddUserPasskeys
     {
         /// <inheritdoc />
@@ -137,13 +137,13 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("MailboxSourceId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("Prefix")
                         .IsRequired()
                         .HasMaxLength(22)
                         .HasColumnType("character varying(22)");
+
+                    b.Property<Guid>("ReportSourceId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -154,10 +154,10 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MailboxSourceId", "Prefix")
+                    b.HasIndex("ReportSourceId", "Prefix")
                         .IsUnique();
 
-                    b.HasIndex("MailboxSourceId", "RevokedAtUtc");
+                    b.HasIndex("ReportSourceId", "RevokedAtUtc");
 
                     b.ToTable("api_source_credential", null, t =>
                         {
@@ -376,9 +376,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("IngestedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("MailboxSourceId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("OrganizationName")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -410,6 +407,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<Guid>("ReportSourceId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("SpfAlignment")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -425,7 +425,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.HasIndex("DomainId");
 
-                    b.HasIndex("MailboxSourceId");
+                    b.HasIndex("ReportSourceId");
 
                     b.HasIndex("DomainId", "ReportId", "RangeBeginUtc", "RangeEndUtc")
                         .IsUnique();
@@ -444,9 +444,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.Property<DateTime>("IngestedAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("MailboxSourceId")
-                        .HasColumnType("uuid");
 
                     b.Property<string>("OrganizationName")
                         .IsRequired()
@@ -472,11 +469,14 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("ReportRangeEndUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("ReportSourceId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClientId");
 
-                    b.HasIndex("MailboxSourceId");
+                    b.HasIndex("ReportSourceId");
 
                     b.HasIndex("ClientId", "PolicyDomain", "ReportId", "ReportRangeBeginUtc", "ReportRangeEndUtc")
                         .IsUnique();
@@ -665,79 +665,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.ToTable("domain", (string)null);
                 });
 
-            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MailboxSource", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("DefaultClientId")
-                        .HasColumnType("uuid");
-
-                    b.Property<bool>("DeleteAfterRetention")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<string>("Host")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
-
-                    b.Property<long?>("LastProcessedUid")
-                        .HasColumnType("bigint");
-
-                    b.Property<long?>("LastProcessedUidValidity")
-                        .HasColumnType("bigint");
-
-                    b.Property<DateTime?>("LastSuccessSyncAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)");
-
-                    b.Property<DateTime?>("OldestMessageAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("PasswordEncrypted")
-                        .HasMaxLength(2048)
-                        .HasColumnType("character varying(2048)");
-
-                    b.Property<int?>("Port")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Protocol")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime>("UpdatedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool?>("UseTls")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("Username")
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DefaultClientId");
-
-                    b.ToTable("mailbox_source", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_mailbox_source_ProtocolConfiguration", "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR (\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)");
-                        });
-                });
-
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MailboxSyncRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -757,14 +684,14 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime?>("FinishedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("MailboxSourceId")
-                        .HasColumnType("uuid");
-
                     b.Property<int>("MessagesScanned")
                         .HasColumnType("integer");
 
                     b.Property<int>("ParseFailures")
                         .HasColumnType("integer");
+
+                    b.Property<Guid>("ReportSourceId")
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ReportsInserted")
                         .HasColumnType("integer");
@@ -793,8 +720,8 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MailboxSourceId")
-                        .HasDatabaseName("IX_mailbox_sync_run_MailboxSourceId");
+                    b.HasIndex("ReportSourceId")
+                        .HasDatabaseName("IX_mailbox_sync_run_ReportSourceId");
 
                     b.HasIndex("StartedAtUtc");
 
@@ -977,6 +904,79 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.ToTable("notification_recipient", (string)null);
                 });
 
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportSource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DefaultClientId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("DeleteAfterRetention")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Host")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<long?>("LastProcessedUid")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("LastProcessedUidValidity")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("LastSuccessSyncAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("OldestMessageAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PasswordEncrypted")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.Property<int?>("Port")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Protocol")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("UseTls")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Username")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DefaultClientId");
+
+                    b.ToTable("report_source", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_report_source_ProtocolConfiguration", "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR (\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ServiceApiCredential", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1097,9 +1097,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("IngestedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("MailboxSourceId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("OrganizationName")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -1119,6 +1116,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<Guid>("ReportSourceId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("TotalFailureSessionCount")
                         .HasColumnType("bigint");
 
@@ -1127,9 +1127,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MailboxSourceId");
-
                     b.HasIndex("RangeEndUtc");
+
+                    b.HasIndex("ReportSourceId");
 
                     b.HasIndex("OrganizationName", "ReportId", "RangeBeginUtc", "RangeEndUtc")
                         .IsUnique();
@@ -1206,9 +1206,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("IngestedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("MailboxSourceId")
-                        .HasColumnType("uuid");
-
                     b.Property<string>("OrganizationName")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -1233,6 +1230,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("ReportRangeEndUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("ReportSourceId")
+                        .HasColumnType("uuid");
+
                     b.Property<long>("TotalFailureSessionCount")
                         .HasColumnType("bigint");
 
@@ -1243,9 +1243,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.HasIndex("ClientId");
 
-                    b.HasIndex("MailboxSourceId");
-
                     b.HasIndex("ReportRangeEndUtc");
+
+                    b.HasIndex("ReportSourceId");
 
                     b.HasIndex("ClientId", "OrganizationName", "ReportId", "ReportRangeBeginUtc", "ReportRangeEndUtc")
                         .IsUnique();
@@ -1460,13 +1460,13 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ApiSourceCredential", b =>
                 {
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.ReportSource", "ReportSource")
                         .WithMany()
-                        .HasForeignKey("MailboxSourceId")
+                        .HasForeignKey("ReportSourceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("MailboxSource");
+                    b.Navigation("ReportSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.DigestDelivery", b =>
@@ -1488,15 +1488,15 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.ReportSource", "ReportSource")
                         .WithMany()
-                        .HasForeignKey("MailboxSourceId")
+                        .HasForeignKey("ReportSourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Domain");
 
-                    b.Navigation("MailboxSource");
+                    b.Navigation("ReportSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.DmarcReportIngest", b =>
@@ -1507,15 +1507,15 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.ReportSource", "ReportSource")
                         .WithMany()
-                        .HasForeignKey("MailboxSourceId")
+                        .HasForeignKey("ReportSourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Client");
 
-                    b.Navigation("MailboxSource");
+                    b.Navigation("ReportSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.DmarcReportRecord", b =>
@@ -1562,26 +1562,15 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Navigation("Client");
                 });
 
-            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MailboxSource", b =>
-                {
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.Client", "DefaultClient")
-                        .WithMany()
-                        .HasForeignKey("DefaultClientId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("DefaultClient");
-                });
-
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MailboxSyncRun", b =>
                 {
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.ReportSource", "ReportSource")
                         .WithMany()
-                        .HasForeignKey("MailboxSourceId")
+                        .HasForeignKey("ReportSourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("MailboxSource");
+                    b.Navigation("ReportSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MtaStsPolicy", b =>
@@ -1616,6 +1605,17 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Navigation("Client");
                 });
 
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportSource", b =>
+                {
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.Client", "DefaultClient")
+                        .WithMany()
+                        .HasForeignKey("DefaultClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DefaultClient");
+                });
+
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.SmtpTlsFailureDetail", b =>
                 {
                     b.HasOne("DmarcAnalyzer.Api.Data.Entities.SmtpTlsReportPolicy", "Policy")
@@ -1629,13 +1629,13 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.SmtpTlsReport", b =>
                 {
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.ReportSource", "ReportSource")
                         .WithMany()
-                        .HasForeignKey("MailboxSourceId")
+                        .HasForeignKey("ReportSourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("MailboxSource");
+                    b.Navigation("ReportSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.SmtpTlsReportPolicy", b =>
@@ -1665,15 +1665,15 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.ReportSource", "ReportSource")
                         .WithMany()
-                        .HasForeignKey("MailboxSourceId")
+                        .HasForeignKey("ReportSourceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Client");
 
-                    b.Navigation("MailboxSource");
+                    b.Navigation("ReportSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.UserClientGrant", b =>
