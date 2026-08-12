@@ -18,6 +18,8 @@ feel trustworthy without looking clinical or militarized.
   not compete with them.
 - Use cards to frame metrics, bounded tools, or coherent panels—not as the
   default wrapper for every section.
+- A planned dark theme should extend the upstream brand's ink-panel treatment
+  across the console without changing its density or information hierarchy.
 
 DMARC products such as dmarcian and EasyDMARC are information-domain references,
 not visual templates. Do not import their marketing surfaces or invent a second
@@ -77,6 +79,58 @@ Avoid new literal colors in page code.
 `--brand` is intentionally dark enough for white button text. Do not revert a
 primary button to teal-600. Teal-600 remains appropriate for non-text chart
 fills, dots, and borders.
+
+### Planned dark theme
+
+Dark theme is planned, not implemented. The canonical brand reference is the
+upstream [brand page](https://dmarc-analyzer.net/brand/). It defines ink green
+for dark panels, mint for accents and buttons on those panels, and a reversed
+light wordmark. The live brand-site stylesheet currently supplies the supporting
+on-ink tokens below.
+
+| Dark role | Upstream source token | Current value |
+| --- | --- | --- |
+| Base ink surface | `--surface-ink` / ink green | `#0b1d18` |
+| Raised ink surface | `--surface-ink-raised` | `#0e2620` |
+| Primary text on ink | `--text-on-ink` | `#e8f2ee` |
+| Muted text on ink | `--text-on-ink-muted` | `#8fa8a0` |
+| Border on ink | `--border-on-ink` | `rgba(255, 255, 255, 0.12)` |
+| Primary dark-panel action | mint | `#3ae0b0` |
+| Reversed wordmark | logo artwork | `#f0fdfa` |
+
+The brand site is light overall and uses these values for terminal, CTA, footer,
+and reversed-logo panels. It does not define a complete dark application theme.
+Treat this table as the source palette, not permission to guess the remaining
+semantic mappings.
+
+The dark-theme design slice must:
+
+- map page, card, sunken, overlay, hover, selected, and disabled surfaces from
+  the existing ink/teal scales;
+- define body, secondary, faint, link, border, and focus tokens with WCAG 2.2 AA
+  contrast evidence;
+- create dark variants for every success, warning, danger, and neutral
+  foreground/background/dot triplet rather than reusing light tinted
+  backgrounds;
+- remap chart grids, table headers, row hover, code blocks, inputs, dialogs,
+  backdrops, and shadows so depth does not depend on a barely visible shadow;
+- use mint with ink text for primary actions on dark surfaces and mint for the
+  focus indicator; do not place white text on mint;
+- use the reversed `BrandLogo` treatment on a dark shell while preserving the
+  shield gradient exactly; and
+- verify the same loading, empty, error, partial, selected, disabled, keyboard,
+  mobile, and high-risk states in both schemes.
+
+Prefer semantic custom-property overrides at the theme root so existing
+components inherit the scheme. Do not add per-page `dark:` class patches or a
+parallel component set. Theme selection behavior—system preference, persisted
+user choice, or both—belongs to the implementation slice and is not decided by
+the brand palette.
+
+Before implementation, recheck the canonical brand page because the website is
+upstream-owned and may evolve independently of this fork. Avoid pure black,
+generic charcoal, blue-purple gradients, neon teal overuse, and a dark sidebar
+attached to otherwise unmapped light content.
 
 ### Semantic state
 
@@ -152,7 +206,8 @@ confirmation uses `danger`.
 
 - Include a text label for primary and destructive actions.
 - Use Lucide icons as supporting cues, normally 14–16px.
-- Hover darkens primary actions; focus uses the 3px teal ring.
+- Light-theme teal actions darken on hover. Dark-theme mint actions may brighten
+  within the existing mint scale; focus uses the theme's high-contrast ring.
 - Disabled controls keep their label visible, use 50% opacity, and cannot fire.
 - Do not hide essential actions behind an ellipsis solely to make a row cleaner.
 
