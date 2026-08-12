@@ -168,4 +168,72 @@ public sealed class ApiReportSourceTests
         Assert.Equal(1, summary.Mailboxes.Healthy);
         Assert.Equal(0, summary.Mailboxes.Failing);
     }
+
+    [Fact]
+    public async Task CreateValidatesSourceConfigurationAndListsClientName()
+    {
+        await using var db = NewDb();
+        var service = Service(db);
+
+        Assert.Equal(400, (await service.CreateAsync(new() { Protocol = "smtp" }, default)).StatusCode);
+        Assert.Equal(400, (await service.CreateAsync(new() { Protocol = "api" }, default)).StatusCode);
+        Assert.Equal(400, (await service.CreateAsync(new()
+        {
+            Name = "Inbox", Protocol = "imap", DefaultClientId = Guid.NewGuid(),
+        }, default)).StatusCode);
+        Assert.Equal(400, (await service.CreateAsync(new()
+        {
+            Name = "Upload", Protocol = "api", DefaultClientId = Guid.NewGuid(), DeleteAfterRetention = true,
+        }, default)).StatusCode);
+        Assert.Equal(400, (await service.CreateAsync(new()
+        {
+            Name = "Upload", Protocol = "api", DefaultClientId = Guid.NewGuid(),
+        }, default)).StatusCode);
+
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        db.Clients.Add(client);
+        await db.SaveChangesAsync();
+
+        var created = await service.CreateAsync(new()
+        {
+            Name = " Inbox ", Protocol = " IMAP ", Host = " IMAP.EXAMPLE ", Port = 993,
+            UseTls = true, Username = " reports@example ", Password = "secret",
+            DefaultClientId = client.Id, DeleteAfterRetention = true,
+        }, default);
+
+        Assert.True(created.IsSuccess);
+        var listed = Assert.Single(await service.ListAsync(default));
+        Assert.Equal("Inbox", listed.Name);
+        Assert.Equal("imap.example", listed.Host);
+        Assert.Equal("Acme", listed.DefaultClientName);
+    }
+
+    [Fact]
+    public async Task UpdateRejectsInvalidSourceChanges()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        var source = new ReportSource
+        {
+            Name = "Inbox", Protocol = "imap", Host = "imap.example", Port = 993, UseTls = true,
+            Username = "reports@example", PasswordEncrypted = "encrypted", DefaultClientId = client.Id,
+        };
+        db.AddRange(client, source);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        Assert.Equal(404, (await service.UpdateAsync(Guid.NewGuid(), new(), default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Protocol = "smtp" }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Name = " " }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Host = " " }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Port = 0 }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Username = " " }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Password = " " }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { DefaultClientId = Guid.Empty }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { DefaultClientId = Guid.NewGuid() }, default)).StatusCode);
+
+        var api = await service.UpdateAsync(source.Id, new() { Protocol = "api" }, default);
+        Assert.True(api.IsSuccess);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { DeleteAfterRetention = true }, default)).StatusCode);
+    }
 }
