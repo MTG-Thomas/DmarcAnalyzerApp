@@ -191,4 +191,67 @@ describe('service API key settings', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(create).toHaveFocus()
   })
+
+  it('preserves existing keys when the permission catalog is unavailable', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce([{ ...activeCredential, permissions: ['future.permission'] }])
+      .mockRejectedValueOnce(new Error('catalog unavailable'))
+
+    render(<SettingsPage />)
+
+    expect(await screen.findByText('Bifrost')).toBeInTheDocument()
+    expect(screen.getByText('future.permission')).toBeInTheDocument()
+    expect(screen.getByText(/existing keys remain available/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create service API key' })).toBeDisabled()
+  })
+
+  it('shows expired and revoked lifecycle metadata without revoke actions', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce([
+        { ...activeCredential, id: 'expired', name: 'Expired key', expiresAtUtc: '2020-01-01T00:00:00Z' },
+        { ...activeCredential, id: 'revoked', name: 'Revoked key', revokedAtUtc: '2026-08-12T02:00:00Z' },
+      ])
+      .mockResolvedValueOnce(permissionCatalog)
+
+    render(<SettingsPage />)
+
+    expect(await screen.findByText('Expired')).toBeInTheDocument()
+    expect(screen.getByText('Revoked')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /revoke expired key/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /revoke revoked key/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps create and revoke failures inside their dialogs', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce([activeCredential])
+      .mockResolvedValueOnce(permissionCatalog)
+      .mockRejectedValueOnce(new Error('issuance denied'))
+      .mockRejectedValueOnce(new Error('revocation denied'))
+
+    render(<SettingsPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create service API key' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Bifrost replacement' } })
+    fireEvent.change(screen.getByLabelText('Expires'), { target: { value: '2027-01-01' } })
+    const permission = screen.getByRole('checkbox', { name: /portfolio read access/i })
+    fireEvent.click(permission)
+    fireEvent.click(permission)
+    expect(screen.getByRole('button', { name: 'Create API key' })).toBeDisabled()
+    fireEvent.click(permission)
+    fireEvent.click(screen.getByRole('button', { name: 'Create API key' }))
+
+    const createDialog = screen.getByRole('dialog')
+    expect(await screen.findByText('issuance denied')).toBeInTheDocument()
+    expect(createDialog).toContainElement(screen.getByText('issuance denied'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke Bifrost' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm revoke' }))
+
+    const revokeDialog = screen.getByRole('alertdialog')
+    expect(await screen.findByText('revocation denied')).toBeInTheDocument()
+    expect(revokeDialog).toContainElement(screen.getByText('revocation denied'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+  })
 })
