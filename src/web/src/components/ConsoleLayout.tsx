@@ -32,7 +32,7 @@ const manageNav: NavItem[] = [
   { to: '/notifications', label: 'Notifications', icon: 'inbox', visibleTo: isStaff },
   { to: '/audit', label: 'Audit trail', icon: 'file-text', visibleTo: isAdmin },
   { to: '/backup', label: 'Backup and recovery', icon: 'cloud-upload', visibleTo: isAdmin },
-  { to: '/settings', label: 'Settings', icon: 'settings', visibleTo: isAdmin },
+  { to: '/settings', label: 'Settings', icon: 'settings' },
 ]
 
 function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
