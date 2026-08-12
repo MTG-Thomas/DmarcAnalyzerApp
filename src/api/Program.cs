@@ -275,17 +275,9 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy(ReportUploadModule.RateLimitPolicy, http =>
     {
         var limits = http.RequestServices.GetRequiredService<IOptions<ReportPayloadExtractionOptions>>().Value;
-        var authorization = http.Request.Headers.Authorization.ToString();
-        var partition = authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
-            ? $"credential:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(authorization[7..].Trim())))}"
-            : $"address:{http.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
-
-        return RateLimitPartition.GetFixedWindowLimiter(partition, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = limits.RateLimitPermits,
-            Window = TimeSpan.FromSeconds(limits.RateLimitWindowSeconds),
-            QueueLimit = 0,
-        });
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ReportUploadModule.CredentialRateLimitPartition(http),
+            _ => ReportUploadModule.RateLimiterOptions(limits));
     });
 });
 builder.Services.AddScoped<IOidcSignInService, OidcSignInService>();
