@@ -70,6 +70,18 @@ export type MailboxSource = {
   oldestMessageAtUtc: string | null
 }
 
+export type ApiSourceCredential = {
+  id: string
+  sourceId: string
+  prefix: string
+  createdAtUtc: string
+  revokedAtUtc: string | null
+}
+
+export type IssuedApiSourceCredential = Omit<ApiSourceCredential, 'revokedAtUtc'> & {
+  token: string
+}
+
 export type MailboxHealth = {
   mailboxSourceId: string
   name: string

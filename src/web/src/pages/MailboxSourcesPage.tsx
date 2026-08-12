@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Notice } from '@/components/Notice'
@@ -20,7 +20,9 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type {
+  ApiSourceCredential,
   Client,
+  IssuedApiSourceCredential,
   MailboxHealth,
   MailboxSource,
   MailboxSyncRun,
@@ -73,6 +75,291 @@ const formatWhen = (value: string | null) => {
   return date.toLocaleString()
 }
 
+export function ApiSourceCredentialsDialog({
+  source,
+  onClose,
+}: {
+  source: MailboxSource
+  onClose: () => void
+}) {
+  const [credentials, setCredentials] = useState<ApiSourceCredential[]>([])
+  const [loading, setLoading] = useState(true)
+  const [credentialsLoaded, setCredentialsLoaded] = useState(false)
+  const [action, setAction] = useState<'issue' | 'revoke' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [issued, setIssued] = useState<IssuedApiSourceCredential | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [revokeTarget, setRevokeTarget] = useState<ApiSourceCredential | null>(null)
+  const revokeConfirmationRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadCredentials = async () => {
+      try {
+        const result = await fetchJson<ApiSourceCredential[]>(
+          `/api/v1/mailbox-sources/${source.id}/credentials`,
+        )
+        if (!cancelled) {
+          setCredentials(result)
+          setCredentialsLoaded(true)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load API keys')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void loadCredentials()
+    return () => {
+      cancelled = true
+    }
+  }, [source.id])
+
+  useEffect(() => {
+    if (revokeTarget) revokeConfirmationRef.current?.focus()
+  }, [revokeTarget])
+
+  const hasActiveCredential = credentials.some((credential) => credential.revokedAtUtc === null)
+
+  const issueCredential = async () => {
+    const rotating = hasActiveCredential
+    setAction('issue')
+    setError(null)
+    setCopied(false)
+    try {
+      const result = await fetchJson<IssuedApiSourceCredential>(
+        `/api/v1/mailbox-sources/${source.id}/credentials${rotating ? '/rotate' : ''}`,
+        { method: 'POST' },
+      )
+      setCredentials((current) => [
+        {
+          id: result.id,
+          sourceId: result.sourceId,
+          prefix: result.prefix,
+          createdAtUtc: result.createdAtUtc,
+          revokedAtUtc: null,
+        },
+        ...current,
+      ])
+      setIssued(result)
+    } catch (issueError) {
+      setError(issueError instanceof Error ? issueError.message : 'Failed to create API key')
+    } finally {
+      setAction(null)
+    }
+  }
+
+  const copyIssuedCredential = async () => {
+    if (!issued) return
+    setError(null)
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable')
+      await navigator.clipboard.writeText(issued.token)
+      setCopied(true)
+    } catch {
+      setError('Could not copy the API key. Select and copy it manually.')
+    }
+  }
+
+  const revokeCredential = async () => {
+    if (!revokeTarget) return
+    setAction('revoke')
+    setError(null)
+    try {
+      const result = await fetchJson<ApiSourceCredential>(
+        `/api/v1/mailbox-sources/${source.id}/credentials/${revokeTarget.id}`,
+        { method: 'DELETE' },
+      )
+      setCredentials((current) =>
+        current.map((credential) => (credential.id === result.id ? result : credential)),
+      )
+      setIssued((current) => (current?.id === result.id ? null : current))
+      setRevokeTarget(null)
+    } catch (revokeError) {
+      setError(revokeError instanceof Error ? revokeError.message : 'Failed to revoke API key')
+    } finally {
+      setAction(null)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (!open && action === null ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>API keys for {source.name}</DialogTitle>
+          <DialogDescription>
+            Keys authenticate report uploads to this source. Secret values are shown only when created.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          {error ? <Notice tone="danger">{error}</Notice> : null}
+
+          {issued ? (
+            <Notice tone="warn" title="Copy and save this API key now">
+              <p>It will not be shown again after you close this dialog.</p>
+              {credentials.some(
+                (credential) => credential.id !== issued.id && credential.revokedAtUtc === null,
+              ) ? (
+                <p className="mt-1">Existing keys remain active until you revoke them.</p>
+              ) : null}
+              <Input
+                className="mt-2 text-xs"
+                aria-label="API key"
+                readOnly
+                mono
+                value={issued.token}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon="copy"
+                  aria-label="Copy API key"
+                  onClick={() => void copyIssuedCredential()}
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+                <span className="text-xs" aria-live="polite">
+                  {copied ? 'API key copied.' : ''}
+                </span>
+              </div>
+            </Notice>
+          ) : null}
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-body">Issued keys</h3>
+              <p className="text-xs text-secondary">Prefixes identify keys without exposing secrets.</p>
+            </div>
+            {!loading && credentialsLoaded ? (
+              <Button
+                type="button"
+                size="sm"
+                icon={hasActiveCredential ? 'refresh-cw' : 'plus'}
+                disabled={action !== null || revokeTarget !== null}
+                onClick={() => void issueCredential()}
+              >
+                {action === 'issue'
+                  ? hasActiveCredential
+                    ? 'Rotating'
+                    : 'Creating'
+                  : hasActiveCredential
+                    ? 'Rotate API key'
+                    : 'Create API key'}
+              </Button>
+            ) : null}
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Icon name="loader-circle" size={20} className="animate-spin text-secondary" />
+            </div>
+          ) : !credentialsLoaded ? (
+            <p className="rounded-md border border-border px-3 py-6 text-center text-sm text-secondary">
+              API key metadata is unavailable. Close and reopen this dialog to retry.
+            </p>
+          ) : credentials.length === 0 ? (
+            <p className="rounded-md border border-border px-3 py-6 text-center text-sm text-secondary">
+              No API keys have been issued for this source.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {credentials.map((credential) => {
+                const confirmationTitleId = `revoke-api-key-${credential.id}`
+                return (
+                  <div key={credential.id} className="space-y-2">
+                    <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <code className="block truncate font-mono text-xs text-body">
+                          {credential.prefix}
+                        </code>
+                        <p className="mt-0.5 text-xs text-secondary">
+                          Created {formatWhen(credential.createdAtUtc)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant={credential.revokedAtUtc ? 'neutral' : 'success'}>
+                          {credential.revokedAtUtc ? 'Revoked' : 'Active'}
+                        </Badge>
+                        {credential.revokedAtUtc === null ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Revoke ${credential.prefix}`}
+                            disabled={action !== null || revokeTarget !== null}
+                            onClick={() => setRevokeTarget(credential)}
+                          >
+                            Revoke
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {revokeTarget?.id === credential.id ? (
+                      <div
+                        ref={revokeConfirmationRef}
+                        role="alertdialog"
+                        aria-labelledby={confirmationTitleId}
+                        tabIndex={-1}
+                        className="focus:outline-none"
+                      >
+                        <Notice
+                          tone="warn"
+                          title={
+                            <span id={confirmationTitleId}>
+                              Revoke API key {revokeTarget.prefix}?
+                            </span>
+                          }
+                        >
+                          <p>Applications using this key will stop sending reports immediately.</p>
+                          <div className="mt-2 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={action !== null}
+                              onClick={() => setRevokeTarget(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="sm"
+                              disabled={action !== null}
+                              aria-label="Confirm revoke"
+                              onClick={() => void revokeCredential()}
+                            >
+                              {action === 'revoke' ? 'Revoking' : 'Revoke key'}
+                            </Button>
+                          </div>
+                        </Notice>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" disabled={action !== null} onClick={onClose}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function MailboxSourcesPage() {
   usePageTitle('Mailbox sources')
   const { user } = useAuth()
@@ -92,6 +379,7 @@ export function MailboxSourcesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMailboxId, setEditingMailboxId] = useState<string | null>(null)
   const [mailboxForm, setMailboxForm] = useState(initialMailboxForm)
+  const [credentialSource, setCredentialSource] = useState<MailboxSource | null>(null)
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -379,6 +667,16 @@ export function MailboxSourcesPage() {
                         </TableCell>
                         <TableCell align="right">
                           <div className="flex justify-end gap-2">
+                            {canManage && source.protocol === 'api' ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon="key-round"
+                                onClick={() => setCredentialSource(source)}
+                              >
+                                API keys
+                              </Button>
+                            ) : null}
                             {canManage && (
                               <Button
                                 variant="secondary"
@@ -758,6 +1056,13 @@ export function MailboxSourcesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {credentialSource ? (
+        <ApiSourceCredentialsDialog
+          source={credentialSource}
+          onClose={() => setCredentialSource(null)}
+        />
+      ) : null}
     </>
   )
 }
