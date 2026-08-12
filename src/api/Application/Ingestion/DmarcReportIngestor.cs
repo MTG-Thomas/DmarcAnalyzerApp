@@ -140,7 +140,7 @@ public sealed class DmarcReportIngestor(
         var id = Guid.NewGuid();
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report
-                (""Id"", ""DomainId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
+                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
             VALUES
                 ({id}, {domainId}, {sourceId}, {organizationName}, {reportId}, {report.RangeBeginUtc}, {report.RangeEndUtc}, {report.RecordCount}, {DateTime.UtcNow}, {report.PublishedPolicy}, {report.SubdomainPolicy}, {report.PublishedPct}, {report.DkimAlignment}, {report.SpfAlignment})
             ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
@@ -196,7 +196,7 @@ public sealed class DmarcReportIngestor(
         CancellationToken ct)
         => db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report_ingest
-                (""Id"", ""ClientId"", ""MailboxSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
+                (""Id"", ""ClientId"", ""ReportSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
             VALUES
                 ({Guid.NewGuid()}, {clientId}, {sourceId}, {policyDomain}, {reportId}, {report.RangeBeginUtc}, {report.RangeEndUtc}, {organizationName}, {report.RecordCount}, {DateTime.UtcNow})
             ON CONFLICT (""ClientId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;

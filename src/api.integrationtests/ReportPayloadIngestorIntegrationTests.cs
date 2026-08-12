@@ -125,8 +125,8 @@ public sealed class ReportPayloadIngestorIntegrationTests(PostgreSqlDatabaseFixt
         await using var verification = database.CreateDbContext();
         var persistedReport = await verification.SmtpTlsReports.SingleAsync();
         var persistedLedger = await verification.TlsReportIngests.SingleAsync();
-        Assert.Equal(source.SourceId, persistedReport.MailboxSourceId);
-        Assert.Equal(source.SourceId, persistedLedger.MailboxSourceId);
+        Assert.Equal(source.SourceId, persistedReport.ReportSourceId);
+        Assert.Equal(source.SourceId, persistedLedger.ReportSourceId);
         Assert.Equal(source.DefaultClientId, persistedLedger.ClientId);
         Assert.Equal(1, await verification.SmtpTlsReportPolicies.CountAsync());
         Assert.Equal(3, await verification.SmtpTlsFailureDetails.CountAsync());
@@ -143,7 +143,7 @@ public sealed class ReportPayloadIngestorIntegrationTests(PostgreSqlDatabaseFixt
             Slug = $"raw-payload-{Guid.NewGuid():N}",
             Timezone = "UTC",
         };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Synthetic raw source",
             Protocol = "imap",

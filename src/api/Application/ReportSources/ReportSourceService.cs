@@ -1,20 +1,20 @@
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Security;
-using DmarcAnalyzer.Api.Contracts.MailboxSources;
+using DmarcAnalyzer.Api.Contracts.ReportSources;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
-namespace DmarcAnalyzer.Api.Application.MailboxSources;
+namespace DmarcAnalyzer.Api.Application.ReportSources;
 
-public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IMailboxSourceService
+public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IReportSourceService
 {
     private static readonly string[] SupportedProtocols = ["imap", "pop3", "api"];
 
-    public async Task<IReadOnlyList<MailboxSourceDto>> ListAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
-        return await db.MailboxSources
+        return await db.ReportSources
             .AsNoTracking()
             .Include(x => x.DefaultClient)
             .OrderBy(x => x.Name)
@@ -22,42 +22,42 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             .ToListAsync(ct);
     }
 
-    public async Task<ServiceResult<MailboxSourceDto>> CreateAsync(CreateMailboxSourceRequest request, CancellationToken ct)
+    public async Task<ServiceResult<ReportSourceDto>> CreateAsync(CreateReportSourceRequest request, CancellationToken ct)
     {
         var protocol = request.Protocol?.Trim().ToLowerInvariant() ?? string.Empty;
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
+            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||
             request.DefaultClientId == Guid.Empty)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("name and defaultClientId are required", 400);
+            return ServiceResult<ReportSourceDto>.Failure("name and defaultClientId are required", 400);
         }
 
         var isApi = protocol == "api";
         if (!isApi && !HasCompleteMailboxConfiguration(
                 request.Host, request.Port, request.UseTls, request.Username, request.Password))
         {
-            return ServiceResult<MailboxSourceDto>.Failure(
+            return ServiceResult<ReportSourceDto>.Failure(
                 "host, port, useTls, username, and password are required for mailbox sources", 400);
         }
 
         if (isApi && request.DeleteAfterRetention)
         {
-            return ServiceResult<MailboxSourceDto>.Failure(
+            return ServiceResult<ReportSourceDto>.Failure(
                 "mailbox retention cannot be enabled for an API source", 400);
         }
 
         var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId, ct);
         if (!clientExists)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("default client not found", 400);
+            return ServiceResult<ReportSourceDto>.Failure("default client not found", 400);
         }
 
         var now = DateTime.UtcNow;
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = request.Name.Trim(),
             Protocol = protocol,
@@ -74,18 +74,18 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         };
         source.NormalizeProtocolState();
 
-        db.MailboxSources.Add(source);
+        db.ReportSources.Add(source);
         await db.SaveChangesAsync(ct);
 
-        return ServiceResult<MailboxSourceDto>.Success(ToDto(source, null));
+        return ServiceResult<ReportSourceDto>.Success(ToDto(source, null));
     }
 
-    public async Task<ServiceResult<MailboxSourceDto>> UpdateAsync(Guid id, UpdateMailboxSourceRequest request, CancellationToken ct)
+    public async Task<ServiceResult<ReportSourceDto>> UpdateAsync(Guid id, UpdateReportSourceRequest request, CancellationToken ct)
     {
-        var source = await db.MailboxSources.SingleOrDefaultAsync(x => x.Id == id, ct);
+        var source = await db.ReportSources.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (source is null)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("not found", 404);
+            return ServiceResult<ReportSourceDto>.Failure("not found", 404);
         }
 
         var protocol = source.Protocol;
@@ -94,7 +94,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             protocol = request.Protocol.Trim().ToLowerInvariant();
             if (!SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
+                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
             }
         }
 
@@ -102,7 +102,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Name))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("name cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("name cannot be empty", 400);
             }
 
             source.Name = request.Name.Trim();
@@ -118,7 +118,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Host))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("host cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("host cannot be empty", 400);
             }
 
             host = request.Host.Trim().ToLowerInvariant();
@@ -128,7 +128,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (request.Port.Value <= 0)
             {
-                return ServiceResult<MailboxSourceDto>.Failure("port must be greater than 0", 400);
+                return ServiceResult<ReportSourceDto>.Failure("port must be greater than 0", 400);
             }
 
             port = request.Port.Value;
@@ -138,7 +138,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Username))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("username cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("username cannot be empty", 400);
             }
 
             username = request.Username.Trim();
@@ -148,7 +148,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Password))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("password cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("password cannot be empty", 400);
             }
 
             passwordEncrypted = credentialProtector.Protect(request.Password);
@@ -158,13 +158,13 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (request.DefaultClientId.Value == Guid.Empty)
             {
-                return ServiceResult<MailboxSourceDto>.Failure("defaultClientId cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("defaultClientId cannot be empty", 400);
             }
 
             var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId.Value, ct);
             if (!clientExists)
             {
-                return ServiceResult<MailboxSourceDto>.Failure("default client not found", 400);
+                return ServiceResult<ReportSourceDto>.Failure("default client not found", 400);
             }
 
             source.DefaultClientId = request.DefaultClientId.Value;
@@ -185,14 +185,14 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (request.DeleteAfterRetention == true)
             {
-                return ServiceResult<MailboxSourceDto>.Failure(
+                return ServiceResult<ReportSourceDto>.Failure(
                     "mailbox retention cannot be enabled for an API source", 400);
             }
 
         }
         else if (!HasCompleteMailboxConfiguration(host, port, useTls, username, passwordEncrypted))
         {
-            return ServiceResult<MailboxSourceDto>.Failure(
+            return ServiceResult<ReportSourceDto>.Failure(
                 "host, port, useTls, username, and password are required when changing an API source to a mailbox source", 400);
         }
 
@@ -212,10 +212,10 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         source.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        return ServiceResult<MailboxSourceDto>.Success(ToDto(source, null));
+        return ServiceResult<ReportSourceDto>.Success(ToDto(source, null));
     }
 
-    private static MailboxSourceDto ToDto(MailboxSource x, string? defaultClientName) =>
+    private static ReportSourceDto ToDto(ReportSource x, string? defaultClientName) =>
         new(
             x.Id,
             x.Name,

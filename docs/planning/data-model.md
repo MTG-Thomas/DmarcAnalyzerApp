@@ -28,7 +28,7 @@ code against. **Part B is unbuilt target state** for features on the roadmap.
 
 # Part A — Implemented schema
 
-Keys and indexes below are the ones actually configured in
+Thirteen tables. Keys and indexes below are the ones actually configured in
 `DmarcAnalyzerDbContext`.
 
 ## A.1 Identity and access
@@ -137,9 +137,14 @@ nothing anywhere clears them.
 
 ## A.3 Report sources, API credentials, and sync history
 
-### `mailbox_source`
-An IMAP mailbox to poll or an API machine-ingestion source. A mailbox row also
-carries its own sync checkpoint — there is no separate checkpoint table.
+### `report_source`
+A place reports arrive from: an IMAP mailbox or an API machine-ingestion source.
+A mailbox row also carries its own sync checkpoint — there is no separate
+checkpoint table.
+
+Was `mailbox_source` until the rename; the audit-log action names and the config
+export's entity keys still read `mailbox_source`, because both are values in data
+already written rather than references to the table.
 
 | Column | Notes |
 |---|---|
@@ -167,8 +172,8 @@ active during rotation; the old key remains valid until explicit revocation.
 | Column | Notes |
 |---|---|
 | `Id` | PK, uuid |
-| `MailboxSourceId` | FK → `mailbox_source`, **cascade**, indexed with prefix/revocation |
-| `Prefix` | exactly 22 base64url characters; unique with `MailboxSourceId` |
+| `ReportSourceId` | FK → `report_source`, **cascade**, indexed with prefix/revocation |
+| `Prefix` | exactly 22 base64url characters; unique with `ReportSourceId` |
 | `TokenHash` | exactly 32 bytes — SHA-256 of the full token; compared in fixed time |
 | `CreatedAtUtc` | |
 | `RevokedAtUtc` | nullable; non-null credentials cannot authenticate |
@@ -196,7 +201,7 @@ from source-scoped report-upload credentials.
 
 The full `dmarc_api_v1.<prefix>.<secret>` token is never stored or logged. The
 table is excluded from configuration artifacts; restored integrations receive a
-new credential.
+new credential. ADR 0010 records the target convergence on one credential model.
 
 ### `mailbox_sync_run`
 One row per sync attempt; the operational audit trail behind
@@ -205,7 +210,7 @@ One row per sync attempt; the operational audit trail behind
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `Trigger` | max 32 — `scheduled` \| `manual` |
 | `Status` | max 32 — `running` \| `success` \| `failed` |
 | `StartedAtUtc` | indexed |
@@ -228,7 +233,7 @@ file, independent of the domain the report resolves to.
 |---|---|
 | `Id` | PK |
 | `ClientId` | FK → `client`, **restrict**, indexed |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `PolicyDomain` | max 255 — domain as stated in the report |
 | `ReportId` | max 255 |
 | `ReportRangeBeginUtc`, `ReportRangeEndUtc` | |
@@ -244,7 +249,7 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 |---|---|
 | `Id` | PK |
 | `DomainId` | FK → `domain`, **restrict**, indexed |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `OrganizationName` | max 255 — the reporter (e.g. `google.com`) |
 | `ReportId` | max 255 |
 | `RangeBeginUtc`, `RangeEndUtc` | reporting window |
@@ -320,7 +325,7 @@ tenancy and analytics hang off the policy rows.
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `OrganizationName`, `ReportId` | max 255 each; with the range, the dedupe key — unique `(OrganizationName, ReportId, RangeBeginUtc, RangeEndUtc)`: without a domain in the key, the org disambiguates report-id collisions across reporters |
 | `ContactInfo` | max 320, nullable |
 | `RangeBeginUtc`, `RangeEndUtc` | `RangeEndUtc` indexed for the orphan sweep |
@@ -361,7 +366,7 @@ Unique `(ClientId, OrganizationName, ReportId, ReportRangeBeginUtc,
 ReportRangeEndUtc)` — the DMARC key with the policy domain (meaningless for a
 multi-domain report) swapped for the organization name. `PolicyDomains` is a
 comma-joined, truncated copy for post-purge "did we ever receive it" searches.
-`ClientId` is the mailbox source's default client, exactly as for DMARC.
+`ClientId` is the report source's default client, exactly as for DMARC.
 
 Retention: policy rows purge per client on the window end; the ledger likewise;
 report rows left with no policies sweep once older than the **longest**
@@ -496,9 +501,9 @@ skipped.
   `GROUP BY` for per-source aggregation (EF's grouped navigations produced
   per-group correlated subqueries — 33s vs ~75ms for a domain with 1.3k sources).
   Revisit if data volume outgrows it.
-- **No job table.** Background work is the worker polling `mailbox_source` and
+- **No job table.** Background work is the worker polling `report_source` and
   writing `mailbox_sync_run`; there is no generic queue table.
-- **No separate checkpoint table** — checkpoints live on `mailbox_source`.
+- **No separate checkpoint table** — checkpoints live on `report_source`.
 
 ## A.6 Backup
 
@@ -552,8 +557,8 @@ client
       ← dmarc_report.DomainId
           ← dmarc_report_record.DmarcReportId
               ← dmarc_report_record_{dkim,spf}_auth_result.DmarcReportRecordId
-  ← mailbox_source.DefaultClientId
-      ← mailbox_sync_run.MailboxSourceId
+  ← report_source.DefaultClientId
+      ← mailbox_sync_run.ReportSourceId
   ← dmarc_report_ingest.ClientId
   ← user_client_grant.ClientId
 ```
@@ -566,7 +571,7 @@ client
   `user_identity` is unique on `(Issuer, Subject)`; `user_client_grant` on
   `(UserId, ClientId)`.
 - Report data cascades on delete (report → records → auth results). Business
-  entities (`client`, `domain`, `mailbox_source`) use **restrict** so tenant data
+  entities (`client`, `domain`, `report_source`) use **restrict** so tenant data
   cannot be silently orphaned.
 - Unknown domains encountered during ingestion are auto-created under the
   originating mailbox's `DefaultClientId`.

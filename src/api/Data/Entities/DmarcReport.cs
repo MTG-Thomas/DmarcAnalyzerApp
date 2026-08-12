@@ -4,7 +4,7 @@ public sealed class DmarcReport
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid DomainId { get; set; }
-    public Guid MailboxSourceId { get; set; }
+    public Guid ReportSourceId { get; set; }
     public string OrganizationName { get; set; } = string.Empty;
     public string ReportId { get; set; } = string.Empty;
     public DateTime RangeBeginUtc { get; set; }
@@ -21,6 +21,6 @@ public sealed class DmarcReport
     public string SpfAlignment { get; set; } = "relaxed";
 
     public Domain? Domain { get; set; }
-    public MailboxSource? MailboxSource { get; set; }
+    public ReportSource? ReportSource { get; set; }
     public ICollection<DmarcReportRecord> Records { get; set; } = new List<DmarcReportRecord>();
 }

@@ -1,6 +1,6 @@
-using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.ReportSources;
 using DmarcAnalyzer.Api.Application.Security;
-using DmarcAnalyzer.Api.Contracts.MailboxSources;
+using DmarcAnalyzer.Api.Contracts.ReportSources;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -8,14 +8,14 @@ using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
 
-public sealed class ApiMailboxSourceTests
+public sealed class ApiReportSourceTests
 {
     private static DmarcAnalyzerDbContext NewDb()
         => new(new DbContextOptionsBuilder<DmarcAnalyzerDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
             .Options);
 
-    private static MailboxSourceService Service(DmarcAnalyzerDbContext db)
+    private static ReportSourceService Service(DmarcAnalyzerDbContext db)
         => new(db, new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])));
 
     [Fact]
@@ -26,7 +26,7 @@ public sealed class ApiMailboxSourceTests
         db.Clients.Add(client);
         await db.SaveChangesAsync();
 
-        var result = await Service(db).CreateAsync(new CreateMailboxSourceRequest
+        var result = await Service(db).CreateAsync(new CreateReportSourceRequest
         {
             Name = "Bifrost upload",
             Protocol = "api",
@@ -34,7 +34,7 @@ public sealed class ApiMailboxSourceTests
         }, default);
 
         Assert.True(result.IsSuccess);
-        var source = await db.MailboxSources.SingleAsync();
+        var source = await db.ReportSources.SingleAsync();
         Assert.Equal("api", source.Protocol);
         Assert.Null(source.Host);
         Assert.Null(source.Port);
@@ -49,7 +49,7 @@ public sealed class ApiMailboxSourceTests
     {
         await using var db = NewDb();
         var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Mailbox",
             Protocol = "imap",
@@ -68,7 +68,7 @@ public sealed class ApiMailboxSourceTests
         db.AddRange(client, source);
         await db.SaveChangesAsync();
 
-        var result = await Service(db).UpdateAsync(source.Id, new UpdateMailboxSourceRequest
+        var result = await Service(db).UpdateAsync(source.Id, new UpdateReportSourceRequest
         {
             Protocol = "api",
         }, default);
@@ -92,7 +92,7 @@ public sealed class ApiMailboxSourceTests
     {
         await using var db = NewDb();
         var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Upload",
             Protocol = "api",
@@ -106,7 +106,7 @@ public sealed class ApiMailboxSourceTests
         db.AddRange(client, source);
         await db.SaveChangesAsync();
 
-        var refused = await Service(db).UpdateAsync(source.Id, new UpdateMailboxSourceRequest
+        var refused = await Service(db).UpdateAsync(source.Id, new UpdateReportSourceRequest
         {
             Protocol = "imap",
             Host = "imap.example",
@@ -116,7 +116,7 @@ public sealed class ApiMailboxSourceTests
         Assert.Equal(400, refused.StatusCode);
         Assert.Equal("api", source.Protocol);
 
-        var changed = await Service(db).UpdateAsync(source.Id, new UpdateMailboxSourceRequest
+        var changed = await Service(db).UpdateAsync(source.Id, new UpdateReportSourceRequest
         {
             Protocol = "imap",
             Host = "imap.example",
@@ -136,13 +136,13 @@ public sealed class ApiMailboxSourceTests
     {
         await using var db = NewDb();
         var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
-        var mailbox = new MailboxSource
+        var mailbox = new ReportSource
         {
             Name = "Mailbox", Host = "imap.example", Port = 993, UseTls = true,
             Username = "reports@example", PasswordEncrypted = "encrypted",
             DefaultClientId = client.Id,
         };
-        var api = new MailboxSource
+        var api = new ReportSource
         {
             Name = "API", Protocol = "api", Host = null, Port = null, UseTls = null,
             Username = null, PasswordEncrypted = null, DefaultClientId = client.Id,
@@ -151,12 +151,12 @@ public sealed class ApiMailboxSourceTests
         db.MailboxSyncRuns.AddRange(
             new MailboxSyncRun
             {
-                MailboxSourceId = mailbox.Id, Trigger = "scheduled", Status = "success",
+                ReportSourceId = mailbox.Id, Trigger = "scheduled", Status = "success",
                 StartedAtUtc = DateTime.UtcNow.AddMinutes(-2), FinishedAtUtc = DateTime.UtcNow,
             },
             new MailboxSyncRun
             {
-                MailboxSourceId = api.Id, Trigger = "manual", Status = "failed",
+                ReportSourceId = api.Id, Trigger = "manual", Status = "failed",
                 StartedAtUtc = DateTime.UtcNow.AddMinutes(-1), FinishedAtUtc = DateTime.UtcNow,
             });
         await db.SaveChangesAsync();

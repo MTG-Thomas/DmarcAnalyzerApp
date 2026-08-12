@@ -9,7 +9,7 @@ namespace DmarcAnalyzer.Api.Data.Entities;
 public sealed class SmtpTlsReport
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid MailboxSourceId { get; set; }
+    public Guid ReportSourceId { get; set; }
     public string OrganizationName { get; set; } = string.Empty;
     public string ReportId { get; set; } = string.Empty;
     public string? ContactInfo { get; set; }
@@ -23,6 +23,6 @@ public sealed class SmtpTlsReport
     public long TotalFailureSessionCount { get; set; }
     public DateTime IngestedAtUtc { get; set; } = DateTime.UtcNow;
 
-    public MailboxSource? MailboxSource { get; set; }
+    public ReportSource? ReportSource { get; set; }
     public ICollection<SmtpTlsReportPolicy> Policies { get; set; } = [];
 }

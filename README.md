@@ -61,7 +61,7 @@ variables.
 - Tags: **`latest`** is the most recent release (what the compose file uses), or
   pin a version such as `0.10.0`. **`edge`** tracks `main` and is unreleased —
   useful for trying a fix early, not for production.
-- Next steps: add a client, a domain, and a mailbox source (the inbox your
+- Next steps: add a client, a domain, and a report source (the inbox your
   `rua=` reports arrive in) — see `docs/ops/mailbox-sync.md`.
 - Upgrading: `docker compose pull && docker compose up -d` (schema migrations
   run automatically on startup via `Database__MigrateOnStartup`).
@@ -133,7 +133,7 @@ echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d --build
 ```
 
-Keep that key once you have added a mailbox source: changing it makes every
+Keep that key once you have added a report source: changing it makes every
 stored mailbox password undecryptable.
 
 If the build fails during `dotnet restore` with **NU1004**, `packages.lock.json`
@@ -204,7 +204,7 @@ Everything lives under `/api/v1`; full contract in
 - `GET /api/v1/analytics/domains/{domainId}/sources` — per-domain sending sources
 - `GET /api/v1/alerts` — configured alert rules
 - `GET /api/v1/mailbox-health`, `GET /api/v1/mailbox-sync-runs`,
-  `POST /api/v1/mailbox-sources/{id}/sync` — mailbox ingestion status/trigger
+  `POST /api/v1/report-sources/{id}/sync` — mailbox ingestion status/trigger
 
 Try these against a running instance with `http/api.http` (see above).
 
@@ -214,7 +214,7 @@ Key operational endpoints:
 
 - `GET /api/v1/mailbox-health`
 - `GET /api/v1/mailbox-sync-runs`
-- `POST /api/v1/mailbox-sources/{id}/sync` (manual trigger)
+- `POST /api/v1/report-sources/{id}/sync` (manual trigger)
 
 Ops runbook:
 
@@ -237,3 +237,13 @@ Start here before implementation details:
 - `docs/planning/api-contract.md`
 - `docs/planning/data-model.md`
 - `docs/planning/roadmap.md`
+
+## Contributing
+
+Pull requests are welcome, and there is no CLA to sign — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how work gets merged and what review
+will ask of you. [`AGENTS.md`](AGENTS.md) is the orientation map for the
+codebase itself.
+
+Found a security problem? Do not open a public issue — see
+[`SECURITY.md`](SECURITY.md).

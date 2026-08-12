@@ -260,10 +260,10 @@ jobs:
           render "ingress enabled"     --set ingress.enabled=true
           render "existingSecret"      --set auth.existingSecret=creds
 
-          # A digest must reach every application-image consumer: the app,
-          # worker, migration Job and their database-wait init containers. Set a
-          # test repository so this assertion cannot accidentally match the
-          # bundled Postgres image.
+          # A digest must reach every application-image consumer: the app, the
+          # worker and the migration Job, plus the database-wait init container
+          # in each of them. Assert the exact count so a missing consumer fails.
+          expected_digest_refs=6
           test_repository=registry.example/dmarc-analyzer
           test_digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           digest_render=$(helm template t "$CHART_DIR" \
@@ -276,8 +276,8 @@ jobs:
             --set-string image.digest="$test_digest")
           digest_refs=$(printf '%s\n' "$digest_render" | grep -cF "image: $test_repository@$test_digest" || true)
           other_refs=$(printf '%s\n' "$digest_render" | grep -F "image: $test_repository" | grep -vcF "@$test_digest" || true)
-          if [ "$digest_refs" -eq 0 ] || [ "$other_refs" -ne 0 ]; then
-            printf '  FAILED   digest image references (%s digest, %s other)\n' "$digest_refs" "$other_refs"
+          if [ "$digest_refs" -ne "$expected_digest_refs" ] || [ "$other_refs" -ne 0 ]; then
+            printf '  FAILED   digest image references (%s digest, expected %s; %s by tag)\n' "$digest_refs" "$expected_digest_refs" "$other_refs"
             fail=1
           else
             printf '  ok       digest image references (%s immutable references)\n' "$digest_refs"
@@ -309,6 +309,7 @@ jobs:
           refuses "no encryption key"            --set mode=combined
           refuses "unknown mode"                 --set auth.encryptionKey="$DUMMY_KEY" --set mode=hybrid
           refuses "image tag plus digest"         --set auth.encryptionKey="$DUMMY_KEY" --set image.tag=0.10.0 --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          # This pins the values.schema.json pattern; refuses() sees only the exit code.
           refuses "malformed image digest"        --set auth.encryptionKey="$DUMMY_KEY" --set-string image.digest=sha256:not-a-digest
           exit $fail
 

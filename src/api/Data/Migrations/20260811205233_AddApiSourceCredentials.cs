@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -16,7 +16,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    MailboxSourceId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ReportSourceId = table.Column<Guid>(type: "uuid", nullable: false),
                     Prefix = table.Column<string>(type: "character varying(22)", maxLength: 22, nullable: false),
                     TokenHash = table.Column<byte[]>(type: "bytea", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
@@ -28,23 +28,23 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     table.CheckConstraint("CK_api_source_credential_PrefixLength", "char_length(\"Prefix\") = 22");
                     table.CheckConstraint("CK_api_source_credential_TokenHashLength", "octet_length(\"TokenHash\") = 32");
                     table.ForeignKey(
-                        name: "FK_api_source_credential_mailbox_source_MailboxSourceId",
-                        column: x => x.MailboxSourceId,
-                        principalTable: "mailbox_source",
+                        name: "FK_api_source_credential_report_source_ReportSourceId",
+                        column: x => x.ReportSourceId,
+                        principalTable: "report_source",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_api_source_credential_MailboxSourceId_Prefix",
+                name: "IX_api_source_credential_ReportSourceId_Prefix",
                 table: "api_source_credential",
-                columns: new[] { "MailboxSourceId", "Prefix" },
+                columns: new[] { "ReportSourceId", "Prefix" },
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_api_source_credential_MailboxSourceId_RevokedAtUtc",
+                name: "IX_api_source_credential_ReportSourceId_RevokedAtUtc",
                 table: "api_source_credential",
-                columns: new[] { "MailboxSourceId", "RevokedAtUtc" });
+                columns: new[] { "ReportSourceId", "RevokedAtUtc" });
 
             migrationBuilder.Sql(
                 """
@@ -57,8 +57,8 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                 BEGIN
                     SELECT "Protocol"
                     INTO source_protocol
-                    FROM mailbox_source
-                    WHERE "Id" = NEW."MailboxSourceId"
+                    FROM report_source
+                    WHERE "Id" = NEW."ReportSourceId"
                     FOR UPDATE;
 
                     IF source_protocol IS DISTINCT FROM 'api' THEN
@@ -72,7 +72,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                 $$;
 
                 CREATE TRIGGER TR_api_source_credential_RequireApiSource
-                BEFORE INSERT OR UPDATE OF "MailboxSourceId"
+                BEFORE INSERT OR UPDATE OF "ReportSourceId"
                 ON api_source_credential
                 FOR EACH ROW
                 EXECUTE FUNCTION dmarc_require_api_source_credential();
@@ -85,7 +85,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     IF OLD."Protocol" = 'api' AND NEW."Protocol" <> 'api' THEN
                         UPDATE api_source_credential
                         SET "RevokedAtUtc" = CURRENT_TIMESTAMP
-                        WHERE "MailboxSourceId" = NEW."Id"
+                        WHERE "ReportSourceId" = NEW."Id"
                           AND "RevokedAtUtc" IS NULL;
                     END IF;
 
@@ -93,9 +93,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                 END;
                 $$;
 
-                CREATE TRIGGER TR_mailbox_source_RevokeApiCredentials
+                CREATE TRIGGER TR_report_source_RevokeApiCredentials
                 BEFORE UPDATE OF "Protocol"
-                ON mailbox_source
+                ON report_source
                 FOR EACH ROW
                 EXECUTE FUNCTION dmarc_revoke_credentials_on_protocol_change();
                 """);
@@ -116,7 +116,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
             migrationBuilder.Sql(
                 """
-                DROP TRIGGER TR_mailbox_source_RevokeApiCredentials ON mailbox_source;
+                DROP TRIGGER TR_report_source_RevokeApiCredentials ON report_source;
                 DROP FUNCTION dmarc_revoke_credentials_on_protocol_change();
                 DROP TRIGGER TR_api_source_credential_RequireApiSource ON api_source_credential;
                 DROP FUNCTION dmarc_require_api_source_credential();

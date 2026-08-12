@@ -45,7 +45,7 @@ public sealed class AnalyticsDispositionTests
         {
             Id = Guid.NewGuid(),
             DomainId = domain.Id,
-            MailboxSourceId = Guid.NewGuid(),
+            ReportSourceId = Guid.NewGuid(),
             OrganizationName = "reporter.example",
             ReportId = "rfc9990-analytics",
             RangeBeginUtc = now.AddHours(-2),

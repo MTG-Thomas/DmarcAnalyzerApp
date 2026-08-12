@@ -227,7 +227,7 @@ public sealed class DmarcReportIngestorIntegrationTests(PostgreSqlDatabaseFixtur
             Slug = $"persistence-{Guid.NewGuid():N}",
             Timezone = "UTC",
         };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Synthetic integration source",
             Protocol = "imap",

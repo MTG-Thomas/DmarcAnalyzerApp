@@ -131,7 +131,7 @@ public sealed class DmarcConformanceCorpusIntegrationTests(PostgreSqlDatabaseFix
             Slug = "source-two-client",
             Timezone = "UTC",
         };
-        var otherSource = new MailboxSource
+        var otherSource = new ReportSource
         {
             Name = "Synthetic other source",
             Protocol = "api",
@@ -157,15 +157,15 @@ public sealed class DmarcConformanceCorpusIntegrationTests(PostgreSqlDatabaseFix
         Assert.Equal(new GraphCounts(1, 2, 2, 2, 1), await ReadGraphCountsAsync());
 
         await using var verification = database.CreateDbContext();
-        Assert.Equal(originalSource.SourceId, await verification.DmarcReports.Select(x => x.MailboxSourceId).SingleAsync());
-        Assert.Equal(originalSource.SourceId, await verification.DmarcReportIngests.Select(x => x.MailboxSourceId).SingleAsync());
+        Assert.Equal(originalSource.SourceId, await verification.DmarcReports.Select(x => x.ReportSourceId).SingleAsync());
+        Assert.Equal(originalSource.SourceId, await verification.DmarcReportIngests.Select(x => x.ReportSourceId).SingleAsync());
         Assert.Equal(originalSource.DefaultClientId, await verification.DmarcReportIngests.Select(x => x.ClientId).SingleAsync());
         Assert.Equal(
             originalSource.DefaultClientId,
             await verification.Domains.Where(x => x.Name == "alpha.example").Select(x => x.ClientId).SingleAsync());
         Assert.Equal(
             otherClient.Id,
-            await verification.MailboxSources.Where(x => x.Id == otherSource.Id).Select(x => x.DefaultClientId).SingleAsync());
+            await verification.ReportSources.Where(x => x.Id == otherSource.Id).Select(x => x.DefaultClientId).SingleAsync());
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public sealed class DmarcConformanceCorpusIntegrationTests(PostgreSqlDatabaseFix
             new Client { Name = "Synthetic client B", Slug = "client-b", Timezone = "UTC" },
         };
         var clientsBySlug = clients.ToDictionary(x => x.Slug);
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Synthetic conformance source",
             Protocol = "api",
@@ -354,7 +354,7 @@ public sealed class DmarcConformanceCorpusIntegrationTests(PostgreSqlDatabaseFix
                 && x.RangeEndUtc == end);
         var domain = Assert.IsType<Domain>(report.Domain);
 
-        Assert.Equal(source.SourceId, report.MailboxSourceId);
+        Assert.Equal(source.SourceId, report.ReportSourceId);
         Assert.Equal(expected.Metadata.Organization, report.OrganizationName);
         Assert.Equal(expected.Metadata.RecordCount, report.RecordCount);
         Assert.Equal(expected.Policy.P, report.PublishedPolicy);
@@ -376,7 +376,7 @@ public sealed class DmarcConformanceCorpusIntegrationTests(PostgreSqlDatabaseFix
             && x.ReportId == expected.Key.ReportId
             && x.ReportRangeBeginUtc == begin
             && x.ReportRangeEndUtc == end);
-        Assert.Equal(source.SourceId, ledger.MailboxSourceId);
+        Assert.Equal(source.SourceId, ledger.ReportSourceId);
         Assert.Equal(domain.ClientId, ledger.ClientId);
         Assert.Equal(report.OrganizationName, ledger.OrganizationName);
         Assert.Equal(report.RecordCount, ledger.RecordCount);

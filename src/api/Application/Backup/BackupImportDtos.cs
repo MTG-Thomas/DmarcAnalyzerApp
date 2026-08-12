@@ -67,12 +67,21 @@ public static class BackupImportModes
 /// Table names, used as the keys of the per-entity report. The same names the manifest's
 /// <c>excluded</c> map uses, so an operator reading a preview beside an artifact is
 /// reading one vocabulary.
+/// <para>
+/// These were table names when they were chosen, but what they are now is a wire format:
+/// they appear in every artifact an install has ever written, and the importer accepts any
+/// artifact at or below the current <see cref="BackupJson.FormatVersion"/>. Renaming one
+/// silently changes the meaning of documents already on disk, which for a recovery artifact
+/// is the failure the version gate exists to prevent — so <c>mailbox_source</c> stays put
+/// even though the table behind it is now <c>report_source</c>. Changing it means bumping
+/// the format version and teaching the reader the old key.
+/// </para>
 /// </summary>
 public static class BackupImportEntities
 {
     public const string Client = "client";
     public const string Domain = "domain";
-    public const string MailboxSource = "mailbox_source";
+    public const string ReportSource = "mailbox_source";
     public const string AgencyUser = "agency_user";
     public const string UserIdentity = "user_identity";
     public const string UserClientGrant = "user_client_grant";

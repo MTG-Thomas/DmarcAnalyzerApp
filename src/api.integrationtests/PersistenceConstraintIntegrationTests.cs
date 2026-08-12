@@ -81,7 +81,7 @@ public sealed class PersistenceConstraintIntegrationTests(PostgreSqlDatabaseFixt
             Slug = $"persistence-{Guid.NewGuid():N}",
             Timezone = "UTC",
         };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Synthetic integration source",
             Protocol = "imap",
@@ -113,7 +113,7 @@ public sealed class PersistenceConstraintIntegrationTests(PostgreSqlDatabaseFixt
         db.DmarcReports.Add(new DmarcReport
         {
             DomainId = seeded.DomainId,
-            MailboxSourceId = seeded.SourceId,
+            ReportSourceId = seeded.SourceId,
             OrganizationName = "Reporter",
             ReportId = "concurrent-report",
             RangeBeginUtc = rangeBegin,
@@ -133,7 +133,7 @@ public sealed class PersistenceConstraintIntegrationTests(PostgreSqlDatabaseFixt
         db.DmarcReportIngests.Add(new DmarcReportIngest
         {
             ClientId = seeded.ClientId,
-            MailboxSourceId = seeded.SourceId,
+            ReportSourceId = seeded.SourceId,
             PolicyDomain = "persistence.example",
             ReportId = "concurrent-ledger",
             ReportRangeBeginUtc = rangeBegin,

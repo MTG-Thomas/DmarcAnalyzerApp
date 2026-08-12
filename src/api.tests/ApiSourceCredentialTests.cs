@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using DmarcAnalyzer.Api.Application.ApiSources;
-using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.ReportSources;
 using DmarcAnalyzer.Api.Application.Security;
-using DmarcAnalyzer.Api.Contracts.MailboxSources;
+using DmarcAnalyzer.Api.Contracts.ReportSources;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -51,7 +51,7 @@ public sealed class ApiSourceCredentialTests
             Slug = "other-client",
             Timezone = "UTC",
         };
-        var other = new MailboxSource
+        var other = new ReportSource
         {
             Name = "Other API",
             Protocol = "api",
@@ -104,14 +104,14 @@ public sealed class ApiSourceCredentialTests
     }
 
     [Fact]
-    public async Task RefusesMailboxSourceAndRevokesKeysWhenApiSourceBecomesMailbox()
+    public async Task RefusesReportSourceAndRevokesKeysWhenApiSourceBecomesMailbox()
     {
         await using var db = NewDb();
         var (_, source) = await SeedApiSourceAsync(db);
         var credentials = new ApiSourceCredentialService(db);
         var issued = (await credentials.IssueAsync(source.Id, default)).Value!;
 
-        var mailbox = new MailboxSource
+        var mailbox = new ReportSource
         {
             Name = "Mailbox",
             Protocol = "imap",
@@ -122,14 +122,14 @@ public sealed class ApiSourceCredentialTests
             PasswordEncrypted = "encrypted",
             DefaultClientId = source.DefaultClientId,
         };
-        db.MailboxSources.Add(mailbox);
+        db.ReportSources.Add(mailbox);
         await db.SaveChangesAsync();
         Assert.False((await credentials.IssueAsync(mailbox.Id, default)).IsSuccess);
 
-        var sourceService = new MailboxSourceService(
+        var sourceService = new ReportSourceService(
             db,
             new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])));
-        var changed = await sourceService.UpdateAsync(source.Id, new UpdateMailboxSourceRequest
+        var changed = await sourceService.UpdateAsync(source.Id, new UpdateReportSourceRequest
         {
             Protocol = "imap",
             Host = "imap.example",
@@ -144,11 +144,11 @@ public sealed class ApiSourceCredentialTests
         Assert.Null(await new ApiSourceAuthenticator(db).AuthenticateAsync(source.Id, issued.Token, default));
     }
 
-    private static async Task<(Client Client, MailboxSource Source)> SeedApiSourceAsync(
+    private static async Task<(Client Client, ReportSource Source)> SeedApiSourceAsync(
         DmarcAnalyzerDbContext db)
     {
         var client = new Client { Name = "Acme", Slug = Guid.NewGuid().ToString("N"), Timezone = "UTC" };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Bifrost upload",
             Protocol = "api",

@@ -56,13 +56,14 @@ helm install dmarc ./deploy/helm/dmarc-analyzer -n dmarc \
   --set postgres.enabled=false \
   --set externalDatabase.host=db.internal \
   --set externalDatabase.username=dmarc \
-  --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  --set image.tag=0.10.0
 ```
 
-Replace the example digest with the published digest for the image you intend
-to run. `image.digest` renders an immutable
-`repository@sha256:...` reference. Leave it empty to use `image.tag`, whose empty
-default resolves to the chart's `appVersion`.
+Where policy calls for immutable images, pin the digest instead of the tag:
+`--set-string image.digest=sha256:...` renders `repository@sha256:...` for
+every container in the release. Use the digest published for the release you
+intend to run — the chart refuses a shortened or malformed one. The two cannot
+be set together, and leaving both empty follows the chart's `appVersion`.
 
 Five things worth doing deliberately:
 

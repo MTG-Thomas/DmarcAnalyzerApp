@@ -14,10 +14,10 @@ vi.mock('@/lib/auth-context', () => ({
 }))
 
 import { fetchJson } from '@/lib/api'
-import type { MailboxSource } from '@/lib/entities'
-import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
+import type { ReportSource } from '@/lib/entities'
+import { ReportSourcesPage } from '@/pages/ReportSourcesPage'
 
-const apiSource: MailboxSource = {
+const apiSource: ReportSource = {
   id: 'source-api',
   name: 'Report uploader',
   protocol: 'api',
@@ -32,7 +32,7 @@ const apiSource: MailboxSource = {
   oldestMessageAtUtc: null,
 }
 
-const mailboxSource: MailboxSource = {
+const mailboxSource: ReportSource = {
   ...apiSource,
   id: 'source-mailbox',
   name: 'Reports inbox',
@@ -48,22 +48,22 @@ describe('API key discoverability', () => {
     vi.clearAllMocks()
     vi.mocked(fetchJson).mockImplementation(async (url: string) => {
       if (url === '/api/v1/clients') return [] as never
-      if (url === '/api/v1/mailbox-sources') return [apiSource, mailboxSource] as never
+      if (url === '/api/v1/report-sources') return [apiSource, mailboxSource] as never
       if (url === '/api/v1/mailbox-health') return [] as never
       if (url.startsWith('/api/v1/mailbox-sync-runs')) return [] as never
-      if (url === `/api/v1/mailbox-sources/${apiSource.id}/credentials`) return [] as never
+      if (url === `/api/v1/report-sources/${apiSource.id}/credentials`) return [] as never
       throw new Error(`unexpected request: ${url}`)
     })
   })
 
   it('offers API key management only on API source rows', async () => {
-    render(<MailboxSourcesPage />)
+    render(<ReportSourcesPage />)
 
     const manageButtons = await screen.findAllByRole('button', { name: 'API keys' })
     expect(manageButtons).toHaveLength(1)
 
     fireEvent.click(manageButtons[0])
     expect(await screen.findByRole('heading', { name: `API keys for ${apiSource.name}` })).toBeInTheDocument()
-    expect(fetchJson).toHaveBeenCalledWith(`/api/v1/mailbox-sources/${apiSource.id}/credentials`)
+    expect(fetchJson).toHaveBeenCalledWith(`/api/v1/report-sources/${apiSource.id}/credentials`)
   })
 })
