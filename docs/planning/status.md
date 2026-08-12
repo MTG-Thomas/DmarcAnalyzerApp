@@ -175,6 +175,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - HTTP-only secure cookie session (12h idle timeout, 7d absolute max)
   - session-or-service auth middleware protecting all `/api/v1/` endpoints
   - reveal-once, expiring `dmarc_api_v1` service credentials for global analyst API access; prefix plus SHA-256 hash only, fixed-time verification, explicit revocation, service-attributed audit rows, and no cookie fallback after a bad Authorization header
+  - administrator-only Settings UI for listing, creating, copying once, and revoking service API keys; source-scoped report-upload keys remain on their report source
   - auth endpoints: register, login, logout, me
   - CORS credentials support for frontend dev
 
