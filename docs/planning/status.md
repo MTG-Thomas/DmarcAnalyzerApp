@@ -173,7 +173,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `agency_user` and `user_session` entities with EF Core configuration
   - local username/password auth with PBKDF2-SHA256 password hashing
   - HTTP-only secure cookie session (12h idle timeout, 7d absolute max)
-  - session auth middleware protecting all `/api/v1/` endpoints
+  - session-or-service auth middleware protecting all `/api/v1/` endpoints
+  - reveal-once, expiring `dmarc_api_v1` service credentials for global analyst API access; prefix plus SHA-256 hash only, fixed-time verification, explicit revocation, service-attributed audit rows, and no cookie fallback after a bad Authorization header
   - auth endpoints: register, login, logout, me
   - CORS credentials support for frontend dev
 

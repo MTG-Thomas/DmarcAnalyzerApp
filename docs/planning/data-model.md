@@ -179,6 +179,25 @@ prefixes, so restore requires credential reissue. PostgreSQL serializes issuance
 against source protocol changes: inserting under a non-API source is refused,
 and changing an API source to a mailbox source revokes every active credential.
 
+### `service_api_credential`
+Reveal-once credentials for server-to-server access to the normal `/api/v1`
+surface. They authenticate as global `agency_analyst` principals and are distinct
+from source-scoped report-upload credentials.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK, uuid |
+| `Name` | max 100; copied into audit actor identity |
+| `Prefix` | exactly 22 base64url characters; globally unique |
+| `TokenHash` | exactly 32 bytes — SHA-256 of the full token; compared in fixed time |
+| `CreatedAtUtc` | |
+| `ExpiresAtUtc` | indexed; must be after creation and no more than 366 days at issuance |
+| `RevokedAtUtc` | nullable; non-null credentials cannot authenticate |
+
+The full `dmarc_api_v1.<prefix>.<secret>` token is never stored or logged. The
+table is excluded from configuration artifacts; restored integrations receive a
+new credential.
+
 ### `mailbox_sync_run`
 One row per sync attempt; the operational audit trail behind
 `GET /mailbox-sync-runs` and `GET /mailbox-health`.

@@ -13,10 +13,15 @@ such section is marked. Where the two disagree, §0 and the code win.
 
 ## 0) Implemented endpoints
 
-Auth model: all `/api/v1/*` routes require the `dmarc_session` cookie except the
-public paths noted below. Role enforcement is `RoleAuthorizationMiddleware` +
-route metadata, **deny-by-default**: an endpoint with no metadata requires agency
-staff (`agency_admin` or `agency_analyst`).
+Auth model: all `/api/v1/*` routes require either the `dmarc_session` cookie or a
+service bearer credential except the public paths noted below. Service
+credentials authenticate as `agency_analyst`: they see every client and normal
+staff operations, but cannot reach admin-only users, backups, database, source
+configuration, or credential lifecycle routes. If an `Authorization` header is
+present and invalid, the request does not fall back to a cookie. Role enforcement
+is `RoleAuthorizationMiddleware` + route metadata, **deny-by-default**: an
+endpoint with no metadata requires agency staff (`agency_admin` or
+`agency_analyst`).
 
 - **staff** — default; admin + analyst.
 - **admin** — `agency_admin` only (`RequireAgencyAdmin`).
@@ -35,6 +40,19 @@ staff (`agency_admin` or `agency_analyst`).
 | GET | `/auth/oidc/login` | public (external-temp scheme) |
 | GET | `/auth/oidc/complete` | public (external-temp scheme) |
 | GET | `/auth/me` | any |
+
+### Service API credentials
+| Method | Path | Access |
+|---|---|---|
+| GET | `/service-credentials` | admin — metadata only; never returns a token or hash |
+| POST | `/service-credentials` | admin — issue a reveal-once global analyst token, expiring within 366 days |
+| DELETE | `/service-credentials/{id}` | admin — idempotent revocation |
+
+Tokens use `Authorization: Bearer dmarc_api_v1.<prefix>.<secret>`. The full token
+is returned only by the create response; only its prefix and SHA-256 hash are
+stored. Create another credential before revoking the old one to rotate without
+an outage. Service credentials are omitted from configuration backups and must
+be reissued after restore.
 
 ### Machine ingestion
 
