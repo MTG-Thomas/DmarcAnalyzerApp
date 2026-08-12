@@ -82,6 +82,19 @@ export type IssuedApiSourceCredential = Omit<ApiSourceCredential, 'revokedAtUtc'
   token: string
 }
 
+export type ServiceApiCredential = {
+  id: string
+  name: string
+  prefix: string
+  createdAtUtc: string
+  expiresAtUtc: string
+  revokedAtUtc: string | null
+}
+
+export type IssuedServiceApiCredential = Omit<ServiceApiCredential, 'revokedAtUtc'> & {
+  token: string
+}
+
 export type MailboxHealth = {
   mailboxSourceId: string
   name: string
