@@ -14,9 +14,12 @@ public interface ICurrentUserContext
     string Role { get; }
     bool IsAdmin { get; }
     bool IsAgencyStaff { get; }
+    bool IsService { get; }
+    IReadOnlyCollection<string> ServicePermissions { get; }
 
     /// <summary>Granted client ids; only meaningful when not agency staff.</summary>
     IReadOnlyCollection<Guid> AllowedClientIds { get; }
 
     bool CanAccessClient(Guid clientId);
+    bool HasServicePermission(string permission);
 }

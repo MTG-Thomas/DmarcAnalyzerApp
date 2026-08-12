@@ -17,7 +17,7 @@ public sealed class MailboxSourcesModule : ICarterModule
             var items = await service.ListAsync(ct);
 
             return Results.Ok(items);
-        });
+        }).AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapPost("/api/v1/mailbox-sources", async (CreateMailboxSourceRequest request, IMailboxSourceService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -33,7 +33,7 @@ public sealed class MailboxSourcesModule : ICarterModule
                 $"Created report source {source.Name} ({(source.Protocol == "api" ? "API" : source.Host)})",
                 "mailbox_source", source.Id, ct: ct);
             return Results.Created($"/api/v1/mailbox-sources/{source.Id}", source);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.SourcesManage);
 
         app.MapPatch("/api/v1/mailbox-sources/{id:guid}", async (Guid id, UpdateMailboxSourceRequest request, IMailboxSourceService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -61,7 +61,7 @@ public sealed class MailboxSourcesModule : ICarterModule
             await audit.RecordAsync(AuditEvents.MailboxSourceUpdated, summary,
                 "mailbox_source", updatedSource.Id, ct: ct);
             return Results.Ok(updatedSource);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.SourcesManage);
 
         app.MapPost("/api/v1/mailbox-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -82,6 +82,6 @@ public sealed class MailboxSourcesModule : ICarterModule
             var sync = result.Value!;
             var statusCode = sync.Success ? 200 : 502;
             return Results.Json(sync, statusCode: statusCode);
-        });
+        }).AllowServicePermission(ServiceApiPermissions.SourcesSync);
     }
 }

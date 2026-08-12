@@ -21,7 +21,24 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             return;
         }
 
-        var requirement = context.GetEndpoint()?.Metadata
+        var endpoint = context.GetEndpoint();
+        if (currentUser.IsService)
+        {
+            var permission = endpoint?.Metadata.GetMetadata<ServicePermissionMetadata>()?.Permission;
+            if (permission is null || !currentUser.HasServicePermission(permission))
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsJsonAsync(
+                    new { error = "forbidden" },
+                    context.RequestAborted);
+                return;
+            }
+
+            await next(context);
+            return;
+        }
+
+        var requirement = endpoint?.Metadata
             .GetMetadata<RoleRequirementMetadata>()?.Requirement
             ?? RoleRequirement.AgencyStaff;
 

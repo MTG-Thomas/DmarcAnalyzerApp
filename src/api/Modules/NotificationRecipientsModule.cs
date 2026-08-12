@@ -29,7 +29,7 @@ public sealed class NotificationRecipientsModule : ICarterModule
                 })
                 .ToListAsync(ct);
             return Results.Ok(items);
-        }).RequireAgencyStaff();
+        }).RequireAgencyStaff().AllowServicePermission(ServiceApiPermissions.NotificationsManage);
 
         app.MapPost("/api/v1/notification-recipients", async (
             UpsertRecipientRequest request, DmarcAnalyzerDbContext db, IAuditLog audit, CancellationToken ct) =>
@@ -77,7 +77,7 @@ public sealed class NotificationRecipientsModule : ICarterModule
             {
                 recipient.Id, recipient.ClientId, recipient.Email, recipient.Kind, recipient.IsActive,
             });
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.NotificationsManage);
 
         app.MapDelete("/api/v1/notification-recipients/{id:guid}", async (
             Guid id, DmarcAnalyzerDbContext db, IAuditLog audit, CancellationToken ct) =>
@@ -95,6 +95,6 @@ public sealed class NotificationRecipientsModule : ICarterModule
                 $"Removed notification recipient {recipient.Email}",
                 "notification_recipient", id, recipient.ClientId, ct: ct);
             return Results.NoContent();
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.NotificationsManage);
     }
 }

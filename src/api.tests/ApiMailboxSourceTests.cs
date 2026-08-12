@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
 using DmarcAnalyzer.Api.Data;
@@ -16,7 +17,8 @@ public sealed class ApiMailboxSourceTests
             .Options);
 
     private static MailboxSourceService Service(DmarcAnalyzerDbContext db)
-        => new(db, new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])));
+        => new(db, new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])),
+            TestCurrentUserContext.Admin());
 
     [Fact]
     public async Task CreatesApiSourceWithoutMailboxConfiguration()

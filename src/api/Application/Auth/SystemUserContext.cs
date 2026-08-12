@@ -15,6 +15,9 @@ public sealed class SystemUserContext : ICurrentUserContext
     public string Role => Roles.AgencyAdmin;
     public bool IsAdmin => true;
     public bool IsAgencyStaff => true;
+    public bool IsService => false;
+    public IReadOnlyCollection<string> ServicePermissions => [];
     public IReadOnlyCollection<Guid> AllowedClientIds => [];
     public bool CanAccessClient(Guid clientId) => true;
+    public bool HasServicePermission(string permission) => false;
 }
