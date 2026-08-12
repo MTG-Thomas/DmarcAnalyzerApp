@@ -14,7 +14,7 @@ public sealed class ReportSourceService(
     ICredentialProtector credentialProtector,
     ICurrentUserContext currentUser) : IReportSourceService
 {
-    private static readonly string[] SupportedProtocols = ["imap", "pop3", "api"];
+    private static readonly string[] SupportedProtocols = ["imap", "api"];
 
     public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
@@ -31,7 +31,7 @@ public sealed class ReportSourceService(
         var protocol = request.Protocol?.Trim().ToLowerInvariant() ?? string.Empty;
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
+            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or api", 400);
         }
 
         if (currentUser.IsService && protocol != "api")
@@ -108,9 +108,10 @@ public sealed class ReportSourceService(
         if (request.Protocol is not null)
         {
             protocol = request.Protocol.Trim().ToLowerInvariant();
-            if (!SupportedProtocols.Contains(protocol))
+            var unchanged = string.Equals(protocol, source.Protocol, StringComparison.Ordinal);
+            if (!unchanged && !SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
+                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or api", 400);
             }
         }
 

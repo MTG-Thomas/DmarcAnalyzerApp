@@ -23,6 +23,7 @@ using DmarcAnalyzer.Api.Workers;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -271,6 +272,13 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         }));
+    options.AddPolicy(ReportUploadModule.RateLimitPolicy, http =>
+    {
+        var limits = http.RequestServices.GetRequiredService<IOptions<ReportPayloadExtractionOptions>>().Value;
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ReportUploadModule.CredentialRateLimitPartition(http),
+            _ => ReportUploadModule.RateLimiterOptions(limits));
+    });
 });
 builder.Services.AddScoped<IOidcSignInService, OidcSignInService>();
 builder.Services.AddScoped<CurrentUserContext>();
@@ -325,7 +333,7 @@ builder.Services.AddScoped<IMtaStsPolicyAdminService, MtaStsPolicyAdminService>(
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 builder.Services.AddOptions<ReportPayloadExtractionOptions>()
     .Bind(builder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
-    .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
+    .Validate(options => options.IsValid(), "Ingestion limits and rate-limit values must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
     .ValidateOnStart();
 builder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
 builder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();

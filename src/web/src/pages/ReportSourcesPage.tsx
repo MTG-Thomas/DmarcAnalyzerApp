@@ -932,7 +932,9 @@ export function ReportSourcesPage() {
                   }
                 >
                   <option value="imap">IMAP</option>
-                  <option value="pop3">POP3</option>
+                  {mailboxForm.protocol === 'pop3' && (
+                    <option value="pop3">POP3 (not supported)</option>
+                  )}
                   <option value="api">API</option>
                 </Select>
               </label>

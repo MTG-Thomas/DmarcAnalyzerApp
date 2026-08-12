@@ -39,7 +39,8 @@ The short version:
 ```bash
 # Backend
 dotnet build DmarcAnalyzerApp.slnx
-dotnet test src/api.tests
+dotnet test src/api.tests                 # fast; InMemory provider
+dotnet test src/api.integrationtests      # needs DMARC_TEST_POSTGRES
 
 # Frontend (from src/web)
 npm install
@@ -56,20 +57,23 @@ docker compose up -d --build
 
 - `main` is protected. Branch, implement, verify, open a pull request.
 - **Merges are squash merges**, and branches are not auto-deleted afterwards.
-- CI runs on pull requests **targeting `main`**. If you stack a pull request on
-  another branch it will get no checks at all until it is retargeted — worth
-  knowing before you wonder where your test run went.
+- CI runs on every pull request, whatever branch it targets, so a stacked pull
+  request is built and tested like any other. If you see *no* checks at all,
+  the usual cause is a merge conflict: GitHub does not run checks on a pull
+  request it cannot merge.
 - Reference issues with `Refs #123` rather than `Closes #123`. Merging is not the
   same as shipping, and closing an issue is the maintainer's call.
 
 ## What review will ask of you
 
-**Tests that could actually fail.** The backend suite runs on the EF Core
-InMemory provider, which supports neither raw SQL nor transactions. Several
-important paths — the report/records insert, the `ON CONFLICT` dedup — therefore
-cannot be covered by it at all. If you touch one of those, say in the pull
-request how you verified it instead. "Ran it against real Postgres and here is
-what I saw" is a valid and welcome answer. Silence is not.
+**Tests that could actually fail.** The fast backend suite runs on the EF Core
+InMemory provider, which supports neither raw SQL nor transactions. Anything
+whose correctness depends on the real database — the report/records insert, the
+`ON CONFLICT` dedup, a unique index, a column width — belongs in
+`src/api.integrationtests`, which runs against PostgreSQL and can actually
+execute it. If you touch one of those paths and cannot cover it there,
+say in the pull request how you verified it instead. "Ran it against real
+Postgres and here is what I saw" is a valid and welcome answer. Silence is not.
 
 **Say what you actually ran.** Pull request descriptions here list the commands
 and their results. This is the single most useful thing you can do for a

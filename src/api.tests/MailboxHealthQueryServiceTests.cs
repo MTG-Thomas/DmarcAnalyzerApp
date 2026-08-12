@@ -61,6 +61,17 @@ public sealed class MailboxHealthQueryServiceTests
             PasswordEncrypted = null,
             DefaultClientId = client.Id,
         });
+        db.ReportSources.Add(new ReportSource
+        {
+            Name = "Legacy POP3 source",
+            Protocol = "pop3",
+            Host = "pop.example.com",
+            Port = 995,
+            UseTls = true,
+            Username = "dmarc@example.com",
+            PasswordEncrypted = "cipher",
+            DefaultClientId = client.Id,
+        });
 
         db.MailboxSyncRuns.AddRange(
             new MailboxSyncRun

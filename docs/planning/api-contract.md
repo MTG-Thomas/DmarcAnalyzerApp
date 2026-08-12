@@ -419,11 +419,15 @@ The response exposes only `inserted`, `duplicates`, `rejected`, and
 `rejectionCodes`. ZIP entry names, report content, tokens, digest values, and
 report provenance are not returned or logged.
 Each authenticated attempt records a source-id/count-only audit event.
+Requests are rate-limited per source credential using the configured ingestion
+permit count and window; credentials do not share a bucket merely because their
+callers use the same address.
 
 - `201` — at least one DMARC or TLS report inserted; partial entry rejections
   remain visible in `rejectionCodes`.
 - `200` — no inserts and at least one duplicate report.
 - `401` — uniform machine-authentication failure.
+- `429` — source credential exceeded its configured request rate.
 - `413` — request, entry, expansion, archive-entry, or compression-ratio limit.
 - `415` — unsupported media, multipart shape, format, or container nesting.
 - `422` — malformed/coherency-failed integrity headers, digest mismatch, parse

@@ -222,6 +222,19 @@ public sealed class MailboxRetentionPlannerTests
         Assert.Empty(await Planner(db).PlanAsync(default));
     }
 
+    [Fact]
+    public async Task LegacyPop3SourcesAreNotMailboxRetentionCandidates()
+    {
+        await using var db = NewDb();
+        var client = NewClient("acme", 12);
+        var source = NewSource(client.Id, enabled: true);
+        source.Protocol = "pop3";
+        db.AddRange(client, source);
+        await db.SaveChangesAsync();
+
+        Assert.Empty(await Planner(db).PlanAsync(default));
+    }
+
     [Theory]
     [InlineData(false, 1, "not enabled")]
     [InlineData(true, 0, "no client")]

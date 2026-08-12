@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
@@ -9,7 +10,7 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
     {
         var reportSources = db.ReportSources
             .AsNoTracking()
-            .Where(x => x.Protocol != "api")
+            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
             .AsQueryable();
 
         if (reportSourceId.HasValue)
