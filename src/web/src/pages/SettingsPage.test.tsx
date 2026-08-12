@@ -2,6 +2,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', () => ({ fetchJson: vi.fn() }))
+vi.mock('@/components/PasskeySettings', () => ({ PasskeySettings: () => null }))
+const { authUser } = vi.hoisted(() => ({ authUser: { role: 'agency_admin' } }))
+vi.mock('@/lib/auth-context', () => ({
+  useAuth: () => ({ user: authUser }),
+}))
 
 import { fetchJson } from '@/lib/api'
 import type {
@@ -47,10 +52,19 @@ const issuedCredential: IssuedServiceApiCredential = {
 describe('service API key settings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    authUser.role = 'agency_admin'
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     })
+  })
+
+  it('does not request or show service API keys for non-admin users', async () => {
+    authUser.role = 'client_viewer'
+    render(<SettingsPage />)
+
+    await waitFor(() => expect(fetchJson).not.toHaveBeenCalled())
+    expect(screen.queryByText('Service API keys')).not.toBeInTheDocument()
   })
 
   it('lists metadata without exposing token material', async () => {

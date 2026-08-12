@@ -10,11 +10,18 @@ import { Input } from '@/components/ui/input'
 import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { usePageTitle } from '@/lib/use-page-title'
+import { PasskeyBrowserError } from '@/lib/webauthn'
 
 type OidcProvider = {
   enabled: boolean
   displayName: string
   loginUrl: string
+}
+
+type AuthProviders = {
+  local: boolean
+  passkeys: boolean
+  oidc: OidcProvider | null
 }
 
 const OIDC_ERROR_MESSAGES: Record<string, string> = {
@@ -28,7 +35,7 @@ const OIDC_ERROR_MESSAGES: Record<string, string> = {
 }
 
 export function LoginPage() {
-  const { login, status } = useAuth()
+  const { login, loginWithPasskey, status } = useAuth()
   const navigate = useNavigate()
   const justLoggedOut = status === 'logged-out'
 
@@ -37,6 +44,7 @@ export function LoginPage() {
   usePageTitle(requiresBootstrap ? 'Welcome' : 'Sign in')
   const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null)
   const [localLoginEnabled, setLocalLoginEnabled] = useState(true)
+  const [passkeysEnabled, setPasskeysEnabled] = useState(false)
 
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -55,14 +63,15 @@ export function LoginPage() {
       try {
         const [setup, providers] = await Promise.all([
           fetchJson<{ requiresBootstrap: boolean }>('/api/v1/auth/setup'),
-          fetchJson<{ local: boolean; oidc: OidcProvider | null }>('/api/v1/auth/providers').catch(
-            () => ({ local: true, oidc: null }),
+          fetchJson<AuthProviders>('/api/v1/auth/providers').catch(
+            () => ({ local: true, passkeys: false, oidc: null }),
           ),
         ])
         if (!cancelled) {
           setRequiresBootstrap(setup.requiresBootstrap)
           setOidcProvider(providers.oidc)
           setLocalLoginEnabled(providers.local)
+          setPasskeysEnabled(providers.passkeys)
         }
       } catch {
         if (!cancelled) setRequiresBootstrap(false)
@@ -94,7 +103,7 @@ export function LoginPage() {
   // the auto-redirect resumes on the next real visit (a fresh mount reads
   // 'unauthenticated', not 'logged-out').
   const shouldAutoRedirectToSso =
-    requiresBootstrap === false && !localLoginEnabled && !!oidcProvider?.enabled && !justLoggedOut
+    requiresBootstrap === false && !localLoginEnabled && !passkeysEnabled && !!oidcProvider?.enabled && !justLoggedOut
 
   useEffect(() => {
     if (shouldAutoRedirectToSso) {
@@ -114,6 +123,25 @@ export function LoginPage() {
         setError('Invalid email or password')
       } else {
         setError('Unable to sign in. Check your connection and try again.')
+      }
+      setSubmitting(false)
+    }
+  }
+
+  const handlePasskeyLogin = async () => {
+    setError(null)
+    setSubmitting(true)
+    try {
+      await loginWithPasskey()
+    } catch (passkeyError) {
+      if (passkeyError instanceof PasskeyBrowserError) {
+        setError(passkeyError.reason === 'unsupported'
+          ? 'Passkeys are not supported by this browser or device.'
+          : passkeyError.reason === 'cancelled'
+            ? 'Passkey sign-in was cancelled. Try again when you are ready.'
+            : 'Passkey sign-in could not be completed. Try again.')
+      } else {
+        setError('Passkey sign-in could not be completed. Try again or use another sign-in method.')
       }
       setSubmitting(false)
     }
@@ -165,7 +193,7 @@ export function LoginPage() {
   // The one case shouldAutoRedirectToSso deliberately excludes: no local
   // login, and we'd otherwise have redirected straight back into the IdP's
   // still-live session. Give the explicit sign-in step a click instead.
-  if (justLoggedOut && !localLoginEnabled && oidcProvider?.enabled) {
+  if (justLoggedOut && !localLoginEnabled && !passkeysEnabled && oidcProvider?.enabled) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 py-6">
         <Card className="w-full max-w-md">
@@ -199,12 +227,25 @@ export function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3" onSubmit={requiresBootstrap ? handleBootstrap : handleLogin}>
-            {!!error && (
-              <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
-                {error}
-              </p>
-            )}
+          {!!error && (
+            <p role="alert" className="mb-3 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+              {error}
+            </p>
+          )}
+          {(!requiresBootstrap && passkeysEnabled) ? (
+            <Button type="button" className="w-full" disabled={submitting} onClick={() => void handlePasskeyLogin()}>
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              Sign in with a passkey
+            </Button>
+          ) : null}
+          {(!requiresBootstrap && passkeysEnabled && localLoginEnabled) ? (
+            <div className="my-4 flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs uppercase tracking-wide text-secondary">or</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          ) : null}
+          {(requiresBootstrap || localLoginEnabled) ? <form className="grid gap-3" onSubmit={requiresBootstrap ? handleBootstrap : handleLogin}>
             {requiresBootstrap && (
               <div className="grid gap-1.5">
                 <label htmlFor="login-display-name" className="text-sm font-medium">
@@ -254,7 +295,7 @@ export function LoginPage() {
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {requiresBootstrap ? 'Create administrator account' : 'Sign in'}
             </Button>
-          </form>
+          </form> : null}
           {!requiresBootstrap && oidcProvider?.enabled && (
             <>
               <div className="my-4 flex items-center gap-3">

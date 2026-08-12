@@ -39,6 +39,9 @@ public sealed class BackupExportService(
         // Service API credentials are also reveal-once. Integrations must be
         // re-authorized after a restore rather than inheriting a copied token.
         "service_api_credential",
+        // WebAuthn counters cannot be safely merged after two same-RP installs diverge.
+        // Users retain password/OIDC recovery and register fresh passkeys after restore.
+        "user_passkey",
     ];
 
     public async Task<ServiceResult<BackupArtifact>> ExportAsync(
@@ -213,5 +216,6 @@ public sealed class BackupExportService(
             [ExcludedTables[6]] = await db.SmtpTlsFailureDetails.LongCountAsync(ct),
             [ExcludedTables[7]] = await db.ApiSourceCredentials.LongCountAsync(ct),
             [ExcludedTables[8]] = await db.ServiceApiCredentials.LongCountAsync(ct),
+            [ExcludedTables[9]] = await db.UserPasskeys.LongCountAsync(ct),
         };
 }

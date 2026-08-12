@@ -15,6 +15,7 @@ vi.mock('@/lib/auth-context', () => ({
     status: 'authenticated',
     user: { id: 'u1', email: 'admin@agency.tld', displayName: 'Admin', role: 'agency_admin' },
     login: vi.fn(),
+    loginWithPasskey: vi.fn(),
     logout: vi.fn(),
   }),
 }))

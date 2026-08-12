@@ -24,6 +24,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<UserClientGrant> UserClientGrants => Set<UserClientGrant>();
     public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
+    public DbSet<UserPasskey> UserPasskeys => Set<UserPasskey>();
     public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
     public DbSet<MtaStsState> MtaStsStates => Set<MtaStsState>();
     public DbSet<MtaStsPolicy> MtaStsPolicies => Set<MtaStsPolicy>();
@@ -72,6 +73,29 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasIndex(x => new { x.Issuer, x.Subject }).IsUnique();
             entity.HasIndex(x => x.UserId);
 
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserPasskey>(entity =>
+        {
+            entity.ToTable("user_passkey", table =>
+            {
+                table.HasCheckConstraint("CK_user_passkey_CredentialIdLength", "octet_length(\"CredentialId\") BETWEEN 16 AND 1023");
+                table.HasCheckConstraint("CK_user_passkey_PublicKeyLength", "octet_length(\"PublicKey\") BETWEEN 32 AND 4096");
+                table.HasCheckConstraint("CK_user_passkey_UserHandleLength", "octet_length(\"UserHandle\") = 16");
+                table.HasCheckConstraint("CK_user_passkey_SignCount", "\"SignCount\" >= 0 AND \"SignCount\" <= 4294967295");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.CredentialId).IsRequired();
+            entity.Property(x => x.PublicKey).IsRequired();
+            entity.Property(x => x.UserHandle).IsRequired();
+            entity.Property(x => x.Transports).HasMaxLength(200).IsRequired();
+            entity.HasIndex(x => x.CredentialId).IsUnique().HasDatabaseName("UX_user_passkey_CredentialId");
+            entity.HasIndex(x => x.UserId);
             entity.HasOne(x => x.User)
                 .WithMany()
                 .HasForeignKey(x => x.UserId)

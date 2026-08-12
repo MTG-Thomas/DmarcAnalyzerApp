@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { fetchJson, setUnauthorizedHandler } from '@/lib/api'
 import { AuthContext } from '@/lib/auth-context'
 import type { AuthStatus, AuthUser } from '@/lib/auth-context'
+import { requestPasskey, type PublicKeyRequestOptionsJson } from '@/lib/webauthn'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading')
@@ -49,6 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('authenticated')
   }, [])
 
+  const loginWithPasskey = useCallback(async () => {
+    const options = await fetchJson<PublicKeyRequestOptionsJson>('/api/v1/auth/passkeys/options', {
+      method: 'POST',
+    })
+    const credential = await requestPasskey(options)
+    const payload = await fetchJson<{ user: AuthUser }>('/api/v1/auth/passkeys/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credential),
+    })
+    setUser(payload.user)
+    setStatus('authenticated')
+  }, [])
+
   const logout = useCallback(async () => {
     try {
       await fetchJson('/api/v1/auth/logout', { method: 'POST' })
@@ -60,8 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ status, user, login, logout }),
-    [status, user, login, logout],
+    () => ({ status, user, login, loginWithPasskey, logout }),
+    [status, user, login, loginWithPasskey, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
