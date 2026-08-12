@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
 import { BrandLogo } from '@/components/BrandLogo'
+import { ThemePicker } from '@/components/ThemePicker'
 import { Icon, type IconName } from '@/components/ui/icon'
 import type { AuthUser } from '@/lib/auth-context'
 import { useAuth } from '@/lib/auth-context'
@@ -45,7 +46,7 @@ function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => vo
           // sidebar goes back to the tighter py-2 rhythm.
           'flex items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base transition-colors duration-[120ms] ease-out focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:py-2',
           isActive
-            ? 'bg-brand-subtle font-semibold text-teal-800'
+            ? 'bg-brand-subtle font-semibold text-[var(--brand-hover)]'
             : 'font-medium text-gray-600 hover:bg-gray-100',
         )
       }
@@ -112,7 +113,7 @@ export function ConsoleLayout() {
           type="button"
           aria-label="Close navigation"
           onClick={closeNav}
-          className="fixed inset-0 z-40 bg-ink-900/40 lg:hidden"
+          className="fixed inset-0 z-40 bg-[var(--overlay-bg)] lg:hidden"
         />
       )}
 
@@ -165,6 +166,7 @@ export function ConsoleLayout() {
             {user?.displayName || user?.email}
           </p>
           <p className="truncate text-xs text-secondary">{user?.email}</p>
+          <ThemePicker />
           <button
             type="button"
             onClick={() => void logout()}

@@ -201,7 +201,7 @@ export function LoginPage() {
         <CardContent>
           <form className="grid gap-3" onSubmit={requiresBootstrap ? handleBootstrap : handleLogin}>
             {!!error && (
-              <p className="rounded-md border border-red-600/25 bg-red-100 px-3 py-2 text-sm text-red-800">
+              <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
                 {error}
               </p>
             )}

@@ -15,7 +15,7 @@ export function DialogOverlay({
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
     <DialogPrimitive.Overlay
-      className={cn('fixed inset-0 z-40 bg-[rgba(11,29,24,0.45)] backdrop-blur-[1px]', className)}
+      className={cn('fixed inset-0 z-40 bg-[var(--overlay-bg)] backdrop-blur-[1px]', className)}
       {...props}
     />
   )

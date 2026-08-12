@@ -121,6 +121,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     - `dmarc_report_record_spf_auth_result`
 - Console visual redesign (new "ink-green/teal" design system):
   - design tokens as CSS vars + Tailwind theme; self-hosted fonts (Space Grotesk / Public Sans / JetBrains Mono) via Fontsource, no CDN
+  - System / Light / Dark selection via a native sidebar select; the system setting follows `prefers-color-scheme`, explicit choices persist locally, and the dark palette extends the upstream brand's ink/mint treatment through the existing semantic tokens
   - primitives ported from the design handoff (Button/Badge/Card/Input/Select/Dialog/Table/Icon/StatCard/PolicyBadge/ComplianceBar/DaysSelector/TrendChart)
   - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Mailbox Sources) + Login
   - Domains/Detail surface published policy (PolicyBadge p=…) and enforcement status (Enforced/Ramping/Spoofing/Monitoring)
