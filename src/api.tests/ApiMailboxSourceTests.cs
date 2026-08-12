@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
 using DmarcAnalyzer.Api.Data;
@@ -16,7 +17,59 @@ public sealed class ApiMailboxSourceTests
             .Options);
 
     private static MailboxSourceService Service(DmarcAnalyzerDbContext db)
-        => new(db, new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])));
+        => new(db, new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])),
+            TestCurrentUserContext.Admin());
+
+    private static MailboxSourceService ServiceActor(DmarcAnalyzerDbContext db)
+        => new(db, new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])),
+            new TestCurrentUserContext
+            {
+                ActorType = "service",
+                Role = Roles.AgencyAnalyst,
+                ServicePermissions = [ServiceApiPermissions.SourcesManage],
+            });
+
+    [Fact]
+    public async Task ServiceCanManageOnlyApiSourceMetadata()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        db.Clients.Add(client);
+        await db.SaveChangesAsync();
+
+        var mailbox = await ServiceActor(db).CreateAsync(new CreateMailboxSourceRequest
+        {
+            Name = "Mailbox",
+            Protocol = "imap",
+            Host = "imap.example",
+            Port = 993,
+            UseTls = true,
+            Username = "reports@example",
+            Password = "secret",
+            DefaultClientId = client.Id,
+        }, default);
+        Assert.Equal(403, mailbox.StatusCode);
+
+        var issued = await ServiceActor(db).CreateAsync(new CreateMailboxSourceRequest
+        {
+            Name = "Bifrost upload",
+            Protocol = "api",
+            DefaultClientId = client.Id,
+        }, default);
+        Assert.True(issued.IsSuccess);
+
+        var renamed = await ServiceActor(db).UpdateAsync(issued.Value!.Id,
+            new UpdateMailboxSourceRequest { Name = "Bifrost renamed" }, default);
+        Assert.True(renamed.IsSuccess);
+
+        var credentialInjection = await ServiceActor(db).UpdateAsync(issued.Value.Id,
+            new UpdateMailboxSourceRequest { Password = "secret" }, default);
+        Assert.Equal(403, credentialInjection.StatusCode);
+
+        var retention = await ServiceActor(db).UpdateAsync(issued.Value.Id,
+            new UpdateMailboxSourceRequest { DeleteAfterRetention = true }, default);
+        Assert.Equal(403, retention.StatusCode);
+    }
 
     [Fact]
     public async Task CreatesApiSourceWithoutMailboxConfiguration()

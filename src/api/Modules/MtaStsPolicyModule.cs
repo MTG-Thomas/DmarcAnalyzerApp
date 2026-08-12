@@ -17,7 +17,7 @@ public sealed class MtaStsPolicyModule : ICarterModule
         {
             var response = await service.GetAsync(domainId, ct);
             return response is null ? Results.NotFound() : Results.Ok(response);
-        }).AllowClientViewer();
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         // Admin, like domain management itself: this config directs client DNS
         // and certificate issuance.
@@ -51,7 +51,7 @@ public sealed class MtaStsPolicyModule : ICarterModule
             }
 
             return Results.Ok(upsert.Response);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.DomainsManage);
 
         app.MapDelete("/api/v1/domains/{domainId:guid}/mta-sts-policy", async (
             Guid domainId,
@@ -72,7 +72,7 @@ public sealed class MtaStsPolicyModule : ICarterModule
                 "mta-sts CNAME and _mta-sts TXT records should be removed too",
                 "domain", domainId, ct: ct);
             return Results.NoContent();
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.DomainsManage);
 
         // Same-provider fleets: one policy shape across several of a client's
         // domains. Loops the same upsert core as the single PUT, so each domain
@@ -107,7 +107,7 @@ public sealed class MtaStsPolicyModule : ICarterModule
             }
 
             return Results.Ok(response);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.DomainsManage);
     }
 
     private static string Describe(MtaStsPolicyDto policy, string? previousPolicyId) =>

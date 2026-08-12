@@ -15,13 +15,11 @@ such section is marked. Where the two disagree, §0 and the code win.
 
 Auth model: all `/api/v1/*` routes require either the `dmarc_session` cookie or a
 service bearer credential except the public paths noted below. Service
-credentials authenticate as `agency_analyst`: they see every client and normal
-staff operations, but cannot reach admin-only users, backups, database, source
-configuration, or credential lifecycle routes. If an `Authorization` header is
-present and invalid, the request does not fall back to a cookie. Role enforcement
-is `RoleAuthorizationMiddleware` + route metadata, **deny-by-default**: an
-endpoint with no metadata requires agency staff (`agency_admin` or
-`agency_analyst`).
+credentials are global but permission-scoped. For a service actor, each callable
+endpoint must explicitly name one permission and missing metadata is forbidden.
+Human role behavior remains **deny-by-default**: an endpoint with no role
+metadata requires agency staff. If an `Authorization` header is present and
+invalid, the request does not fall back to a cookie.
 
 - **staff** — default; admin + analyst.
 - **admin** — `agency_admin` only (`RequireAgencyAdmin`).
@@ -44,8 +42,9 @@ endpoint with no metadata requires agency staff (`agency_admin` or
 ### Service API credentials
 | Method | Path | Access |
 |---|---|---|
+| GET | `/service-credentials/permissions` | admin — ordered fixed permission catalog |
 | GET | `/service-credentials` | admin — metadata only; never returns a token or hash |
-| POST | `/service-credentials` | admin — issue a reveal-once global analyst token, expiring within 366 days |
+| POST | `/service-credentials` | admin — issue a reveal-once permission-scoped token, expiring within 366 days |
 | DELETE | `/service-credentials/{id}` | admin — idempotent revocation |
 
 Tokens use `Authorization: Bearer dmarc_api_v1.<prefix>.<secret>`. The full token
@@ -53,6 +52,12 @@ is returned only by the create response; only its prefix and SHA-256 hash are
 stored. Create another credential before revoking the old one to rotate without
 an outage. Service credentials are omitted from configuration backups and must
 be reissued after restore.
+
+Create requires at least one unique known `permissions` value. The fixed catalog
+is `portfolio.read`, `alerts.manage`, `clients.manage`, `domains.manage`,
+`sources.manage`, `sources.sync`, `notifications.manage`, and `audit.read`.
+Service credentials can never manage service or source credentials, users,
+authentication, backups/configuration, database migrations, or retention.
 
 ### Machine ingestion
 

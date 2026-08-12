@@ -13,9 +13,14 @@ public sealed class TestCurrentUserContext : ICurrentUserContext
 
     public bool IsAdmin => Role == Roles.AgencyAdmin;
     public bool IsAgencyStaff => Roles.IsAgencyStaff(Role);
+    public bool IsService => ActorType == "service";
+    public IReadOnlyCollection<string> ServicePermissions { get; init; } = [];
 
     public bool CanAccessClient(Guid clientId)
         => IsAgencyStaff || AllowedClientIds.Contains(clientId);
+
+    public bool HasServicePermission(string permission)
+        => IsService && ServicePermissions.Contains(permission, StringComparer.Ordinal);
 
     public static TestCurrentUserContext Admin() => new();
 

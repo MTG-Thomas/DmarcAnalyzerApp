@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Auth;
 
-public sealed record ServiceApiPrincipal(Guid CredentialId, string Name);
+public sealed record ServiceApiPrincipal(Guid CredentialId, string Name, IReadOnlyCollection<string> Permissions);
 
 public interface IServiceApiAuthenticator
 {
@@ -31,20 +31,26 @@ public sealed class ServiceApiAuthenticator(DmarcAnalyzerDbContext db) : IServic
                 x.Id,
                 x.Name,
                 x.TokenHash,
+                x.Permissions,
                 x.ExpiresAtUtc,
                 x.RevokedAtUtc,
             })
             .SingleOrDefaultAsync(ct);
 
         var hashMatches = ApiCredentialToken.HashMatches(bearerToken!, credential?.TokenHash);
+        string[] normalizedPermissions = [];
+        var permissionsValid = credential is not null
+            && ServiceApiPermissions.TryNormalize(credential.Permissions, out normalizedPermissions, out _)
+            && credential.Permissions.SequenceEqual(normalizedPermissions, StringComparer.Ordinal);
         if (credential is null
             || !hashMatches
+            || !permissionsValid
             || credential.RevokedAtUtc is not null
             || credential.ExpiresAtUtc <= DateTime.UtcNow)
         {
             return null;
         }
 
-        return new ServiceApiPrincipal(credential.Id, credential.Name);
+        return new ServiceApiPrincipal(credential.Id, credential.Name, normalizedPermissions);
     }
 }

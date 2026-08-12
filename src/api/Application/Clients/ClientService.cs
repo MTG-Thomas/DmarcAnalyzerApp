@@ -43,6 +43,12 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
 
     public async Task<ServiceResult<ClientDto>> CreateAsync(CreateClientRequest request, CancellationToken ct)
     {
+        if (currentUser.IsService && request.RetentionMonths != 27)
+        {
+            return ServiceResult<ClientDto>.Failure(
+                "service credentials cannot set client retention", 403);
+        }
+
         if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Slug))
         {
             return ServiceResult<ClientDto>.Failure("name and slug are required", 400);
@@ -75,6 +81,12 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
 
     public async Task<ServiceResult<ClientDto>> UpdateAsync(Guid id, UpdateClientRequest request, CancellationToken ct)
     {
+        if (currentUser.IsService && (request.RetentionMonths.HasValue || request.LegalHold.HasValue))
+        {
+            return ServiceResult<ClientDto>.Failure(
+                "service credentials cannot change client retention or legal hold", 403);
+        }
+
         var client = await db.Clients.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (client is null)
         {

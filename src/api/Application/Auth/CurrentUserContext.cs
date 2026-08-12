@@ -11,10 +11,15 @@ public sealed class CurrentUserContext : ICurrentUserContext
     public string Role { get; private set; } = string.Empty;
     public bool IsAdmin => Role == Roles.AgencyAdmin;
     public bool IsAgencyStaff => Roles.IsAgencyStaff(Role);
+    public bool IsService => ActorType == "service";
+    public IReadOnlyCollection<string> ServicePermissions { get; private set; } = [];
     public IReadOnlyCollection<Guid> AllowedClientIds => _allowedClientIds;
 
     public bool CanAccessClient(Guid clientId)
         => IsAgencyStaff || _allowedClientIds.Contains(clientId);
+
+    public bool HasServicePermission(string permission)
+        => IsService && ServicePermissions.Contains(permission, StringComparer.Ordinal);
 
     internal void Set(UserDto user, IReadOnlyList<Guid> grantedClientIds)
     {
@@ -24,6 +29,7 @@ public sealed class CurrentUserContext : ICurrentUserContext
         Email = user.Email;
         Role = user.Role;
         _allowedClientIds = [.. grantedClientIds];
+        ServicePermissions = [];
     }
 
     internal void SetService(ServiceApiPrincipal principal)
@@ -34,5 +40,6 @@ public sealed class CurrentUserContext : ICurrentUserContext
         Email = $"service:{principal.Name}";
         Role = Roles.AgencyAnalyst;
         _allowedClientIds = [];
+        ServicePermissions = principal.Permissions;
     }
 }

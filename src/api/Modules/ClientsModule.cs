@@ -16,14 +16,14 @@ public sealed class ClientsModule : ICarterModule
             var client = await service.GetAsync(id, ct);
 
             return client is null ? Results.NotFound() : Results.Ok(client);
-        }).AllowClientViewer();
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/clients", async (IClientService service, CancellationToken ct) =>
         {
             var clients = await service.ListAsync(ct);
 
             return Results.Ok(clients);
-        }).AllowClientViewer();
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapPost("/api/v1/clients", async (CreateClientRequest request, IClientService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -37,7 +37,7 @@ public sealed class ClientsModule : ICarterModule
             await audit.RecordAsync(AuditEvents.ClientCreated, $"Created client {client.Name}",
                 "client", client.Id, client.Id, ct: ct);
             return Results.Created($"/api/v1/clients/{client.Id}", client);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.ClientsManage);
 
         app.MapPatch("/api/v1/clients/{id:guid}", async (Guid id, UpdateClientRequest request, IClientService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -56,6 +56,6 @@ public sealed class ClientsModule : ICarterModule
             await audit.RecordAsync(AuditEvents.ClientUpdated, $"Updated client {updated.Name}",
                 "client", updated.Id, updated.Id, ct: ct);
             return Results.Ok(updated);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.ClientsManage);
     }
 }

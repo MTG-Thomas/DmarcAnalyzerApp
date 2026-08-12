@@ -8,6 +8,10 @@ public sealed class ServiceApiCredentialsModule : ICarterModule
 {
     public void AddRoutes(IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/v1/service-credentials/permissions", () =>
+            Results.Ok(ServiceApiPermissions.Catalog))
+            .RequireAgencyAdmin();
+
         app.MapGet("/api/v1/service-credentials", async (
             IServiceApiCredentialService service,
             CancellationToken ct) => Results.Ok(await service.ListAsync(ct)))
