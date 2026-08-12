@@ -86,6 +86,7 @@ export type ServiceApiCredential = {
   id: string
   name: string
   prefix: string
+  permissions: string[]
   createdAtUtc: string
   expiresAtUtc: string
   revokedAtUtc: string | null
@@ -93,6 +94,12 @@ export type ServiceApiCredential = {
 
 export type IssuedServiceApiCredential = Omit<ServiceApiCredential, 'revokedAtUtc'> & {
   token: string
+}
+
+export type ServiceApiPermission = {
+  id: string
+  name: string
+  description: string
 }
 
 export type MailboxHealth = {
