@@ -57,6 +57,22 @@ public sealed class ServiceApiCredentialTests
         Assert.Null(await authenticator.AuthenticateAsync(issued.Token, default));
     }
 
+    [Theory]
+    [InlineData("users.manage")]
+    [InlineData("audit.read,portfolio.read")]
+    public async Task AuthenticatorRejectsUnknownOrNoncanonicalStoredPermissions(string stored)
+    {
+        await using var db = NewDb();
+        var service = new ServiceApiCredentialService(db);
+        var issued = (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null, [ServiceApiPermissions.PortfolioRead]), default)).Value!;
+        var credential = await db.ServiceApiCredentials.SingleAsync();
+        credential.Permissions = stored.Split(',');
+        await db.SaveChangesAsync();
+
+        Assert.Null(await new ServiceApiAuthenticator(db).AuthenticateAsync(issued.Token, default));
+    }
+
     [Fact]
     public async Task IssueValidatesNameAndBoundedExpiry()
     {
@@ -250,6 +266,12 @@ public sealed class ServiceApiCredentialTests
         Assert.Equal(403, await AuthorizeAsync(
             current,
             new RoleRequirementMetadata(RoleRequirement.AnyAuthenticated)));
+
+        var adminHuman = TestCurrentUserContext.Admin();
+        Assert.Equal(200, await AuthorizeAsync(adminHuman,
+            new RoleRequirementMetadata(RoleRequirement.AgencyAdmin)));
+        Assert.Equal(200, await AuthorizeAsync(adminHuman,
+            new ServicePermissionMetadata(ServiceApiPermissions.PortfolioRead)));
     }
 
     [Theory]
