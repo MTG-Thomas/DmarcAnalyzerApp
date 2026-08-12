@@ -22,6 +22,36 @@ public sealed class ClientServiceTests
     private static ClientService NewService(DmarcAnalyzerDbContext db)
         => new(db, TestCurrentUserContext.Admin());
 
+    private static ClientService NewServiceActor(DmarcAnalyzerDbContext db)
+        => new(db, new TestCurrentUserContext
+        {
+            ActorType = "service",
+            Role = Roles.AgencyAnalyst,
+            ServicePermissions = [ServiceApiPermissions.ClientsManage],
+        });
+
+    [Fact]
+    public async Task ServiceCannotChangeRetentionOrLegalHold()
+    {
+        await using var db = NewDb();
+        var existing = NewClient("acme");
+        db.Clients.Add(existing);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(403, (await NewServiceActor(db).CreateAsync(new CreateClientRequest
+        {
+            Name = "Other",
+            Slug = "other",
+            RetentionMonths = 12,
+        }, default)).StatusCode);
+        Assert.Equal(403, (await NewServiceActor(db).UpdateAsync(existing.Id,
+            new UpdateClientRequest { RetentionMonths = 12 }, default)).StatusCode);
+        Assert.Equal(403, (await NewServiceActor(db).UpdateAsync(existing.Id,
+            new UpdateClientRequest { LegalHold = true }, default)).StatusCode);
+        Assert.Equal(27, existing.RetentionMonths);
+        Assert.False(existing.LegalHold);
+    }
+
     private static Client NewClient(string slug) => new()
     {
         Id = Guid.NewGuid(),

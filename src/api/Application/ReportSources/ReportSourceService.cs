@@ -1,5 +1,6 @@
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.ApiSources;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Contracts.ReportSources;
 using DmarcAnalyzer.Api.Data;
@@ -8,7 +9,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.ReportSources;
 
-public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IReportSourceService
+public sealed class ReportSourceService(
+    DmarcAnalyzerDbContext db,
+    ICredentialProtector credentialProtector,
+    ICurrentUserContext currentUser) : IReportSourceService
 {
     private static readonly string[] SupportedProtocols = ["imap", "pop3", "api"];
 
@@ -28,6 +32,12 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         if (!SupportedProtocols.Contains(protocol))
         {
             return ServiceResult<ReportSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
+        }
+
+        if (currentUser.IsService && protocol != "api")
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                "service credentials may create API report sources only", 403);
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||
@@ -86,6 +96,12 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         if (source is null)
         {
             return ServiceResult<ReportSourceDto>.Failure("not found", 404);
+        }
+
+        if (currentUser.IsService && !IsServiceSafeApiUpdate(source, request))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                "service credentials may update API report-source metadata only", 403);
         }
 
         var protocol = source.Protocol;
@@ -246,4 +262,14 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
            && useTls.HasValue
            && !string.IsNullOrWhiteSpace(username)
            && !string.IsNullOrWhiteSpace(password);
+
+    private static bool IsServiceSafeApiUpdate(ReportSource source, UpdateReportSourceRequest request)
+        => source.Protocol == "api"
+           && (request.Protocol is null || request.Protocol.Trim().Equals("api", StringComparison.OrdinalIgnoreCase))
+           && request.Host is null
+           && request.Port is null
+           && request.UseTls is null
+           && request.Username is null
+           && request.Password is null
+           && request.DeleteAfterRetention is null;
 }

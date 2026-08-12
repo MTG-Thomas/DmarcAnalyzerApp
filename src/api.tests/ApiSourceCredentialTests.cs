@@ -128,7 +128,8 @@ public sealed class ApiSourceCredentialTests
 
         var sourceService = new ReportSourceService(
             db,
-            new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])));
+            new AesGcmCredentialProtector(Convert.ToBase64String(new byte[32])),
+            TestCurrentUserContext.Admin());
         var changed = await sourceService.UpdateAsync(source.Id, new UpdateReportSourceRequest
         {
             Protocol = "imap",

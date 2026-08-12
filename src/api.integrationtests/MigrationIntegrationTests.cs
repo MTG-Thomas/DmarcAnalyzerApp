@@ -15,7 +15,8 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     // upgrade test proves this schema-bearing slice preserves configuration.
     private const string BeforeApiSourceMigration = "20260806191701_AddSmtpTlsReportIngestion";
     private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
-    private const string ExpectedLatestMigration = "20260812012105_AddServiceApiCredentials";
+    private const string BeforeServicePermissionsMigration = "20260812012105_AddServiceApiCredentials";
+    private const string ExpectedLatestMigration = "20260812025139_AddServiceApiCredentialPermissions";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
@@ -62,6 +63,33 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
             Assert.Equal(ExpectedLatestMigration, (await current.Database.GetAppliedMigrationsAsync()).Last());
             Assert.Empty(await current.Database.GetPendingMigrationsAsync());
         }
+    }
+
+    [Fact]
+    public async Task ExistingServiceCredential_UpgradesToReadOnlyPermission()
+    {
+        await database.ResetDatabaseAsync();
+
+        var id = Guid.NewGuid();
+        var name = "Bifrost";
+        var prefix = "abcdefghijklmnopqrstuv";
+        var created = DateTime.UtcNow;
+        var expires = created.AddDays(30);
+        await using (var previous = database.CreateDbContext())
+        {
+            await previous.GetService<IMigrator>().MigrateAsync(BeforeServicePermissionsMigration);
+            await previous.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO service_api_credential
+                    ("Id", "Name", "Prefix", "TokenHash", "CreatedAtUtc", "ExpiresAtUtc")
+                VALUES
+                    ({id}, {name}, {prefix}, {new byte[32]}, {created}, {expires})
+                """);
+            await previous.Database.MigrateAsync();
+        }
+
+        await using var current = database.CreateDbContext();
+        var credential = await current.ServiceApiCredentials.AsNoTracking().SingleAsync(x => x.Id == id);
+        Assert.Equal(["portfolio.read"], credential.Permissions);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using Microsoft.AspNetCore.Routing;
 
@@ -16,6 +17,6 @@ public sealed class MailboxSyncRunsModule : ICarterModule
         {
             var items = await service.ListAsync(reportSourceId, limit ?? 50, ct);
             return Results.Ok(items);
-        });
+        }).AllowServicePermission(ServiceApiPermissions.PortfolioRead);
     }
 }

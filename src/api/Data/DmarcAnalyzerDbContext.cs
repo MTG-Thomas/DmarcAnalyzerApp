@@ -191,11 +191,17 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 table.HasCheckConstraint(
                     "CK_service_api_credential_Expiry",
                     "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_Permissions",
+                    "cardinality(\"Permissions\") BETWEEN 1 AND 8 AND " +
+                    "\"Permissions\" <@ ARRAY['portfolio.read','alerts.manage','clients.manage','domains.manage'," +
+                    "'sources.manage','sources.sync','notifications.manage','audit.read']::text[]");
             });
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Prefix).HasMaxLength(22).IsRequired();
             entity.Property(x => x.TokenHash).IsRequired();
+            entity.Property(x => x.Permissions).HasColumnType("text[]").IsRequired();
             entity.HasIndex(x => x.Prefix).IsUnique();
             entity.HasIndex(x => x.RevokedAtUtc);
             entity.HasIndex(x => x.ExpiresAtUtc);

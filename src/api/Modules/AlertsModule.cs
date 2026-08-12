@@ -52,7 +52,7 @@ public sealed class AlertsModule : ICarterModule
                 .ToListAsync(ct);
 
             return Results.Ok(items);
-        }).AllowClientViewer();
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         // Triage: an alert list you can't clear down gets ignored, so the status
         // column is writable. Analysts can triage, not just admins.
@@ -84,7 +84,7 @@ public sealed class AlertsModule : ICarterModule
             await audit.RecordAsync(AuditEvents.AlertStatusChanged,
                 $"Alert marked {status} (was {previous})", "alert", alert.Id, alert.ClientId, ct: ct);
             return Results.Ok(new { alert.Id, alert.Status });
-        }).RequireAgencyStaff();
+        }).RequireAgencyStaff().AllowServicePermission(ServiceApiPermissions.AlertsManage);
 
         // Run evaluation now rather than waiting for the next worker pass.
         app.MapPost("/api/v1/admin/alerts/evaluate", async (
@@ -93,7 +93,7 @@ public sealed class AlertsModule : ICarterModule
         {
             var result = await service.EvaluateAsync(ct);
             return Results.Ok(result);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.AlertsManage);
 
         // Renders a client's digest for a period without sending it — lets an
         // operator see the content before it reaches a customer.
@@ -110,7 +110,7 @@ public sealed class AlertsModule : ICarterModule
             return summary is null
                 ? Results.NotFound()
                 : Results.Ok(new { summary, body = digest.Render(summary) });
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.NotificationsManage);
 
         // Sends any digest that is due. Idempotent — a period already sent is skipped.
         app.MapPost("/api/v1/admin/digest/send", async (
@@ -119,7 +119,7 @@ public sealed class AlertsModule : ICarterModule
         {
             var result = await digest.SendDueAsync(ct);
             return Results.Ok(result);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.NotificationsManage);
 
         // Proves the SMTP relay works without waiting for something to go wrong.
         app.MapPost("/api/v1/admin/notifications/test", async (

@@ -16,14 +16,14 @@ public sealed class DomainsModule : ICarterModule
             var domain = await service.GetAsync(id, ct);
 
             return domain is null ? Results.NotFound() : Results.Ok(domain);
-        }).AllowClientViewer();
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/domains", async (Guid? clientId, IDomainService service, CancellationToken ct) =>
         {
             var domains = await service.ListAsync(clientId, ct);
 
             return Results.Ok(domains);
-        }).AllowClientViewer();
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapPost("/api/v1/domains", async (CreateDomainRequest request, IDomainService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -38,7 +38,7 @@ public sealed class DomainsModule : ICarterModule
             await audit.RecordAsync(AuditEvents.DomainCreated, $"Created domain {domain.Name}",
                 "domain", domain.Id, domain.ClientId, ct: ct);
             return Results.Created($"/api/v1/domains/{domain.Id}", domain);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.DomainsManage);
 
         app.MapPatch("/api/v1/domains/{id:guid}", async (Guid id, UpdateDomainRequest request, IDomainService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -57,6 +57,6 @@ public sealed class DomainsModule : ICarterModule
             await audit.RecordAsync(AuditEvents.DomainUpdated, $"Updated domain {updatedDomain.Name}",
                 "domain", updatedDomain.Id, updatedDomain.ClientId, ct: ct);
             return Results.Ok(updatedDomain);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.DomainsManage);
     }
 }

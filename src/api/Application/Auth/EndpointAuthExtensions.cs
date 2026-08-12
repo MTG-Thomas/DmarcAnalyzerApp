@@ -2,6 +2,7 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 
 /// <summary>Endpoint role requirements enforced by RoleAuthorizationMiddleware.</summary>
 public sealed record RoleRequirementMetadata(RoleRequirement Requirement);
+public sealed record ServicePermissionMetadata(string Permission);
 
 public enum RoleRequirement
 {
@@ -25,4 +26,8 @@ public static class EndpointAuthExtensions
 
     public static TBuilder AllowClientViewer<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder
         => builder.WithMetadata(new RoleRequirementMetadata(RoleRequirement.AnyAuthenticated));
+
+    public static TBuilder AllowServicePermission<TBuilder>(this TBuilder builder, string permission)
+        where TBuilder : IEndpointConventionBuilder
+        => builder.WithMetadata(new ServicePermissionMetadata(permission));
 }

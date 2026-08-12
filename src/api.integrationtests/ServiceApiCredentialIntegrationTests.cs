@@ -18,9 +18,9 @@ public sealed class ServiceApiCredentialIntegrationTests(PostgreSqlDatabaseFixtu
         await using var secondDb = database.CreateDbContext();
         var issued = await Task.WhenAll(
             new ServiceApiCredentialService(firstDb).IssueAsync(
-                new CreateServiceApiCredentialRequest("Bifrost A", null), default),
+                new CreateServiceApiCredentialRequest("Bifrost A", null, [ServiceApiPermissions.PortfolioRead]), default),
             new ServiceApiCredentialService(secondDb).IssueAsync(
-                new CreateServiceApiCredentialRequest("Bifrost B", null), default));
+                new CreateServiceApiCredentialRequest("Bifrost B", null, [ServiceApiPermissions.AuditRead]), default));
 
         Assert.All(issued, result => Assert.True(result.IsSuccess));
         var first = issued[0].Value!;
@@ -47,6 +47,7 @@ public sealed class ServiceApiCredentialIntegrationTests(PostgreSqlDatabaseFixtu
                 Name = "Bad hash",
                 Prefix = "abcdefghijklmnopqrstuv",
                 TokenHash = new byte[31],
+                Permissions = [ServiceApiPermissions.PortfolioRead],
                 CreatedAtUtc = DateTime.UtcNow,
                 ExpiresAtUtc = DateTime.UtcNow.AddDays(1),
             });
@@ -61,8 +62,25 @@ public sealed class ServiceApiCredentialIntegrationTests(PostgreSqlDatabaseFixtu
                 Name = "Bad expiry",
                 Prefix = "abcdefghijklmnopqrstuv",
                 TokenHash = new byte[32],
+                Permissions = [ServiceApiPermissions.PortfolioRead],
                 CreatedAtUtc = now,
                 ExpiresAtUtc = now,
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+
+
+        await using (var db = database.CreateDbContext())
+        {
+            var now = DateTime.UtcNow;
+            db.ServiceApiCredentials.Add(new ServiceApiCredential
+            {
+                Name = "Bad permissions",
+                Prefix = "abcdefghijklmnopqrstuv",
+                TokenHash = new byte[32],
+                Permissions = ["users.manage"],
+                CreatedAtUtc = now,
+                ExpiresAtUtc = now.AddDays(1),
             });
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         }

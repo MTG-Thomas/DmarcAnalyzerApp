@@ -17,7 +17,7 @@ public sealed class ReportSourcesModule : ICarterModule
             var items = await service.ListAsync(ct);
 
             return Results.Ok(items);
-        });
+        }).AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapPost("/api/v1/report-sources", async (CreateReportSourceRequest request, IReportSourceService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -33,7 +33,7 @@ public sealed class ReportSourcesModule : ICarterModule
                 $"Created report source {source.Name} ({(source.Protocol == "api" ? "API" : source.Host)})",
                 "mailbox_source", source.Id, ct: ct);
             return Results.Created($"/api/v1/report-sources/{source.Id}", source);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.SourcesManage);
 
         app.MapPatch("/api/v1/report-sources/{id:guid}", async (Guid id, UpdateReportSourceRequest request, IReportSourceService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -61,7 +61,7 @@ public sealed class ReportSourcesModule : ICarterModule
             await audit.RecordAsync(AuditEvents.ReportSourceUpdated, summary,
                 "mailbox_source", updatedSource.Id, ct: ct);
             return Results.Ok(updatedSource);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.SourcesManage);
 
         app.MapPost("/api/v1/report-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, IAuditLog audit, CancellationToken ct) =>
         {
@@ -82,6 +82,6 @@ public sealed class ReportSourcesModule : ICarterModule
             var sync = result.Value!;
             var statusCode = sync.Success ? 200 : 502;
             return Results.Json(sync, statusCode: statusCode);
-        });
+        }).AllowServicePermission(ServiceApiPermissions.SourcesSync);
     }
 }

@@ -22,7 +22,7 @@ public sealed class ServiceApiCredentialTests
         await using var db = NewDb();
         var service = new ServiceApiCredentialService(db);
         var issued = (await service.IssueAsync(
-            new CreateServiceApiCredentialRequest("Bifrost", null), default)).Value!;
+            new CreateServiceApiCredentialRequest("Bifrost", null, [ServiceApiPermissions.PortfolioRead]), default)).Value!;
 
         Assert.StartsWith("dmarc_api_v1.", issued.Token, StringComparison.Ordinal);
         var stored = await db.ServiceApiCredentials.SingleAsync();
@@ -44,7 +44,7 @@ public sealed class ServiceApiCredentialTests
         await using var db = NewDb();
         var service = new ServiceApiCredentialService(db);
         var issued = (await service.IssueAsync(
-            new CreateServiceApiCredentialRequest("Bifrost", null), default)).Value!;
+            new CreateServiceApiCredentialRequest("Bifrost", null, [ServiceApiPermissions.PortfolioRead]), default)).Value!;
         var credential = await db.ServiceApiCredentials.SingleAsync();
         credential.ExpiresAtUtc = DateTime.UtcNow.AddSeconds(-1);
         await db.SaveChangesAsync();
@@ -57,6 +57,22 @@ public sealed class ServiceApiCredentialTests
         Assert.Null(await authenticator.AuthenticateAsync(issued.Token, default));
     }
 
+    [Theory]
+    [InlineData("users.manage")]
+    [InlineData("audit.read,portfolio.read")]
+    public async Task AuthenticatorRejectsUnknownOrNoncanonicalStoredPermissions(string stored)
+    {
+        await using var db = NewDb();
+        var service = new ServiceApiCredentialService(db);
+        var issued = (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null, [ServiceApiPermissions.PortfolioRead]), default)).Value!;
+        var credential = await db.ServiceApiCredentials.SingleAsync();
+        credential.Permissions = stored.Split(',');
+        await db.SaveChangesAsync();
+
+        Assert.Null(await new ServiceApiAuthenticator(db).AuthenticateAsync(issued.Token, default));
+    }
+
     [Fact]
     public async Task IssueValidatesNameAndBoundedExpiry()
     {
@@ -64,12 +80,35 @@ public sealed class ServiceApiCredentialTests
         var service = new ServiceApiCredentialService(db);
 
         Assert.Equal(400, (await service.IssueAsync(
-            new CreateServiceApiCredentialRequest(" ", null), default)).StatusCode);
+            new CreateServiceApiCredentialRequest(" ", null, [ServiceApiPermissions.PortfolioRead]), default)).StatusCode);
         Assert.Equal(400, (await service.IssueAsync(
-            new CreateServiceApiCredentialRequest("Bifrost\nforged", null), default)).StatusCode);
+            new CreateServiceApiCredentialRequest("Bifrost\nforged", null, [ServiceApiPermissions.PortfolioRead]), default)).StatusCode);
         Assert.Equal(400, (await service.IssueAsync(
-            new CreateServiceApiCredentialRequest("Bifrost", DateTime.UtcNow.AddYears(2)), default)).StatusCode);
+            new CreateServiceApiCredentialRequest("Bifrost", DateTime.UtcNow.AddYears(2), [ServiceApiPermissions.PortfolioRead]), default)).StatusCode);
         Assert.Empty(db.ServiceApiCredentials);
+    }
+
+    [Fact]
+    public async Task IssueRequiresKnownPermissionsAndNormalizesCatalogOrder()
+    {
+        await using var db = NewDb();
+        var service = new ServiceApiCredentialService(db);
+
+        Assert.Equal(400, (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null, null), default)).StatusCode);
+        Assert.Equal(400, (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null, []), default)).StatusCode);
+        Assert.Equal(400, (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null, ["users.manage"]), default)).StatusCode);
+        Assert.Equal(400, (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null,
+                [ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.PortfolioRead]), default)).StatusCode);
+
+        var issued = (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest("Bifrost", null,
+                [ServiceApiPermissions.AuditRead, ServiceApiPermissions.PortfolioRead]),
+            default)).Value!;
+        Assert.Equal([ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.AuditRead], issued.Permissions);
     }
 
     [Fact]
@@ -79,10 +118,11 @@ public sealed class ServiceApiCredentialTests
         var service = new ServiceApiCredentialService(db);
         var expiry = DateTimeOffset.UtcNow.AddDays(30);
         var issued = (await service.IssueAsync(
-            new CreateServiceApiCredentialRequest(" Bifrost ", expiry), default)).Value!;
+            new CreateServiceApiCredentialRequest(" Bifrost ", expiry, [ServiceApiPermissions.AuditRead, ServiceApiPermissions.PortfolioRead]), default)).Value!;
 
         var listed = Assert.Single(await service.ListAsync(default));
         Assert.Equal("Bifrost", listed.Name);
+        Assert.Equal([ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.AuditRead], listed.Permissions);
         Assert.Equal(expiry.UtcDateTime, listed.ExpiresAtUtc, TimeSpan.FromSeconds(1));
 
         var first = (await service.RevokeAsync(issued.Id, default)).Value!;
@@ -110,7 +150,7 @@ public sealed class ServiceApiCredentialTests
         await middleware.InvokeAsync(
             context,
             new ThrowingAuthService(),
-            new StubServiceAuthenticator(new ServiceApiPrincipal(Guid.NewGuid(), "Bifrost")),
+            new StubServiceAuthenticator(new ServiceApiPrincipal(Guid.NewGuid(), "Bifrost", [ServiceApiPermissions.PortfolioRead])),
             current);
 
         Assert.True(reachedEndpoint);
@@ -199,11 +239,73 @@ public sealed class ServiceApiCredentialTests
         await sessionMiddleware.InvokeAsync(
             context,
             new ThrowingAuthService(),
-            new StubServiceAuthenticator(new ServiceApiPrincipal(Guid.NewGuid(), "Bifrost")),
+            new StubServiceAuthenticator(new ServiceApiPrincipal(Guid.NewGuid(), "Bifrost", [ServiceApiPermissions.PortfolioRead])),
             current);
 
         Assert.Equal(403, context.Response.StatusCode);
         Assert.False(reachedEndpoint);
+    }
+
+    [Fact]
+    public async Task ServiceTokenRequiresExplicitEndpointPermission()
+    {
+        var current = new TestCurrentUserContext
+        {
+            ActorType = "service",
+            Role = Roles.AgencyAnalyst,
+            ServicePermissions = [ServiceApiPermissions.PortfolioRead],
+        };
+
+        Assert.Equal(200, await AuthorizeAsync(
+            current,
+            new ServicePermissionMetadata(ServiceApiPermissions.PortfolioRead)));
+        Assert.Equal(403, await AuthorizeAsync(
+            current,
+            new ServicePermissionMetadata(ServiceApiPermissions.ClientsManage)));
+        Assert.Equal(403, await AuthorizeAsync(current));
+        Assert.Equal(403, await AuthorizeAsync(
+            current,
+            new RoleRequirementMetadata(RoleRequirement.AnyAuthenticated)));
+
+        var adminHuman = TestCurrentUserContext.Admin();
+        Assert.Equal(200, await AuthorizeAsync(adminHuman,
+            new RoleRequirementMetadata(RoleRequirement.AgencyAdmin)));
+        Assert.Equal(200, await AuthorizeAsync(adminHuman,
+            new ServicePermissionMetadata(ServiceApiPermissions.PortfolioRead)));
+    }
+
+    [Theory]
+    [InlineData("/api/v1/users")]
+    [InlineData("/api/v1/service-credentials")]
+    [InlineData("/api/v1/admin/config/export")]
+    [InlineData("/api/v1/admin/database/migrate")]
+    [InlineData("/api/v1/auth/me")]
+    public async Task ServiceTokenCannotUseUnscopedSensitiveEndpoint(string path)
+    {
+        var current = new TestCurrentUserContext
+        {
+            ActorType = "service",
+            Role = Roles.AgencyAnalyst,
+            ServicePermissions = ServiceApiPermissions.Catalog.Select(x => x.Id).ToArray(),
+        };
+
+        Assert.Equal(403, await AuthorizeAsync(current, path: path));
+    }
+
+    private static async Task<int> AuthorizeAsync(
+        ICurrentUserContext current,
+        object? metadata = null,
+        string path = "/api/v1/test")
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = path;
+        context.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            metadata is null ? new EndpointMetadataCollection() : new EndpointMetadataCollection(metadata),
+            "test"));
+        context.Response.StatusCode = 200;
+        await new RoleAuthorizationMiddleware(_ => Task.CompletedTask).InvokeAsync(context, current);
+        return context.Response.StatusCode;
     }
 
     private sealed class StubServiceAuthenticator(ServiceApiPrincipal? principal) : IServiceApiAuthenticator

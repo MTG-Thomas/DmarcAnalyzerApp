@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using Microsoft.AspNetCore.Routing;
 
@@ -15,6 +16,6 @@ public sealed class MailboxHealthModule : ICarterModule
         {
             var items = await service.ListAsync(reportSourceId, ct);
             return Results.Ok(items);
-        });
+        }).AllowServicePermission(ServiceApiPermissions.PortfolioRead);
     }
 }

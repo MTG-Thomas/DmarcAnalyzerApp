@@ -27,6 +27,6 @@ public sealed class AuditModule : ICarterModule
             var page = await audit.QueryAsync(
                 new AuditQuery(days, eventType, actor, clientId, limit, offset), ct);
             return Results.Ok(page);
-        }).RequireAgencyAdmin();
+        }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.AuditRead);
     }
 }

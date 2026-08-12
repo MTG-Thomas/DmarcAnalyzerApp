@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -306,6 +307,7 @@ public sealed class BackupExportTests
             Name = "Bifrost",
             Prefix = "abcdefghijklmnopqrstuv",
             TokenHash = Enumerable.Repeat((byte)9, 32).ToArray(),
+            Permissions = [ServiceApiPermissions.PortfolioRead],
             ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
         };
         db.ServiceApiCredentials.Add(credential);

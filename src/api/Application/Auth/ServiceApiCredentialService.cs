@@ -12,6 +12,7 @@ public sealed record ServiceApiCredentialDto(
     Guid Id,
     string Name,
     string Prefix,
+    IReadOnlyList<string> Permissions,
     DateTime CreatedAtUtc,
     DateTime ExpiresAtUtc,
     DateTime? RevokedAtUtc);
@@ -21,10 +22,14 @@ public sealed record IssuedServiceApiCredentialDto(
     string Name,
     string Prefix,
     string Token,
+    IReadOnlyList<string> Permissions,
     DateTime CreatedAtUtc,
     DateTime ExpiresAtUtc);
 
-public sealed record CreateServiceApiCredentialRequest(string Name, DateTimeOffset? ExpiresAtUtc);
+public sealed record CreateServiceApiCredentialRequest(
+    string Name,
+    DateTimeOffset? ExpiresAtUtc,
+    IReadOnlyCollection<string>? Permissions);
 
 public interface IServiceApiCredentialService
 {
@@ -57,6 +62,11 @@ public sealed class ServiceApiCredentialService(DmarcAnalyzerDbContext db) : ISe
                 "name must be between 1 and 100 characters and contain no control characters", 400);
         }
 
+        if (!ServiceApiPermissions.TryNormalize(request.Permissions, out var permissions, out var permissionError))
+        {
+            return ServiceResult<IssuedServiceApiCredentialDto>.Failure(permissionError!, 400);
+        }
+
         var now = DateTime.UtcNow;
         var expiresAtUtc = request.ExpiresAtUtc?.UtcDateTime ?? now.Add(MaximumLifetime);
         if (expiresAtUtc <= now || expiresAtUtc > now.Add(MaximumLifetime))
@@ -73,6 +83,7 @@ public sealed class ServiceApiCredentialService(DmarcAnalyzerDbContext db) : ISe
             Name = name,
             Prefix = prefix,
             TokenHash = SHA256.HashData(Encoding.ASCII.GetBytes(token)),
+            Permissions = permissions,
             CreatedAtUtc = now,
             ExpiresAtUtc = expiresAtUtc,
         };
@@ -85,6 +96,7 @@ public sealed class ServiceApiCredentialService(DmarcAnalyzerDbContext db) : ISe
             credential.Name,
             credential.Prefix,
             token,
+            credential.Permissions,
             credential.CreatedAtUtc,
             credential.ExpiresAtUtc));
     }
@@ -113,6 +125,7 @@ public sealed class ServiceApiCredentialService(DmarcAnalyzerDbContext db) : ISe
             credential.Id,
             credential.Name,
             credential.Prefix,
+            credential.Permissions,
             credential.CreatedAtUtc,
             credential.ExpiresAtUtc,
             credential.RevokedAtUtc);
