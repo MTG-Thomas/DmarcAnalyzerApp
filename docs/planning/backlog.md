@@ -38,6 +38,12 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Implement single-database tenant-keyed architecture (direct or transitive ClientId on all client-scoped entities, enforced in query services).
 - [x] (done) Define RBAC with agency_admin/agency_analyst/client_viewer roles (deny-by-default endpoint enforcement; in-app client grants).
 - [x] (done) Implement local username/password authentication with secure password hashing and session flow.
+- [x] (done 2026-08-12) Add native passkey authentication for existing users.
+      Discoverable, UV-required credentials use exact configured RP/origin
+      validation and five-minute single-use ceremonies; assertions mint the
+      existing application session. Current-user lifecycle operations require
+      recent authentication, are capped at 10 credentials, and preserve
+      password/OIDC recovery and first-run bootstrap.
 - [x] (done) Add secure mailbox credential storage with app-level encryption key management (AES-256-GCM, key via `Security:CredentialEncryptionKey`).
 - [x] (done) Add Dockerfiles and Docker Compose stack (api, ui, db, worker) for self-hosted deployment.
 - [x] (done) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level (`Worker:ScheduleIntervalSeconds` defaults to 3600 in `appsettings.json`, overridable per deployment via `Worker__ScheduleIntervalSeconds`; dev uses 15s).

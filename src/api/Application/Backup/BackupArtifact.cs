@@ -6,6 +6,8 @@ namespace DmarcAnalyzer.Api.Application.Backup;
 /// arrive again, and which outweighs the rest by roughly four orders of magnitude.
 /// API source credentials are also absent by design: a reveal-once credential cannot
 /// be recovered from this artifact, so restored API sources require token reissue.
+/// Passkeys are absent because counters can diverge between two restored copies using
+/// the same relying-party ID; users recover with password/OIDC and register fresh keys.
 /// <para>
 /// The shape is a published format, not an internal DTO: an artifact written by one
 /// version is read by another, possibly years later, so property names are pinned by

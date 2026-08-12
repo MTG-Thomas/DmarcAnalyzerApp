@@ -39,6 +39,7 @@ public sealed class ConfigurationContractTests
         ("Network", typeof(DmarcAnalyzer.Api.Application.Security.NetworkOptions)),
         ("Backup", typeof(DmarcAnalyzer.Api.Application.Backup.BackupOptions)),
         ("Auth:Oidc", typeof(OidcOptions)),
+        ("Auth:Passkeys", typeof(PasskeyOptions)),
     ];
 
     /// <summary>

@@ -225,6 +225,22 @@ Invalidate current session cookie.
 
 Return current user profile and role.
 
+### Passkeys
+
+When `Auth:Passkeys:Enabled` is true, the two exact authentication ceremony
+routes are public. All management routes use the current application session;
+registration, rename, and removal require recent authentication.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| POST | `/auth/passkeys/options` | Discoverable, user-verification-required assertion options |
+| POST | `/auth/passkeys/complete` | Verify an assertion and set `dmarc_session` |
+| GET | `/passkeys` | List the current user's credential metadata |
+| POST | `/passkeys/options` | Start current-user registration |
+| POST | `/passkeys` | Complete registration with `{ name, credential }` |
+| PUT | `/passkeys/{id}` | Rename the current user's credential |
+| DELETE | `/passkeys/{id}` | Remove the current user's credential |
+
 ### POST `/auth/password/reset-request`
 
 Request password reset token.

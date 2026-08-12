@@ -13,6 +13,11 @@ public static class AuditEvents
     public const string LoginFailed = "auth.login.failed";
     public const string Logout = "auth.logout";
     public const string UserRegistered = "auth.user.registered";
+    public const string PasskeyLoginSucceeded = "auth.passkey.login.succeeded";
+    public const string PasskeyLoginFailed = "auth.passkey.login.failed";
+    public const string PasskeyRegistered = "auth.passkey.registered";
+    public const string PasskeyRenamed = "auth.passkey.renamed";
+    public const string PasskeyRemoved = "auth.passkey.removed";
 
     public const string ClientCreated = "client.created";
     public const string ClientUpdated = "client.updated";

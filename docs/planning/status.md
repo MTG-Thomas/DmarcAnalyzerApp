@@ -170,6 +170,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - admins can create passwordless (SSO-only) accounts: `password` is optional on `POST /api/v1/users`, which stores an empty hash that no password can satisfy — how you pre-provision at a chosen role with `AutoProvision=false`. `hasPassword` on the users list drives a "Sign-in" column that warns when such an account exists with no provider configured
   - see ADR 0007
 
+- Optional native passkey login (pluggable authentication):
+  - discoverable WebAuthn credentials with resident keys and user verification required; attestation is `none`
+  - exact configured relying-party ID and HTTPS origin, with startup validation and request-origin checks on every ceremony and management mutation
+  - passkey assertions mint the same `dmarc_session` used by password and OIDC; inactive users fail uniformly and password/OIDC recovery remains available
+  - current-user registration, listing, rename, and removal; enrollment and changes require a session created within the last 15 minutes, with 10 passkeys per user
+  - five-minute, bounded, single-use ceremony state is process-local for the current one-replica topology; horizontal scaling requires an atomic shared ceremony store and shared Data Protection keys
+  - passkeys are excluded from configuration backups because counters cannot be safely merged across two restored same-RP installations; users re-enrol after recovery
+
 - Authentication baseline:
   - `agency_user` and `user_session` entities with EF Core configuration
   - local username/password auth with PBKDF2-SHA256 password hashing

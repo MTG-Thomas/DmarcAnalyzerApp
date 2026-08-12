@@ -9,12 +9,13 @@ public sealed class OidcAuthModule : ICarterModule
 {
     public void AddRoutes(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/v1/auth/providers", (IOptions<OidcOptions> oidc) =>
+        app.MapGet("/api/v1/auth/providers", (IOptions<OidcOptions> oidc, IOptions<PasskeyOptions> passkeys) =>
         {
             var options = oidc.Value;
             return Results.Ok(new
             {
                 local = !options.DisableLocalLogin,
+                passkeys = passkeys.Value.Enabled,
                 oidc = options.Enabled
                     ? new { enabled = true, displayName = options.DisplayName, loginUrl = "/api/v1/auth/oidc/login" }
                     : null,

@@ -21,7 +21,11 @@ using DmarcAnalyzer.Api.Middleware;
 using DmarcAnalyzer.Api.Modules;
 using DmarcAnalyzer.Api.Workers;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading.RateLimiting;
 
 // Throws on an unrecognised value rather than defaulting to api — see AppRuntimeMode.
 var mode = AppRuntimeMode.FromEnvironment();
@@ -229,6 +233,45 @@ builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddCredentialProtection(builder.Configuration);
 builder.Services.AddOidcAuthentication(builder.Configuration);
+var passkeyOptions = builder.Configuration.GetSection(PasskeyOptions.SectionName).Get<PasskeyOptions>() ?? new PasskeyOptions();
+if (!passkeyOptions.IsValid(builder.Environment.IsDevelopment()))
+{
+    throw new InvalidOperationException("Auth:Passkeys configuration is invalid. Configure an exact RP ID and matching HTTPS origin.");
+}
+builder.Services.Configure<PasskeyOptions>(builder.Configuration.GetSection(PasskeyOptions.SectionName));
+builder.Services.AddFido2(options =>
+{
+    options.ServerDomain = passkeyOptions.RelyingPartyId;
+    options.ServerName = passkeyOptions.RelyingPartyName;
+    options.Origins = passkeyOptions.Origins.ToHashSet(StringComparer.OrdinalIgnoreCase);
+    options.ChallengeSize = 32;
+});
+builder.Services.AddDataProtection();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IPasskeyCeremonyStore, PasskeyCeremonyStore>();
+builder.Services.AddScoped<IPasskeyService, PasskeyService>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("passkey-anonymous", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+    options.AddPolicy("passkey-management", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Request.Cookies.TryGetValue(SessionCookie.Name, out var sessionCookie)
+            ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sessionCookie)))
+            : http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+});
 builder.Services.AddScoped<IOidcSignInService, OidcSignInService>();
 builder.Services.AddScoped<CurrentUserContext>();
 // Request scopes get the HTTP-backed context; scopes with no request — the startup
@@ -377,6 +420,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseRouting();
 
 if (app.Configuration.GetValue<bool>("Auth:Oidc:Enabled"))
 {
@@ -385,6 +429,7 @@ if (app.Configuration.GetValue<bool>("Auth:Oidc:Enabled"))
 
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
+app.UseRateLimiter();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, CancellationToken ct) =>
@@ -400,3 +445,5 @@ app.MapCarter();
 app.MapFallbackToFile("index.html");
 
 await app.RunAsync();
+
+public partial class Program;
