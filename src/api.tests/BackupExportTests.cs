@@ -298,6 +298,29 @@ public sealed class BackupExportTests
     }
 
     [Fact]
+    public async Task ServiceApiCredentialsAreCountedButNeverExported()
+    {
+        await using var db = NewDb();
+        var credential = new ServiceApiCredential
+        {
+            Name = "Bifrost",
+            Prefix = "abcdefghijklmnopqrstuv",
+            TokenHash = Enumerable.Repeat((byte)9, 32).ToArray(),
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
+        };
+        db.ServiceApiCredentials.Add(credential);
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var json = BackupJson.Serialize(artifact);
+
+        Assert.Equal(1, artifact.Manifest.Excluded["service_api_credential"]);
+        Assert.DoesNotContain(credential.Name, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(credential.Prefix, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(Convert.ToBase64String(credential.TokenHash), json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FingerprintIdentifiesAKeyAndRefusesToGuess()
     {
         var other = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray());

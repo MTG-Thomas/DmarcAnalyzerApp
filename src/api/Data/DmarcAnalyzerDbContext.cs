@@ -13,6 +13,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<DmarcReportRecordSpfAuthResult> DmarcReportRecordSpfAuthResults => Set<DmarcReportRecordSpfAuthResult>();
     public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
     public DbSet<ApiSourceCredential> ApiSourceCredentials => Set<ApiSourceCredential>();
+    public DbSet<ServiceApiCredential> ServiceApiCredentials => Set<ServiceApiCredential>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
@@ -175,6 +176,29 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.MailboxSourceId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ServiceApiCredential>(entity =>
+        {
+            entity.ToTable("service_api_credential", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_PrefixLength",
+                    "char_length(\"Prefix\") = 22");
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_TokenHashLength",
+                    "octet_length(\"TokenHash\") = 32");
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_Expiry",
+                    "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Prefix).HasMaxLength(22).IsRequired();
+            entity.Property(x => x.TokenHash).IsRequired();
+            entity.HasIndex(x => x.Prefix).IsUnique();
+            entity.HasIndex(x => x.RevokedAtUtc);
+            entity.HasIndex(x => x.ExpiresAtUtc);
         });
 
         modelBuilder.Entity<DmarcReportIngest>(entity =>

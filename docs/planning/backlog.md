@@ -195,6 +195,13 @@ Sequenced; each step is independently shippable.
       shared raw ingestor owns extraction, parsing, routing, transactions, and
       replay deduplication. PostgreSQL acceptance covers insert, replay,
       rollback, source/client isolation, digest mismatch, and size limits.
+- [x] (done 2026-08-12) **Add service authentication for the normal backend API.**
+      Reveal-once `dmarc_api_v1` credentials authenticate server-to-server callers
+      as global analysts across `/api/v1`, while admin-only configuration and
+      credential operations remain unavailable. Tokens expire within 366 days,
+      persist only a prefix and fixed-time-compared hash, never fall back to a
+      cookie after a bad bearer header, are attributed as service actors in the
+      audit trail, and are excluded from backup artifacts.
 
 - [ ] (todo) Implement API endpoints for report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).

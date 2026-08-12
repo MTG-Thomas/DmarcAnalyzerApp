@@ -240,6 +240,8 @@ builder.Services.AddScoped<ICurrentUserContext>(sp =>
         ? new SystemUserContext()
         : sp.GetRequiredService<CurrentUserContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IServiceApiCredentialService, ServiceApiCredentialService>();
+builder.Services.AddScoped<IServiceApiAuthenticator, ServiceApiAuthenticator>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();

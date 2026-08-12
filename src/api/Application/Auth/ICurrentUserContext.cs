@@ -8,6 +8,7 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 public interface ICurrentUserContext
 {
     bool IsAuthenticated { get; }
+    string ActorType { get; }
     Guid UserId { get; }
     string Email { get; }
     string Role { get; }

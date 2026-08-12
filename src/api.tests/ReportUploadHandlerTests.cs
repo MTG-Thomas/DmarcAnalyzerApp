@@ -33,7 +33,11 @@ public sealed class ReportUploadHandlerTests
             endpointResult = await handler.HandleAsync(nextContext, SourceId, default);
         });
 
-        await middleware.InvokeAsync(context, new ThrowingAuthService(), new CurrentUserContext());
+        await middleware.InvokeAsync(
+            context,
+            new ThrowingAuthService(),
+            new ThrowingServiceApiAuthenticator(),
+            new CurrentUserContext());
 
         Assert.Equal(401, Status(endpointResult!));
         Assert.Equal(["Unauthorized"], Response(endpointResult!).RejectionCodes);
@@ -458,5 +462,11 @@ public sealed class ReportUploadHandlerTests
         public Task LogoutAsync(string cookieId, CancellationToken ct) => throw Unexpected();
         public Task<UserDto?> GetCurrentUserAsync(string cookieId, CancellationToken ct) => throw Unexpected();
         public Task<SessionUserDto?> GetSessionUserAsync(string cookieId, CancellationToken ct) => throw Unexpected();
+    }
+
+    private sealed class ThrowingServiceApiAuthenticator : IServiceApiAuthenticator
+    {
+        public Task<ServiceApiPrincipal?> AuthenticateAsync(string? bearerToken, CancellationToken ct)
+            => throw new InvalidOperationException("machine upload must bypass session API authentication");
     }
 }

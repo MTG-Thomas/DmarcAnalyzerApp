@@ -5,6 +5,7 @@ namespace DmarcAnalyzer.Api.Tests;
 public sealed class TestCurrentUserContext : ICurrentUserContext
 {
     public bool IsAuthenticated { get; init; } = true;
+    public string ActorType { get; init; } = "user";
     public Guid UserId { get; init; } = Guid.NewGuid();
     public string Email { get; init; } = "test@agency.tld";
     public string Role { get; init; } = Roles.AgencyAdmin;
