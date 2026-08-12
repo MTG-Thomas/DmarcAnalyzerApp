@@ -7,10 +7,10 @@ vi.mock('@/lib/api', () => ({
 }))
 
 import { fetchJson } from '@/lib/api'
-import type { ApiSourceCredential, IssuedApiSourceCredential, MailboxSource } from '@/lib/entities'
-import { ApiSourceCredentialsDialog } from '@/pages/MailboxSourcesPage'
+import type { ApiSourceCredential, IssuedApiSourceCredential, ReportSource } from '@/lib/entities'
+import { ApiSourceCredentialsDialog } from '@/pages/ReportSourcesPage'
 
-const source: MailboxSource = {
+const source: ReportSource = {
   id: 'source-api',
   name: 'Report uploader',
   protocol: 'api',
@@ -108,7 +108,7 @@ describe('API source credential lifecycle', () => {
 
     expect(await screen.findByDisplayValue(issuedCredential.token)).toBeInTheDocument()
     expect(screen.getByText(/will not be shown again/i)).toBeInTheDocument()
-    expect(fetchJson).toHaveBeenCalledWith(`/api/v1/mailbox-sources/${source.id}/credentials`, {
+    expect(fetchJson).toHaveBeenCalledWith(`/api/v1/report-sources/${source.id}/credentials`, {
       method: 'POST',
     })
 
@@ -173,7 +173,7 @@ describe('API source credential lifecycle', () => {
     expect(await screen.findByDisplayValue(issuedCredential.token)).toBeInTheDocument()
     expect(screen.getByText(/existing keys remain active/i)).toBeInTheDocument()
     expect(fetchJson).toHaveBeenCalledWith(
-      `/api/v1/mailbox-sources/${source.id}/credentials/rotate`,
+      `/api/v1/report-sources/${source.id}/credentials/rotate`,
       { method: 'POST' },
     )
     expect(fetchJson).not.toHaveBeenCalledWith(
@@ -202,7 +202,7 @@ describe('API source credential lifecycle', () => {
 
     await waitFor(() =>
       expect(fetchJson).toHaveBeenCalledWith(
-        `/api/v1/mailbox-sources/${source.id}/credentials/${activeCredential.id}`,
+        `/api/v1/report-sources/${source.id}/credentials/${activeCredential.id}`,
         { method: 'DELETE' },
       ),
     )

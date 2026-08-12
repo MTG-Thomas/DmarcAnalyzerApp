@@ -35,6 +35,13 @@ public sealed record AnalyticsReporterDto(
     int Reports,
     long Messages);
 
+/// <summary>
+/// The four RFC 9990 action dispositions. <c>Pass</c> is the one the published-policy
+/// <c>DispositionType</c> does not have — "no action, passing DMARC w/enforcing policy",
+/// a different statement from <c>None</c>'s "no action taken", so it must not be folded
+/// into it. Reported dispositions outside these four land in no bucket at all, which is
+/// why the parser repairs unrecognised values rather than storing them.
+/// </summary>
 public sealed record AnalyticsDispositionsDto(
     long None,
     long Pass,

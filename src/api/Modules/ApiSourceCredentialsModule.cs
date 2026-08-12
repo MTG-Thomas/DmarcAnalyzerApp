@@ -10,7 +10,7 @@ public sealed class ApiSourceCredentialsModule : ICarterModule
 {
     public void AddRoutes(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/v1/mailbox-sources/{sourceId:guid}/credentials", async (
+        app.MapGet("/api/v1/report-sources/{sourceId:guid}/credentials", async (
             Guid sourceId,
             IApiSourceCredentialService service,
             CancellationToken ct) =>
@@ -21,7 +21,7 @@ public sealed class ApiSourceCredentialsModule : ICarterModule
                 : Results.NotFound();
         }).RequireAgencyAdmin();
 
-        app.MapPost("/api/v1/mailbox-sources/{sourceId:guid}/credentials", async (
+        app.MapPost("/api/v1/report-sources/{sourceId:guid}/credentials", async (
             Guid sourceId,
             IApiSourceCredentialService service,
             IAuditLog audit,
@@ -45,11 +45,11 @@ public sealed class ApiSourceCredentialsModule : ICarterModule
                 ct: ct);
             http.Response.Headers.CacheControl = "no-store";
             return Results.Created(
-                $"/api/v1/mailbox-sources/{sourceId}/credentials/{issued.Id}",
+                $"/api/v1/report-sources/{sourceId}/credentials/{issued.Id}",
                 issued);
         }).RequireAgencyAdmin();
 
-        app.MapPost("/api/v1/mailbox-sources/{sourceId:guid}/credentials/rotate", async (
+        app.MapPost("/api/v1/report-sources/{sourceId:guid}/credentials/rotate", async (
             Guid sourceId,
             IApiSourceCredentialService service,
             IAuditLog audit,
@@ -74,7 +74,7 @@ public sealed class ApiSourceCredentialsModule : ICarterModule
             return Results.Ok(result.Value);
         }).RequireAgencyAdmin();
 
-        app.MapDelete("/api/v1/mailbox-sources/{sourceId:guid}/credentials/{credentialId:guid}", async (
+        app.MapDelete("/api/v1/report-sources/{sourceId:guid}/credentials/{credentialId:guid}", async (
             Guid sourceId,
             Guid credentialId,
             IApiSourceCredentialService service,

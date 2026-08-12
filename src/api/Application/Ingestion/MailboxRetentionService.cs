@@ -16,8 +16,8 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// of them. Non-zero here is the safety rule working, not a fault.
 /// </param>
 public sealed record MailboxRetentionSourceResult(
-    Guid MailboxSourceId,
-    string MailboxSourceName,
+    Guid ReportSourceId,
+    string ReportSourceName,
     bool Suspended,
     string? Reason,
     DateTime? CutoffUtc,
@@ -68,7 +68,7 @@ public sealed class MailboxRetentionService(
             if (plan.Suspended || plan.CutoffUtc is not { } cutoff)
             {
                 results.Add(new MailboxRetentionSourceResult(
-                    plan.MailboxSourceId, plan.MailboxSourceName, true, plan.Reason,
+                    plan.ReportSourceId, plan.ReportSourceName, true, plan.Reason,
                     null, 0, 0, 0, null));
                 continue;
             }
@@ -80,10 +80,10 @@ public sealed class MailboxRetentionService(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex,
-                    "Mailbox retention pass failed for source {MailboxSourceId}", plan.MailboxSourceId);
+                    "Mailbox retention pass failed for source {ReportSourceId}", plan.ReportSourceId);
 
                 results.Add(new MailboxRetentionSourceResult(
-                    plan.MailboxSourceId, plan.MailboxSourceName, false, plan.Reason,
+                    plan.ReportSourceId, plan.ReportSourceName, false, plan.Reason,
                     cutoff, 0, 0, 0, ex.Message));
             }
         }
@@ -96,10 +96,10 @@ public sealed class MailboxRetentionService(
             await audit.RecordSystemAsync(
                 AuditEvents.MailboxRetentionDeleted,
                 $"Deleted {deleted} report message(s) past retention from " +
-                $"{results.Count(x => x.Deleted > 0)} mailbox source(s)",
+                $"{results.Count(x => x.Deleted > 0)} report source(s)",
                 details: string.Join("; ", results
                     .Where(x => x.Deleted > 0)
-                    .Select(x => $"{x.MailboxSourceName}: {x.Deleted} before {x.CutoffUtc:yyyy-MM-dd}")),
+                    .Select(x => $"{x.ReportSourceName}: {x.Deleted} before {x.CutoffUtc:yyyy-MM-dd}")),
                 ct: ct);
         }
 
@@ -112,7 +112,7 @@ public sealed class MailboxRetentionService(
         bool dryRun,
         CancellationToken ct)
     {
-        var source = await db.MailboxSources.SingleAsync(x => x.Id == plan.MailboxSourceId, ct);
+        var source = await db.ReportSources.SingleAsync(x => x.Id == plan.ReportSourceId, ct);
         if (source.Protocol == "api"
             || string.IsNullOrWhiteSpace(source.Host)
             || source.Port is not > 0
@@ -122,7 +122,6 @@ public sealed class MailboxRetentionService(
         {
             throw new InvalidOperationException("mailbox retention source configuration is incomplete");
         }
-
         var password = credentialProtector.Unprotect(source.PasswordEncrypted);
 
         using var client = new ImapClient();
@@ -186,13 +185,13 @@ public sealed class MailboxRetentionService(
         await client.DisconnectAsync(true, ct);
 
         logger.LogInformation(
-            "Mailbox retention pass for {MailboxSourceName}: {Eligible} eligible before {Cutoff:yyyy-MM-dd}, " +
+            "Mailbox retention pass for {ReportSourceName}: {Eligible} eligible before {Cutoff:yyyy-MM-dd}, " +
             "{Deleted} deleted, {Skipped} skipped as unarchived{DryRun}",
-            plan.MailboxSourceName, eligible.Count, cutoff, deleted, skippedUnarchived,
+            plan.ReportSourceName, eligible.Count, cutoff, deleted, skippedUnarchived,
             dryRun ? " (dry run)" : string.Empty);
 
         return new MailboxRetentionSourceResult(
-            plan.MailboxSourceId, plan.MailboxSourceName, false, null,
+            plan.ReportSourceId, plan.ReportSourceName, false, null,
             cutoff, eligible.Count, deleted, skippedUnarchived, null);
     }
 
@@ -213,7 +212,7 @@ public sealed class MailboxRetentionService(
             oldest = summaries.FirstOrDefault()?.InternalDate?.UtcDateTime;
         }
 
-        var tracked = await db.MailboxSources.SingleAsync(x => x.Id == sourceId, ct);
+        var tracked = await db.ReportSources.SingleAsync(x => x.Id == sourceId, ct);
         tracked.OldestMessageAtUtc = oldest;
         tracked.UpdatedAtUtc = DateTime.UtcNow;
 

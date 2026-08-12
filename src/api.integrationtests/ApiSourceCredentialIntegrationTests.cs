@@ -15,7 +15,7 @@ public sealed class ApiSourceCredentialIntegrationTests(PostgreSqlDatabaseFixtur
         await database.MigrateToLatestAsync();
 
         var client = new Client { Name = "API client", Slug = "api-client", Timezone = "UTC" };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Bifrost upload",
             Protocol = "api",
@@ -62,7 +62,7 @@ public sealed class ApiSourceCredentialIntegrationTests(PostgreSqlDatabaseFixtur
 
         await using var transitionDb = database.CreateDbContext();
         await using var transition = await transitionDb.Database.BeginTransactionAsync();
-        var source = await transitionDb.MailboxSources.SingleAsync(x => x.Id == sourceId);
+        var source = await transitionDb.ReportSources.SingleAsync(x => x.Id == sourceId);
         MakeMailbox(source);
         await transitionDb.SaveChangesAsync();
 
@@ -76,7 +76,7 @@ public sealed class ApiSourceCredentialIntegrationTests(PostgreSqlDatabaseFixtur
         Assert.Equal(400, result.StatusCode);
 
         await using var verification = database.CreateDbContext();
-        Assert.Equal("imap", (await verification.MailboxSources.SingleAsync()).Protocol);
+        Assert.Equal("imap", (await verification.ReportSources.SingleAsync()).Protocol);
         Assert.Empty(await verification.ApiSourceCredentials.ToListAsync());
     }
 
@@ -91,14 +91,14 @@ public sealed class ApiSourceCredentialIntegrationTests(PostgreSqlDatabaseFixtur
         await using var issue = await issueDb.Database.BeginTransactionAsync();
         issueDb.ApiSourceCredentials.Add(new ApiSourceCredential
         {
-            MailboxSourceId = sourceId,
+            ReportSourceId = sourceId,
             Prefix = "abcdefghijklmnopqrstuv",
             TokenHash = new byte[32],
         });
         await issueDb.SaveChangesAsync();
 
         await using var transitionDb = database.CreateDbContext();
-        var source = await transitionDb.MailboxSources.SingleAsync(x => x.Id == sourceId);
+        var source = await transitionDb.ReportSources.SingleAsync(x => x.Id == sourceId);
         MakeMailbox(source);
         var transition = transitionDb.SaveChangesAsync();
         Assert.NotSame(transition, await Task.WhenAny(
@@ -109,14 +109,14 @@ public sealed class ApiSourceCredentialIntegrationTests(PostgreSqlDatabaseFixtur
         await transition;
 
         await using var verification = database.CreateDbContext();
-        Assert.Equal("imap", (await verification.MailboxSources.SingleAsync()).Protocol);
+        Assert.Equal("imap", (await verification.ReportSources.SingleAsync()).Protocol);
         Assert.NotNull((await verification.ApiSourceCredentials.SingleAsync()).RevokedAtUtc);
     }
 
     private async Task<Guid> SeedApiSourceAsync(string slug)
     {
         var client = new Client { Name = slug, Slug = slug, Timezone = "UTC" };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Bifrost upload",
             Protocol = "api",
@@ -129,7 +129,7 @@ public sealed class ApiSourceCredentialIntegrationTests(PostgreSqlDatabaseFixtur
         return source.Id;
     }
 
-    private static void MakeMailbox(MailboxSource source)
+    private static void MakeMailbox(ReportSource source)
     {
         source.Protocol = "imap";
         source.Host = "imap.example";

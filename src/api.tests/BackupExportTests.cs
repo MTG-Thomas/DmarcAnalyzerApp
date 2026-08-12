@@ -62,7 +62,7 @@ public sealed class BackupExportTests
             // The DNS cache: written by the worker, must not travel.
             DnsPolicy = "reject", DnsLookupStatus = "found", DnsCheckedAtUtc = DateTime.UtcNow,
         };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Acme mailbox", Host = "imap.example", Port = 993, Username = "dmarc@acme.example",
             PasswordEncrypted = "enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", DefaultClientId = client.Id,
@@ -96,7 +96,7 @@ public sealed class BackupExportTests
 
         // Without these two the operator re-enters every mailbox password and every
         // account, which is the expensive half of a recovery.
-        Assert.Equal("enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", Assert.Single(artifact.MailboxSources).PasswordEncrypted);
+        Assert.Equal("enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", Assert.Single(artifact.ReportSources).PasswordEncrypted);
         Assert.Equal("pbkdf2$fake$hash", Assert.Single(artifact.Users).PasswordHash);
     }
 
@@ -129,7 +129,7 @@ public sealed class BackupExportTests
 
         db.Add(new DmarcReport
         {
-            DomainId = domainId, MailboxSourceId = sourceId, OrganizationName = "google.com",
+            DomainId = domainId, ReportSourceId = sourceId, OrganizationName = "google.com",
             ReportId = "r-1", RangeBeginUtc = DateTime.UtcNow.AddDays(-1), RangeEndUtc = DateTime.UtcNow,
             RecordCount = 1,
         });
@@ -233,7 +233,7 @@ public sealed class BackupExportTests
         var root = document.RootElement;
 
         Assert.Equal(
-            ["manifest", "clients", "domains", "mailboxSources", "notificationRecipients",
+            ["manifest", "clients", "domains", "reportSources", "notificationRecipients",
              "users", "userIdentities", "grants", "mtaStsPolicies"],
             root.EnumerateObject().Select(p => p.Name).ToArray());
 
@@ -252,7 +252,7 @@ public sealed class BackupExportTests
         Assert.Equal(
             ["id", "name", "protocol", "host", "port", "useTls", "username", "passwordEncrypted",
              "defaultClientId", "isActive", "createdAtUtc", "updatedAtUtc"],
-            root.GetProperty("mailboxSources")[0].EnumerateObject().Select(p => p.Name).ToArray());
+            root.GetProperty("reportSources")[0].EnumerateObject().Select(p => p.Name).ToArray());
 
         Assert.Equal(2, root.GetProperty("manifest").GetProperty("formatVersion").GetInt32());
     }
@@ -262,7 +262,7 @@ public sealed class BackupExportTests
     {
         await using var db = NewDb();
         var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Bifrost upload",
             Protocol = "api",
@@ -275,7 +275,7 @@ public sealed class BackupExportTests
         };
         var credential = new ApiSourceCredential
         {
-            MailboxSourceId = source.Id,
+            ReportSourceId = source.Id,
             Prefix = "abcdefghijklmnopqrstuv",
             TokenHash = Enumerable.Repeat((byte)7, 32).ToArray(),
         };
@@ -283,7 +283,7 @@ public sealed class BackupExportTests
         await db.SaveChangesAsync();
 
         var artifact = (await Service(db).ExportAsync(false, default)).Value!;
-        var exportedSource = Assert.Single(artifact.MailboxSources);
+        var exportedSource = Assert.Single(artifact.ReportSources);
         var json = BackupJson.Serialize(artifact);
 
         Assert.Equal(2, artifact.Manifest.FormatVersion);

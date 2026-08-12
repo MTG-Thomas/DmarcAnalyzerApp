@@ -10,11 +10,11 @@ public sealed class MailboxHealthModule : ICarterModule
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/mailbox-health", async (
-            Guid? mailboxSourceId,
+            Guid? reportSourceId,
             IMailboxHealthQueryService service,
             CancellationToken ct) =>
         {
-            var items = await service.ListAsync(mailboxSourceId, ct);
+            var items = await service.ListAsync(reportSourceId, ct);
             return Results.Ok(items);
         }).AllowServicePermission(ServiceApiPermissions.PortfolioRead);
     }

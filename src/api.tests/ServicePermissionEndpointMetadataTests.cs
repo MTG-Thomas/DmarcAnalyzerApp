@@ -4,7 +4,7 @@ using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
-using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.ReportSources;
 using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Data;
@@ -36,7 +36,7 @@ public sealed class ServicePermissionEndpointMetadataTests
         builder.Services.AddScoped<IClientService>(_ => null!);
         builder.Services.AddScoped<IDomainService>(_ => null!);
         builder.Services.AddScoped<IMailboxHealthQueryService>(_ => null!);
-        builder.Services.AddScoped<IMailboxSourceService>(_ => null!);
+        builder.Services.AddScoped<IReportSourceService>(_ => null!);
         builder.Services.AddScoped<IMailboxSyncService>(_ => null!);
         builder.Services.AddScoped<IMailboxSyncRunQueryService>(_ => null!);
         builder.Services.AddScoped<IMtaStsPolicyAdminService>(_ => null!);
@@ -51,7 +51,7 @@ public sealed class ServicePermissionEndpointMetadataTests
         new ClientsModule().AddRoutes(app);
         new DomainsModule().AddRoutes(app);
         new MailboxHealthModule().AddRoutes(app);
-        new MailboxSourcesModule().AddRoutes(app);
+        new ReportSourcesModule().AddRoutes(app);
         new MailboxSyncRunsModule().AddRoutes(app);
         new MtaStsPolicyModule().AddRoutes(app);
         new NotificationRecipientsModule().AddRoutes(app);
@@ -66,8 +66,8 @@ public sealed class ServicePermissionEndpointMetadataTests
         AssertPermission(endpoints, "/api/v1/analytics/summary", ServiceApiPermissions.PortfolioRead);
         AssertPermission(endpoints, "/api/v1/clients", ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.ClientsManage);
         AssertPermission(endpoints, "/api/v1/domains", ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.DomainsManage);
-        AssertPermission(endpoints, "/api/v1/mailbox-sources", ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.SourcesManage);
-        AssertPermission(endpoints, "/api/v1/mailbox-sources/{id:guid}/sync", ServiceApiPermissions.SourcesSync);
+        AssertPermission(endpoints, "/api/v1/report-sources", ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.SourcesManage);
+        AssertPermission(endpoints, "/api/v1/report-sources/{id:guid}/sync", ServiceApiPermissions.SourcesSync);
         AssertPermission(endpoints, "/api/v1/alerts/{id:guid}", ServiceApiPermissions.AlertsManage);
         AssertPermission(endpoints, "/api/v1/admin/audit-events", ServiceApiPermissions.AuditRead);
         AssertPermission(endpoints, "/api/v1/notification-recipients",

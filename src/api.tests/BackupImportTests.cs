@@ -71,7 +71,7 @@ public sealed class BackupImportTests
         BackupManifest? manifest = null,
         IReadOnlyList<BackupClient>? clients = null,
         IReadOnlyList<BackupDomain>? domains = null,
-        IReadOnlyList<BackupMailboxSource>? sources = null,
+        IReadOnlyList<BackupReportSource>? sources = null,
         IReadOnlyList<BackupNotificationRecipient>? recipients = null,
         IReadOnlyList<BackupUser>? users = null,
         IReadOnlyList<BackupUserIdentity>? identities = null,
@@ -98,13 +98,13 @@ public sealed class BackupImportTests
     private static BackupMtaStsPolicy ExportedMtaStsPolicy(Guid id, Guid domainId)
         => new(id, domainId, true, "testing", 86400, "mx1.acme.example", "20260101000000", Stamp, Stamp, Stamp);
 
-    private static BackupMailboxSource ExportedSource(
+    private static BackupReportSource ExportedSource(
         Guid id, Guid defaultClientId, string name = "Mailbox",
         string host = "imap.example", string username = "dmarc@example",
         string password = "enc:v1:ZmFrZS1jaXBoZXJ0ZXh0")
         => new(id, name, "imap", host, 993, true, username, password, defaultClientId, true, Stamp, Stamp);
 
-    private static BackupMailboxSource ExportedApiSource(Guid id, Guid defaultClientId)
+    private static BackupReportSource ExportedApiSource(Guid id, Guid defaultClientId)
         => new(id, "API source", "api", null, null, null, null, null,
             defaultClientId, true, Stamp, Stamp);
 
@@ -136,7 +136,7 @@ public sealed class BackupImportTests
 
         var beta = new Client { Slug = "beta", Name = "Beta", Timezone = "UTC" };
         var betaDomain = new Domain { ClientId = beta.Id, Name = "beta.example" };
-        var betaSource = new MailboxSource
+        var betaSource = new ReportSource
         {
             Name = "Beta mailbox", Host = "imap.beta", Port = 993, Username = "dmarc@beta",
             PasswordEncrypted = "enc:v1:YmV0YQ==", DefaultClientId = beta.Id,
@@ -172,7 +172,7 @@ public sealed class BackupImportTests
         Assert.NotNull(await db.AgencyUsers.SingleOrDefaultAsync(x => x.Email == "bootstrap@beta.example"));
         Assert.Equal(1, await db.UserClientGrants.CountAsync());
         Assert.Equal(1, await db.NotificationRecipients.CountAsync());
-        Assert.Equal(1, await db.MailboxSources.CountAsync());
+        Assert.Equal(1, await db.ReportSources.CountAsync());
     }
 
     /// <summary>
@@ -271,7 +271,7 @@ public sealed class BackupImportTests
         Assert.Equal(clientId, (await db.Clients.SingleAsync()).Id);
         Assert.Equal(domainId, (await db.Domains.SingleAsync()).Id);
         Assert.Equal(clientId, (await db.Domains.SingleAsync()).ClientId);
-        Assert.Equal(clientId, (await db.MailboxSources.SingleAsync()).DefaultClientId);
+        Assert.Equal(clientId, (await db.ReportSources.SingleAsync()).DefaultClientId);
 
         var grant = await db.UserClientGrants.SingleAsync();
         Assert.Equal(grantId, grant.Id);
@@ -288,7 +288,7 @@ public sealed class BackupImportTests
 
         // The IMAP checkpoint is not in the artifact and must not be invented: a restored
         // source rescans from the beginning.
-        Assert.Null((await db.MailboxSources.SingleAsync()).LastProcessedUid);
+        Assert.Null((await db.ReportSources.SingleAsync()).LastProcessedUid);
     }
 
     /// <summary>
@@ -335,7 +335,7 @@ public sealed class BackupImportTests
 
         // Every child followed the id that won, not the id the file carried.
         Assert.Equal(existingClient.Id, (await db.Domains.SingleAsync()).ClientId);
-        Assert.Equal(existingClient.Id, (await db.MailboxSources.SingleAsync()).DefaultClientId);
+        Assert.Equal(existingClient.Id, (await db.ReportSources.SingleAsync()).DefaultClientId);
         Assert.Equal(existingClient.Id, (await db.NotificationRecipients.SingleAsync()).ClientId);
 
         var grant = await db.UserClientGrants.SingleAsync();
@@ -471,9 +471,9 @@ public sealed class BackupImportTests
         Assert.True(result.IsSuccess);
         Assert.True(result.Value!.MailboxCredentialsWillNotDecrypt);
         Assert.Contains(result.Value!.Warnings, x => x.Contains("re-entered", StringComparison.OrdinalIgnoreCase));
-        Assert.Equal(1, await db.MailboxSources.CountAsync());
+        Assert.Equal(1, await db.ReportSources.CountAsync());
 
-        // An artifact with no mailbox sources has no credential that could fail to decrypt, so
+        // An artifact with no report sources has no credential that could fail to decrypt, so
         // the key is not a gate on it at all.
         await using var seedOnly = NewDb();
         var clean = await Service(seedOnly).ImportAsync(
@@ -495,7 +495,7 @@ public sealed class BackupImportTests
             clients: [ExportedClient(clientId, "acme")],
             sources:
             [
-                new BackupMailboxSource(
+                new BackupReportSource(
                     Guid.NewGuid(), "Bifrost upload", "api", null, null, null, null, null,
                     clientId, true, Stamp, Stamp),
             ]);
@@ -504,7 +504,7 @@ public sealed class BackupImportTests
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value!.MailboxCredentialsWillNotDecrypt);
-        var source = await db.MailboxSources.SingleAsync();
+        var source = await db.ReportSources.SingleAsync();
         Assert.Equal("api", source.Protocol);
         Assert.Null(source.PasswordEncrypted);
     }
@@ -551,7 +551,7 @@ public sealed class BackupImportTests
         var result = await Service(db).ImportAsync(artifact, BackupImportModes.Merge, false, default);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("imap.example", (await db.MailboxSources.SingleAsync()).Host);
+        Assert.Equal("imap.example", (await db.ReportSources.SingleAsync()).Host);
     }
 
     /// <summary>
@@ -625,7 +625,7 @@ public sealed class BackupImportTests
 
         Assert.Equal(0, await db.Clients.CountAsync());
         Assert.Equal(0, await db.Domains.CountAsync());
-        Assert.Equal(0, await db.MailboxSources.CountAsync());
+        Assert.Equal(0, await db.ReportSources.CountAsync());
         Assert.Equal(0, await db.AgencyUsers.CountAsync());
         Assert.Equal(0, await db.UserIdentities.CountAsync());
         Assert.Equal(0, await db.UserClientGrants.CountAsync());
@@ -682,12 +682,12 @@ public sealed class BackupImportTests
     /// on host+username would silently collapse two real sources into one.
     /// </summary>
     [Fact]
-    public async Task MailboxSourcesAreMatchedOnIdBecauseHostAndUsernameAreNotAnIdentity()
+    public async Task ReportSourcesAreMatchedOnIdBecauseHostAndUsernameAreNotAnIdentity()
     {
         await using var db = NewDb();
 
         var client = new Client { Slug = "acme", Name = "Acme", Timezone = "UTC" };
-        var existing = new MailboxSource
+        var existing = new ReportSource
         {
             Name = "Old name", Host = "imap.example", Port = 993, Username = "dmarc@example",
             PasswordEncrypted = "enc:v1:b2xk", DefaultClientId = client.Id, LastProcessedUid = 4711,
@@ -706,15 +706,15 @@ public sealed class BackupImportTests
 
         Assert.True(result.IsSuccess);
 
-        var counts = Counts(result.Value!, BackupImportEntities.MailboxSource);
+        var counts = Counts(result.Value!, BackupImportEntities.ReportSource);
         Assert.Equal(1, counts.Created);
         Assert.Equal(1, counts.Updated);
         Assert.Empty(counts.Conflicts);
 
         // Same host and username as the first, and still its own row.
-        Assert.Equal(2, await db.MailboxSources.CountAsync());
+        Assert.Equal(2, await db.ReportSources.CountAsync());
 
-        var updated = await db.MailboxSources.SingleAsync(x => x.Id == existing.Id);
+        var updated = await db.ReportSources.SingleAsync(x => x.Id == existing.Id);
         Assert.Equal("New name", updated.Name);
         Assert.Equal("enc:v1:bmV3", updated.PasswordEncrypted);
 
@@ -728,7 +728,7 @@ public sealed class BackupImportTests
     {
         await using var db = NewDb();
         var client = new Client { Slug = "acme", Name = "Acme", Timezone = "UTC" };
-        var existing = new MailboxSource
+        var existing = new ReportSource
         {
             Name = "Mailbox",
             Protocol = "imap",
@@ -753,10 +753,10 @@ public sealed class BackupImportTests
             artifact, BackupImportModes.Merge, false, default);
 
         Assert.True(preview.IsSuccess);
-        Assert.Equal(1, Counts(preview.Value!, BackupImportEntities.MailboxSource).Updated);
+        Assert.Equal(1, Counts(preview.Value!, BackupImportEntities.ReportSource).Updated);
         await db.SaveChangesAsync();
 
-        var afterPreview = await db.MailboxSources.AsNoTracking().SingleAsync();
+        var afterPreview = await db.ReportSources.AsNoTracking().SingleAsync();
         Assert.Equal("imap", afterPreview.Protocol);
         Assert.True(afterPreview.DeleteAfterRetention);
         Assert.Equal(4711, afterPreview.LastProcessedUid);
@@ -765,7 +765,7 @@ public sealed class BackupImportTests
             artifact, BackupImportModes.Merge, false, default);
 
         Assert.True(applied.IsSuccess);
-        var source = await db.MailboxSources.AsNoTracking().SingleAsync();
+        var source = await db.ReportSources.AsNoTracking().SingleAsync();
         Assert.Equal("api", source.Protocol);
         Assert.Null(source.Host);
         Assert.Null(source.Port);
@@ -780,11 +780,11 @@ public sealed class BackupImportTests
     }
 
     [Fact]
-    public async Task MailboxSourceMergeOverApiRestoresCompleteConnectionConfiguration()
+    public async Task ReportSourceMergeOverApiRestoresCompleteConnectionConfiguration()
     {
         await using var db = NewDb();
         var client = new Client { Slug = "acme", Name = "Acme", Timezone = "UTC" };
-        var existing = new MailboxSource
+        var existing = new ReportSource
         {
             Name = "API source",
             Protocol = "api",
@@ -810,7 +810,7 @@ public sealed class BackupImportTests
 
         Assert.True(preview.IsSuccess);
         Assert.True(applied.IsSuccess);
-        var source = await db.MailboxSources.AsNoTracking().SingleAsync();
+        var source = await db.ReportSources.AsNoTracking().SingleAsync();
         Assert.Equal("imap", source.Protocol);
         Assert.Equal("imap.example", source.Host);
         Assert.Equal(993, source.Port);
@@ -928,7 +928,7 @@ public sealed class BackupImportTests
         Assert.Equal("acme.example", (await db.Domains.SingleAsync()).Name);
 
         // The one field a restore cannot recreate by hand, still intact after the round trip.
-        Assert.Equal("enc:v1:cm91bmR0cmlw", (await db.MailboxSources.SingleAsync()).PasswordEncrypted);
+        Assert.Equal("enc:v1:cm91bmR0cmlw", (await db.ReportSources.SingleAsync()).PasswordEncrypted);
         Assert.Equal(userId, (await db.UserClientGrants.SingleAsync()).UserId);
     }
 

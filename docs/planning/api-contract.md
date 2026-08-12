@@ -88,14 +88,14 @@ cookie does not grant access.
 ### Mailbox sources and sync
 | Method | Path | Access |
 |---|---|---|
-| GET | `/mailbox-sources` | staff |
-| POST | `/mailbox-sources` | admin |
-| PATCH | `/mailbox-sources/{id}` | admin |
-| POST | `/mailbox-sources/{id}/sync` | staff — manual trigger |
-| GET | `/mailbox-sources/{id}/credentials` | admin — metadata only; never returns a token or hash |
-| POST | `/mailbox-sources/{id}/credentials` | admin — issue a reveal-once API token |
-| POST | `/mailbox-sources/{id}/credentials/rotate` | admin — issue an overlapping token; prior keys remain active |
-| DELETE | `/mailbox-sources/{id}/credentials/{credentialId}` | admin — idempotent revocation |
+| GET | `/report-sources` | staff |
+| POST | `/report-sources` | admin |
+| PATCH | `/report-sources/{id}` | admin |
+| POST | `/report-sources/{id}/sync` | staff — manual trigger |
+| GET | `/report-sources/{id}/credentials` | admin — metadata only; never returns a token or hash |
+| POST | `/report-sources/{id}/credentials` | admin — issue a reveal-once API token |
+| POST | `/report-sources/{id}/credentials/rotate` | admin — issue an overlapping token; prior keys remain active |
+| DELETE | `/report-sources/{id}/credentials/{credentialId}` | admin — idempotent revocation |
 | GET | `/mailbox-health` | staff |
 | GET | `/mailbox-sync-runs` | staff |
 
@@ -145,7 +145,7 @@ never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/admin/config/export` | admin — the configuration artifact, as a JSON download. Refused with 409 when no credential encryption key is set, because the mailbox passwords in it would be plaintext; `allowPlaintextCredentials=true` overrides |
 | GET | `/admin/config/import/preview` | admin — what an import would change; writes nothing |
-| POST | `/admin/config/import` | admin — `mode` of `restore` (only into an install nothing has been added to: no clients of your own, no domains, no mailbox sources) or `merge`. Additive: never deletes a row |
+| POST | `/admin/config/import` | admin — `mode` of `restore` (only into an install nothing has been added to: no clients of your own, no domains, no report sources) or `merge`. Additive: never deletes a row |
 | GET | `/admin/backup/status` | admin — offload destination, last success, bucket versioning, whether credentials are protected |
 | POST | `/admin/backup/offload` | admin — runs an offload pass now rather than waiting for the worker |
 | GET | `/admin/mailbox-retention/preview` | admin — per source: cutoff, eligible messages, and which rule is suspending it; deletes nothing |
@@ -302,11 +302,11 @@ Update domain settings or ownership transfer.
 
 ## 5) Mailbox Sources
 
-### GET `/mailbox-sources`
+### GET `/report-sources`
 
-List mailbox sources.
+List report sources.
 
-### POST `/mailbox-sources`
+### POST `/report-sources`
 
 Create source (IMAP or POP3).
 
@@ -336,7 +336,7 @@ Notes:
 ### API source credentials
 
 All four operations are agency-admin only and apply only to `protocol: api`
-sources. `POST /mailbox-sources/{sourceId}/credentials` creates the first or an
+sources. `POST /report-sources/{sourceId}/credentials` creates the first or an
 additional credential. `POST .../credentials/rotate` has the same issuance
 semantics but records rotation intent; it does not revoke an existing key, so an
 operator can cut a caller over before revoking the old credential. Both return:
@@ -356,10 +356,10 @@ only id, source id, prefix, created time, and revoked time. Configuration backup
 artifacts omit the credential table entirely; restored API sources require a new
 token.
 
-### PATCH `/mailbox-sources/{sourceId}`
-### DELETE `/mailbox-sources/{sourceId}`
+### PATCH `/report-sources/{sourceId}`
+### DELETE `/report-sources/{sourceId}`
 
-### POST `/mailbox-sources/{sourceId}/sync`
+### POST `/report-sources/{sourceId}/sync`
 
 Manual sync trigger for operations/testing. Returns sync summary payload immediately from execution.
 
@@ -368,11 +368,11 @@ Notes:
 - Intended for operator use; steady-state sync is worker-scheduled.
 - Mailbox processing is read-only (does not delete emails).
 
-### POST `/mailbox-sources/{sourceId}/test-connection`
+### POST `/report-sources/{sourceId}/test-connection`
 
 Run connectivity/auth test.
 
-### GET `/mailbox-sources/{sourceId}/sync-runs`
+### GET `/report-sources/{sourceId}/sync-runs`
 
 List sync run history.
 
@@ -416,16 +416,16 @@ Each authenticated attempt records a source-id/count-only audit event.
 
 ### GET `/mailbox-sync-runs`
 
-List sync run history across mailbox sources.
+List sync run history across report sources.
 
 Filters:
 
-- `mailboxSourceId` (optional)
+- `reportSourceId` (optional)
 - `limit` (optional, default server value)
 
 ### GET `/mailbox-health`
 
-Operational health summary by mailbox source.
+Operational health summary by report source.
 
 Fields include:
 

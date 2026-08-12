@@ -34,7 +34,7 @@ One agency workspace monitors DMARC aggregate (RUA) reports for many clients acr
 ## Repository layout
 
 - `src/api` — backend. One image and one entrypoint (`Program.cs`), running in the mode `APP_MODE` selects: `api` (REST API + the built React app from `wwwroot`), `worker` (mailbox-sync host), `all` (both in one process), or `migrate` (apply migrations and exit). Backend notes: [`src/api/README.md`](src/api/README.md).
-  - `Application/` — service layer (Auth, Analytics, Clients, Domains, MailboxSources, Ingestion, Reports, Security, Users). Carter modules in `Modules/` are thin and delegate here.
+  - `Application/` — service layer (Auth, Analytics, Clients, Domains, ReportSources, Ingestion, Reports, Security, Users). Carter modules in `Modules/` are thin and delegate here.
   - `Data/` — EF Core `DmarcAnalyzerDbContext`, entities, and `Migrations/`. A design-time factory (`DmarcAnalyzerDbContextFactory`) lets `dotnet ef` run without building the web host.
   - `Middleware/` — `SessionAuthMiddleware` (cookie session → `ICurrentUserContext`) then `RoleAuthorizationMiddleware` (endpoint role enforcement).
 - `src/web` — React 19 + Vite + TypeScript + Tailwind v3. Pages in `src/pages`, primitives in `src/components/ui` + `src/components/data`, shared helpers in `src/lib`. Frontend notes: [`src/web/README.md`](src/web/README.md).
@@ -111,6 +111,7 @@ cd src/web && npm install              # ~274M; or symlink node_modules if packa
 7. [Authorization & pluggable authentication](docs/planning/adr/0007-authorization-and-pluggable-authentication.md)
 8. [Deployment topologies & config contract](docs/planning/adr/0008-deployment-topologies-and-config-contract.md)
 9. [Configuration export & recovery](docs/planning/adr/0009-configuration-export-and-recovery.md)
+10. [Machine credentials](docs/planning/adr/0010-machine-credentials.md)
 
 ### Operations runbooks — [`docs/ops/`](docs/ops/)
 - [Directory listings](docs/ops/directory-listings.md) — Artifact Hub is live with the Verified publisher badge; the awesome-selfhosted PR was closed unmerged without comment; Umbrel and CasaOS are awaiting review
@@ -123,7 +124,7 @@ cd src/web && npm install              # ~274M; or symlink node_modules if packa
 
 ## Key domain concepts (so you don't misread the code)
 
-- **Tenancy**: `client` is the tenant root. `domain.ClientId` and `mailbox_source.DefaultClientId` are direct keys; reports/records derive tenancy transitively through the domain. Domain names are globally unique. New domains auto-create under the mailbox's default client.
+- **Tenancy**: `client` is the tenant root. `domain.ClientId` and `report_source.DefaultClientId` are direct keys; reports/records derive tenancy transitively through the domain. Domain names are globally unique. New domains auto-create under the source's default client.
 - **AuthN is pluggable, authZ is always in-app** (ADR 0007). Local password or OIDC both mint the same `dmarc_session` cookie; roles + per-client grants are decided in the app, never by the IdP. Roles: `agency_admin` (all), `agency_analyst` (all clients, read + ops), `client_viewer` (granted clients only, read-only). Endpoints are **deny-by-default for client_viewer** — new endpoints must opt in via `.AllowClientViewer()`.
 - **Enforcement status** (Domains/Detail): derived from the **effective** DMARC policy + compliance — `enforced` (p=reject) / `ramping` (p=quarantine) / `spoofing` (unprotected + failing) / `monitoring` / `no_data`. "Effective" matters: a subdomain publishing no record of its own inherits the organisational domain's `sp=` (else `p=`) via a DNS tree walk, so it can be `enforced` on a policy it does not publish. `domain.DnsPolicyInheritedFrom` records where that came from. A subdomain publishing its own weaker record still wins.
 - **Analytics windows** anchor to the newest report date, not wall-clock (data is often backfilled).

@@ -24,9 +24,9 @@ production claim. The durable decision is in
   AKS/PostgreSQL/Key Vault deployment belongs in `bifrost-infra`; Microsoft
   Graph acquisition, retry, and raw-attachment retention belong in
   `bifrost-workspace`.
-- `MailboxSourceId` remains the report provenance key for these slices. An API
-  source is represented by a source row; broad source-table renaming and
-  nullable provenance foreign keys are out of scope.
+- `ReportSourceId` is the report provenance key. An API source is represented by
+  a report-source row, following upstream's protocol-neutral source model;
+  nullable provenance foreign keys remain out of scope.
 
 ## Target seams
 

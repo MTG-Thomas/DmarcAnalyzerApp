@@ -46,7 +46,7 @@ export type Domain = {
   clientName: string | null
 }
 
-export type MailboxSource = {
+export type ReportSource = {
   id: string
   name: string
   protocol: 'imap' | 'pop3' | 'api'
@@ -96,7 +96,7 @@ export type IssuedServiceApiCredential = Omit<ServiceApiCredential, 'revokedAtUt
 }
 
 export type MailboxHealth = {
-  mailboxSourceId: string
+  reportSourceId: string
   name: string
   isActive: boolean
   lastSuccessSyncAtUtc: string | null
@@ -117,7 +117,7 @@ export type MailboxHealth = {
 
 export type MailboxSyncRun = {
   id: string
-  mailboxSourceId: string
+  reportSourceId: string
   trigger: string
   status: SyncRunStatus
   startedAtUtc: string
@@ -291,7 +291,7 @@ export type ConfigImportResult = {
   signedInSessionInvalidated: boolean
   /**
    * True when the artifact's mailbox credentials were imported under a key
-   * fingerprint mismatch the operator chose to override. Every mailbox source in
+   * fingerprint mismatch the operator chose to override. Every report source in
    * the artifact needs its password re-entered by hand before it will sync.
    */
   mailboxCredentialsWillNotDecrypt: boolean

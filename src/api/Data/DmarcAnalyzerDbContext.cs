@@ -11,7 +11,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<DmarcReportRecord> DmarcReportRecords => Set<DmarcReportRecord>();
     public DbSet<DmarcReportRecordDkimAuthResult> DmarcReportRecordDkimAuthResults => Set<DmarcReportRecordDkimAuthResult>();
     public DbSet<DmarcReportRecordSpfAuthResult> DmarcReportRecordSpfAuthResults => Set<DmarcReportRecordSpfAuthResult>();
-    public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
+    public DbSet<ReportSource> ReportSources => Set<ReportSource>();
     public DbSet<ApiSourceCredential> ApiSourceCredentials => Set<ApiSourceCredential>();
     public DbSet<ServiceApiCredential> ServiceApiCredentials => Set<ServiceApiCredential>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
@@ -132,10 +132,10 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        modelBuilder.Entity<MailboxSource>(entity =>
+        modelBuilder.Entity<ReportSource>(entity =>
         {
-            entity.ToTable("mailbox_source", table => table.HasCheckConstraint(
-                "CK_mailbox_source_ProtocolConfiguration",
+            entity.ToTable("report_source", table => table.HasCheckConstraint(
+                "CK_report_source_ProtocolConfiguration",
                 "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR " +
                 "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)"));
             entity.HasKey(x => x.Id);
@@ -169,12 +169,12 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Prefix).HasMaxLength(22).IsRequired();
             entity.Property(x => x.TokenHash).IsRequired();
-            entity.HasIndex(x => new { x.MailboxSourceId, x.Prefix }).IsUnique();
-            entity.HasIndex(x => new { x.MailboxSourceId, x.RevokedAtUtc });
+            entity.HasIndex(x => new { x.ReportSourceId, x.Prefix }).IsUnique();
+            entity.HasIndex(x => new { x.ReportSourceId, x.RevokedAtUtc });
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -215,7 +215,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.HasIndex(x => x.ClientId);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             entity.HasIndex(x => new
             {
                 x.ClientId,
@@ -230,9 +230,9 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -243,13 +243,13 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Trigger).HasMaxLength(32).IsRequired();
             entity.Property(x => x.Status).HasMaxLength(32).IsRequired();
             entity.Property(x => x.Error).HasMaxLength(4000);
-            entity.HasIndex(x => x.MailboxSourceId)
-                .HasDatabaseName("IX_mailbox_sync_run_MailboxSourceId");
+            entity.HasIndex(x => x.ReportSourceId)
+                .HasDatabaseName("IX_mailbox_sync_run_ReportSourceId");
             entity.HasIndex(x => x.StartedAtUtc);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -265,7 +265,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.DkimAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.Property(x => x.SpfAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.HasIndex(x => x.DomainId);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             entity.HasIndex(x => new { x.DomainId, x.ReportId, x.RangeBeginUtc, x.RangeEndUtc }).IsUnique();
 
             entity.HasOne(x => x.Domain)
@@ -273,9 +273,9 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasForeignKey(x => x.DomainId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -467,7 +467,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ContactInfo).HasMaxLength(320);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             // The dedupe key. No policy domain — a report spans several — so the
             // organization name disambiguates report-id collisions across reporters.
             entity.HasIndex(x => new
@@ -480,9 +480,9 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             // The orphan sweep in retention scans on this.
             entity.HasIndex(x => x.RangeEndUtc);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -540,7 +540,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.PolicyDomains).HasMaxLength(2000).IsRequired();
             entity.Property(x => x.ContactInfo).HasMaxLength(320);
             entity.HasIndex(x => x.ClientId);
-            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => x.ReportSourceId);
             // The TLS analogue of the DMARC ledger's five-column key, with the
             // policy domain (meaningless for a multi-domain report) replaced by
             // the organization name.
@@ -559,9 +559,9 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
-                .HasForeignKey(x => x.MailboxSourceId)
+                .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

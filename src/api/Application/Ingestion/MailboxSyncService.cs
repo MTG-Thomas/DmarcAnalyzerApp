@@ -23,10 +23,10 @@ public sealed class MailboxSyncService(
 {
     private readonly WorkerOptions _options = options.Value;
 
-    public async Task<ServiceResult<MailboxSyncResult>> SyncMailboxSourceAsync(Guid mailboxSourceId, CancellationToken ct)
-        => await SyncMailboxSourceAsync(mailboxSourceId, "manual", ct);
+    public async Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid mailboxSourceId, CancellationToken ct)
+        => await SyncReportSourceAsync(mailboxSourceId, "manual", ct);
 
-    public async Task<ServiceResult<MailboxSyncResult>> SyncMailboxSourceAsync(Guid mailboxSourceId, string trigger, CancellationToken ct)
+    public async Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid mailboxSourceId, string trigger, CancellationToken ct)
     {
         var startedAtUtc = DateTime.UtcNow;
         using var syncTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -34,7 +34,7 @@ public sealed class MailboxSyncService(
         syncTimeoutCts.CancelAfter(TimeSpan.FromMinutes(syncRunTimeoutMinutes));
         var operationToken = syncTimeoutCts.Token;
 
-        var mailboxSource = await db.MailboxSources
+        var mailboxSource = await db.ReportSources
             .SingleOrDefaultAsync(x => x.Id == mailboxSourceId, operationToken);
 
         if (mailboxSource is null)
@@ -275,7 +275,7 @@ public sealed class MailboxSyncService(
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
-                MailboxSourceId = mailboxSource.Id,
+                ReportSourceId = mailboxSource.Id,
                 Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
                 Status = "success",
                 StartedAtUtc = startedAtUtc,
@@ -325,7 +325,7 @@ public sealed class MailboxSyncService(
                 mailboxSource.LastProcessedUidValidity = currentUidValidity;
                 mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
 
-                db.MailboxSources.Attach(mailboxSource);
+                db.ReportSources.Attach(mailboxSource);
                 var checkpoint = db.Entry(mailboxSource);
                 checkpoint.Property(x => x.LastProcessedUid).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidValidity).IsModified = true;
@@ -337,7 +337,7 @@ public sealed class MailboxSyncService(
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
-                MailboxSourceId = mailboxSource.Id,
+                ReportSourceId = mailboxSource.Id,
                 Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
                 Status = status,
                 StartedAtUtc = startedAtUtc,

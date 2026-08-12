@@ -1,7 +1,7 @@
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
-public sealed record MailboxSourceHealthDto(
-    Guid MailboxSourceId,
+public sealed record ReportSourceHealthDto(
+    Guid ReportSourceId,
     string Name,
     bool IsActive,
     DateTime? LastSuccessSyncAtUtc,

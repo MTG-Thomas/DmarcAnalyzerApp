@@ -107,7 +107,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using (var db = database.CreateDbContext())
         {
-            db.AddRange(client, new MailboxSource
+            db.AddRange(client, new ReportSource
             {
                 Name = "Valid API source",
                 Protocol = "api",
@@ -123,7 +123,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using (var db = database.CreateDbContext())
         {
-            db.MailboxSources.Add(new MailboxSource
+            db.ReportSources.Add(new ReportSource
             {
                 Name = "API source with mailbox host",
                 Protocol = "api",
@@ -139,7 +139,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using (var db = database.CreateDbContext())
         {
-            db.MailboxSources.Add(new MailboxSource
+            db.ReportSources.Add(new ReportSource
             {
                 Name = "Incomplete IMAP source",
                 Protocol = "imap",
@@ -163,7 +163,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var db = database.CreateDbContext())
         {
             var client = new Client { Name = "API source fixture", Slug = "api-down", Timezone = "UTC" };
-            db.AddRange(client, new MailboxSource
+            db.AddRange(client, new ReportSource
             {
                 Name = "API source",
                 Protocol = "api",
@@ -187,12 +187,16 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var verification = database.CreateDbContext())
         {
             Assert.Equal(PreviousReleaseLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
-            Assert.Equal(1, await verification.MailboxSources.CountAsync(x => x.Protocol == "api"));
+            Assert.Equal(
+                1,
+                await verification.Database
+                    .SqlQueryRaw<int>("SELECT COUNT(*)::int AS \"Value\" FROM mailbox_source WHERE \"Protocol\" = 'api'")
+                    .SingleAsync());
         }
     }
 
     [Fact]
-    public async Task DownMigration_PreservesMailboxSourcesWhenNoApiRowsExist()
+    public async Task DownMigration_PreservesReportSourcesWhenNoApiRowsExist()
     {
         await database.ResetDatabaseAsync();
         await database.MigrateToLatestAsync();
@@ -201,7 +205,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var db = database.CreateDbContext())
         {
             var client = new Client { Name = "Mailbox fixture", Slug = "mailbox-down", Timezone = "UTC" };
-            db.AddRange(client, new MailboxSource
+            db.AddRange(client, new ReportSource
             {
                 Id = sourceId,
                 Name = "Mailbox",
@@ -219,7 +223,11 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using var verification = database.CreateDbContext();
         Assert.Equal(BeforeApiSourceMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
-        Assert.Equal("imap.example", (await verification.MailboxSources.SingleAsync(x => x.Id == sourceId)).Host);
+        Assert.Equal(
+            "imap.example",
+            await verification.Database
+                .SqlQueryRaw<string>("SELECT \"Host\" AS \"Value\" FROM mailbox_source WHERE \"Id\" = {0}", sourceId)
+                .SingleAsync());
     }
 
     [Fact]
@@ -231,7 +239,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var db = database.CreateDbContext())
         {
             var client = new Client { Name = "Credential fixture", Slug = "credential-fixture", Timezone = "UTC" };
-            var source = new MailboxSource
+            var source = new ReportSource
             {
                 Name = "API source",
                 Protocol = "api",
@@ -240,7 +248,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
             };
             db.AddRange(client, source, new ApiSourceCredential
             {
-                MailboxSourceId = source.Id,
+                ReportSourceId = source.Id,
                 Prefix = "abcdefghijklmnopqrstuv",
                 TokenHash = new byte[32],
             });
@@ -249,10 +257,10 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using (var invalid = database.CreateDbContext())
         {
-            var sourceId = await invalid.MailboxSources.Select(x => x.Id).SingleAsync();
+            var sourceId = await invalid.ReportSources.Select(x => x.Id).SingleAsync();
             invalid.ApiSourceCredentials.Add(new ApiSourceCredential
             {
-                MailboxSourceId = sourceId,
+                ReportSourceId = sourceId,
                 Prefix = "too-short",
                 TokenHash = new byte[31],
             });
@@ -261,10 +269,10 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using (var duplicate = database.CreateDbContext())
         {
-            var sourceId = await duplicate.MailboxSources.Select(x => x.Id).SingleAsync();
+            var sourceId = await duplicate.ReportSources.Select(x => x.Id).SingleAsync();
             duplicate.ApiSourceCredentials.Add(new ApiSourceCredential
             {
-                MailboxSourceId = sourceId,
+                ReportSourceId = sourceId,
                 Prefix = "abcdefghijklmnopqrstuv",
                 TokenHash = Enumerable.Repeat((byte)1, 32).ToArray(),
             });

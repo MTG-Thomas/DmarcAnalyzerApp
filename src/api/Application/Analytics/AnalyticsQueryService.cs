@@ -145,13 +145,13 @@ public sealed class AnalyticsQueryService(
         AnalyticsMailboxesDto? mailboxes = null;
         if (currentUser.IsAgencyStaff)
         {
-            var mailboxSourceIds = db.MailboxSources
+            var mailboxSourceIds = db.ReportSources
                 .Where(x => x.Protocol != "api")
                 .Select(x => x.Id);
             var mailboxTotal = await mailboxSourceIds.CountAsync(ct);
             var latestRunStatuses = await db.MailboxSyncRuns
-                .Where(x => mailboxSourceIds.Contains(x.MailboxSourceId))
-                .GroupBy(x => x.MailboxSourceId)
+                .Where(x => mailboxSourceIds.Contains(x.ReportSourceId))
+                .GroupBy(x => x.ReportSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
                 .ToListAsync(ct);
             var failingMailboxes = latestRunStatuses.Count(x => x == "failed");

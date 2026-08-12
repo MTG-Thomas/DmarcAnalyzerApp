@@ -49,7 +49,7 @@ public sealed class ReportUploadIntegrationTests(PostgreSqlDatabaseFixture datab
         Assert.Equal(1, await verification.DmarcReportIngests.CountAsync());
         Assert.Equal(
             seeded.SourceAId,
-            await verification.DmarcReports.Select(x => x.MailboxSourceId).SingleAsync());
+            await verification.DmarcReports.Select(x => x.ReportSourceId).SingleAsync());
     }
 
     [Fact]
@@ -83,10 +83,10 @@ public sealed class ReportUploadIntegrationTests(PostgreSqlDatabaseFixture datab
             await verification.Domains.Select(x => x.ClientId).SingleAsync());
         Assert.Equal(
             seeded.SourceAId,
-            await verification.DmarcReports.Select(x => x.MailboxSourceId).SingleAsync());
+            await verification.DmarcReports.Select(x => x.ReportSourceId).SingleAsync());
         Assert.DoesNotContain(
             await verification.DmarcReportIngests.ToListAsync(),
-            x => x.ClientId == seeded.ClientBId || x.MailboxSourceId == seeded.SourceBId);
+            x => x.ClientId == seeded.ClientBId || x.ReportSourceId == seeded.SourceBId);
     }
 
     [Fact]
@@ -299,14 +299,14 @@ public sealed class ReportUploadIntegrationTests(PostgreSqlDatabaseFixture datab
             Slug = $"upload-b-{Guid.NewGuid():N}",
             Timezone = "UTC",
         };
-        var sourceA = new MailboxSource
+        var sourceA = new ReportSource
         {
             Name = "Bifrost A",
             Protocol = "api",
             UseTls = null,
             DefaultClientId = clientA.Id,
         };
-        var sourceB = new MailboxSource
+        var sourceB = new ReportSource
         {
             Name = "Bifrost B",
             Protocol = "api",

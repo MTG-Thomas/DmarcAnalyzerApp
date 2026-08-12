@@ -29,7 +29,7 @@ public sealed class MailboxHealthQueryServiceTests
             UpdatedAtUtc = DateTime.UtcNow,
         };
 
-        var mailbox = new MailboxSource
+        var mailbox = new ReportSource
         {
             Id = Guid.NewGuid(),
             Name = "Inbox A",
@@ -49,8 +49,8 @@ public sealed class MailboxHealthQueryServiceTests
         };
 
         db.Clients.Add(client);
-        db.MailboxSources.Add(mailbox);
-        db.MailboxSources.Add(new MailboxSource
+        db.ReportSources.Add(mailbox);
+        db.ReportSources.Add(new ReportSource
         {
             Name = "API source",
             Protocol = "api",
@@ -66,7 +66,7 @@ public sealed class MailboxHealthQueryServiceTests
             new MailboxSyncRun
             {
                 Id = Guid.NewGuid(),
-                MailboxSourceId = mailbox.Id,
+                ReportSourceId = mailbox.Id,
                 Trigger = "scheduled",
                 Status = "failed",
                 StartedAtUtc = DateTime.UtcNow.AddHours(-2),
@@ -82,7 +82,7 @@ public sealed class MailboxHealthQueryServiceTests
             new MailboxSyncRun
             {
                 Id = Guid.NewGuid(),
-                MailboxSourceId = mailbox.Id,
+                ReportSourceId = mailbox.Id,
                 Trigger = "scheduled",
                 Status = "success",
                 StartedAtUtc = DateTime.UtcNow.AddHours(-1),
@@ -103,7 +103,7 @@ public sealed class MailboxHealthQueryServiceTests
 
         Assert.Single(result);
         var item = result[0];
-        Assert.Equal(mailbox.Id, item.MailboxSourceId);
+        Assert.Equal(mailbox.Id, item.ReportSourceId);
         Assert.Equal("success", item.LastRunStatus);
         Assert.Equal(25, item.LastRunMessagesScanned);
         Assert.Equal(20, item.LastRunReportsInserted);

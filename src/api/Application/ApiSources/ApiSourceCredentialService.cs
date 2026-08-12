@@ -36,14 +36,14 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
         Guid sourceId,
         CancellationToken ct)
     {
-        if (!await db.MailboxSources.AnyAsync(x => x.Id == sourceId, ct))
+        if (!await db.ReportSources.AnyAsync(x => x.Id == sourceId, ct))
         {
             return ServiceResult<IReadOnlyList<ApiSourceCredentialDto>>.Failure("not found", 404);
         }
 
         var credentials = await db.ApiSourceCredentials
             .AsNoTracking()
-            .Where(x => x.MailboxSourceId == sourceId)
+            .Where(x => x.ReportSourceId == sourceId)
             .OrderByDescending(x => x.CreatedAtUtc)
             .Select(x => ToDto(x))
             .ToListAsync(ct);
@@ -55,7 +55,7 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
         Guid sourceId,
         CancellationToken ct)
     {
-        var source = await db.MailboxSources
+        var source = await db.ReportSources
             .AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == sourceId, ct);
 
@@ -76,7 +76,7 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
         var now = DateTime.UtcNow;
         var credential = new ApiSourceCredential
         {
-            MailboxSourceId = sourceId,
+            ReportSourceId = sourceId,
             Prefix = prefix,
             TokenHash = SHA256.HashData(Encoding.ASCII.GetBytes(token)),
             CreatedAtUtc = now,
@@ -100,7 +100,7 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
 
         return ServiceResult<IssuedApiSourceCredentialDto>.Success(new(
             credential.Id,
-            credential.MailboxSourceId,
+            credential.ReportSourceId,
             credential.Prefix,
             token,
             credential.CreatedAtUtc));
@@ -112,7 +112,7 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
         CancellationToken ct)
     {
         var credential = await db.ApiSourceCredentials.SingleOrDefaultAsync(
-            x => x.Id == credentialId && x.MailboxSourceId == sourceId,
+            x => x.Id == credentialId && x.ReportSourceId == sourceId,
             ct);
 
         if (credential is null)
@@ -132,7 +132,7 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
     private static ApiSourceCredentialDto ToDto(ApiSourceCredential credential)
         => new(
             credential.Id,
-            credential.MailboxSourceId,
+            credential.ReportSourceId,
             credential.Prefix,
             credential.CreatedAtUtc,
             credential.RevokedAtUtc);
@@ -146,7 +146,7 @@ public static class ApiSourceCredentialLifecycle
         CancellationToken ct)
     {
         var activeCredentials = await db.ApiSourceCredentials
-            .Where(x => x.MailboxSourceId == sourceId && x.RevokedAtUtc == null)
+            .Where(x => x.ReportSourceId == sourceId && x.RevokedAtUtc == null)
             .ToListAsync(ct);
         var revokedAtUtc = DateTime.UtcNow;
         foreach (var credential in activeCredentials)

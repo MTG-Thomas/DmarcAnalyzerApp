@@ -29,14 +29,14 @@ public sealed class ApiSourceAuthenticator(DmarcAnalyzerDbContext db) : IApiSour
 
         var credential = await db.ApiSourceCredentials
             .AsNoTracking()
-            .Where(x => x.MailboxSourceId == sourceId && x.Prefix == prefix)
+            .Where(x => x.ReportSourceId == sourceId && x.Prefix == prefix)
             .Select(x => new
             {
                 x.TokenHash,
                 x.RevokedAtUtc,
-                x.MailboxSource!.Protocol,
-                x.MailboxSource.IsActive,
-                x.MailboxSource.DefaultClientId,
+                x.ReportSource!.Protocol,
+                x.ReportSource.IsActive,
+                x.ReportSource.DefaultClientId,
             })
             .SingleOrDefaultAsync(ct);
 
