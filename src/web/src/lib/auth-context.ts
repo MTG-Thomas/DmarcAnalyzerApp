@@ -30,6 +30,7 @@ export type AuthContextValue = {
   status: AuthStatus
   user: AuthUser | null
   login: (email: string, password: string) => Promise<void>
+  loginWithPasskey: () => Promise<void>
   logout: () => Promise<void>
 }
 

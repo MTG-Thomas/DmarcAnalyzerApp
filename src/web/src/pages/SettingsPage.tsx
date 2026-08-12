@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { Notice } from '@/components/Notice'
+import { PasskeySettings } from '@/components/PasskeySettings'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
@@ -17,6 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { fetchJson } from '@/lib/api'
 import type { IssuedServiceApiCredential, ServiceApiCredential } from '@/lib/entities'
 import { usePageTitle } from '@/lib/use-page-title'
+import { useAuth } from '@/lib/auth-context'
+import { isAdmin } from '@/lib/authz'
 
 const dateInput = (date: Date) => date.toISOString().slice(0, 10)
 
@@ -38,6 +41,8 @@ const statusFor = (credential: ServiceApiCredential) => {
 
 export function SettingsPage() {
   usePageTitle('Settings')
+  const { user } = useAuth()
+  const admin = isAdmin(user)
   const [credentials, setCredentials] = useState<ServiceApiCredential[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -51,6 +56,10 @@ export function SettingsPage() {
   const revokeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (!admin) {
+      setCredentials([])
+      return
+    }
     let cancelled = false
     void fetchJson<ServiceApiCredential[]>('/api/v1/service-credentials')
       .then((result) => {
@@ -64,7 +73,7 @@ export function SettingsPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [admin])
 
   useEffect(() => {
     if (revokeTarget) revokeRef.current?.focus()
@@ -141,12 +150,14 @@ export function SettingsPage() {
     <>
       <div className="mb-5">
         <h1 className="text-xl font-semibold tracking-tight text-body">Settings</h1>
-        <p className="mt-1 text-sm text-secondary">Account-wide configuration and integrations</p>
+        <p className="mt-1 text-sm text-secondary">Personal security, account-wide configuration, and integrations</p>
       </div>
 
       {error ? <div className="mb-3.5"><Notice tone="danger">{error}</Notice></div> : null}
 
-      <Card>
+      <div className="mb-6"><PasskeySettings /></div>
+
+      {admin ? <Card>
         <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
           <CardHeader
             title="Service API keys"
@@ -204,7 +215,7 @@ export function SettingsPage() {
             </Table>
           </div>
         ) : null}
-      </Card>
+      </Card> : null}
 
       {revokeTarget ? (
         <div
