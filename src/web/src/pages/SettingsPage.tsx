@@ -59,6 +59,7 @@ export function SettingsPage() {
   const [revokeError, setRevokeError] = useState<string | null>(null)
   const revealRef = useRef<HTMLHeadingElement>(null)
   const pageHeadingRef = useRef<HTMLHeadingElement>(null)
+  const createTriggerRef = useRef<HTMLButtonElement | null>(null)
   const revokeTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
@@ -198,7 +199,15 @@ export function SettingsPage() {
             title="Service API keys"
             description="Selectable account-wide access for trusted integrations such as Bifrost. Report upload keys remain on their report source."
           />
-          <Button icon="plus" size="sm" disabled={!permissionCatalog?.length} onClick={() => setCreateOpen(true)}>
+          <Button
+            icon="plus"
+            size="sm"
+            disabled={!permissionCatalog?.length}
+            onClick={(event) => {
+              createTriggerRef.current = event.currentTarget
+              setCreateOpen(true)
+            }}
+          >
             Create service API key
           </Button>
         </div>
@@ -315,7 +324,12 @@ export function SettingsPage() {
       </Dialog>
 
       <Dialog open={createOpen} onOpenChange={(open) => (!open ? closeCreate() : setCreateOpen(true))}>
-        <DialogContent>
+        <DialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            createTriggerRef.current?.focus()
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Create service API key</DialogTitle>
             <DialogDescription>

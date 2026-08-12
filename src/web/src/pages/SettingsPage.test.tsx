@@ -176,4 +176,19 @@ describe('service API key settings', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
     expect(revoke).toHaveFocus()
   })
+
+  it('returns focus to create after closing with Escape', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(permissionCatalog)
+
+    render(<SettingsPage />)
+
+    const create = await screen.findByRole('button', { name: 'Create service API key' })
+    fireEvent.click(create)
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(create).toHaveFocus()
+  })
 })
