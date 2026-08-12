@@ -86,6 +86,23 @@ describe('service API key settings', () => {
     expect(screen.queryByDisplayValue(issuedCredential.token)).not.toBeInTheDocument()
   })
 
+  it('keeps the token available for manual copy when the clipboard is unavailable', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(issuedCredential)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+
+    render(<SettingsPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Create service API key' }))
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Bifrost' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create API key' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy API key' }))
+
+    expect(await screen.findByText(/select and copy it manually/i)).toBeInTheDocument()
+    expect(screen.getByLabelText('Service API key')).toHaveValue(issuedCredential.token)
+  })
+
   it('requires focused confirmation before revocation', async () => {
     vi.mocked(fetchJson)
       .mockResolvedValueOnce([activeCredential])
