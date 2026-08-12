@@ -9,6 +9,7 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 public sealed class SystemUserContext : ICurrentUserContext
 {
     public bool IsAuthenticated => false;
+    public string ActorType => "system";
     public Guid UserId => Guid.Empty;
     public string Email => "system";
     public string Role => Roles.AgencyAdmin;

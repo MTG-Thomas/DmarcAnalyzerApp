@@ -36,6 +36,9 @@ public sealed class BackupExportService(
         // Reveal-once API credentials are intentionally not recoverable from a
         // configuration artifact. A restored API source must receive a new token.
         "api_source_credential",
+        // Service API credentials are also reveal-once. Integrations must be
+        // re-authorized after a restore rather than inheriting a copied token.
+        "service_api_credential",
     ];
 
     public async Task<ServiceResult<BackupArtifact>> ExportAsync(
@@ -209,5 +212,6 @@ public sealed class BackupExportService(
             [ExcludedTables[5]] = await db.SmtpTlsReportPolicies.LongCountAsync(ct),
             [ExcludedTables[6]] = await db.SmtpTlsFailureDetails.LongCountAsync(ct),
             [ExcludedTables[7]] = await db.ApiSourceCredentials.LongCountAsync(ct),
+            [ExcludedTables[8]] = await db.ServiceApiCredentials.LongCountAsync(ct),
         };
 }

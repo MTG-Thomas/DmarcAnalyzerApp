@@ -10,7 +10,7 @@ public sealed class AuditEvent
     public Guid Id { get; set; } = Guid.NewGuid();
     public DateTime OccurredAtUtc { get; set; } = DateTime.UtcNow;
 
-    /// <summary>`user`, `system`, or `anonymous` (a failed sign-in has no actor yet).</summary>
+    /// <summary>`user`, `service`, `system`, or `anonymous` (a failed sign-in has no actor yet).</summary>
     public string ActorType { get; set; } = "user";
 
     public Guid? ActorUserId { get; set; }

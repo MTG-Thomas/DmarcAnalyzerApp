@@ -25,6 +25,8 @@ public static class AuditEvents
     public const string ApiSourceCredentialRotated = "api_source_credential.rotated";
     public const string ApiSourceCredentialRevoked = "api_source_credential.revoked";
     public const string ApiSourceReportUploaded = "api_source.report.uploaded";
+    public const string ServiceApiCredentialCreated = "service_api_credential.created";
+    public const string ServiceApiCredentialRevoked = "service_api_credential.revoked";
 
     public const string UserCreated = "user.created";
     public const string UserUpdated = "user.updated";
@@ -109,10 +111,14 @@ public sealed class AuditLog(
         // A successful sign-in is performed by a user who isn't authenticated
         // *yet* on this request, so the caller can name them explicitly rather
         // than the trail attributing their own login to "anonymous".
-        var actorId = actorUserIdOverride ?? (currentUser.IsAuthenticated ? currentUser.UserId : null);
+        var actorType = actorUserIdOverride.HasValue
+            ? "user"
+            : currentUser.IsAuthenticated ? currentUser.ActorType : "anonymous";
+        var actorId = actorUserIdOverride
+            ?? (actorType == "user" ? currentUser.UserId : null);
         return WriteAsync(new AuditEvent
         {
-            ActorType = actorId.HasValue ? "user" : "anonymous",
+            ActorType = actorType,
             ActorUserId = actorId,
             ActorEmail = actorEmailOverride ?? (currentUser.IsAuthenticated ? currentUser.Email : string.Empty),
             EventType = eventType,

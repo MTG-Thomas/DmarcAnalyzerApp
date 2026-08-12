@@ -15,7 +15,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     // upgrade test proves this schema-bearing slice preserves configuration.
     private const string BeforeApiSourceMigration = "20260806191701_AddSmtpTlsReportIngestion";
     private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
-    private const string ExpectedLatestMigration = "20260811205233_AddApiSourceCredentials";
+    private const string ExpectedLatestMigration = "20260812012105_AddServiceApiCredentials";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
