@@ -73,6 +73,26 @@ public sealed class ServiceApiCredentialTests
     }
 
     [Fact]
+    public async Task ListAndRevokeExposeMetadataAndRevocationIsIdempotent()
+    {
+        await using var db = NewDb();
+        var service = new ServiceApiCredentialService(db);
+        var expiry = DateTimeOffset.UtcNow.AddDays(30);
+        var issued = (await service.IssueAsync(
+            new CreateServiceApiCredentialRequest(" Bifrost ", expiry), default)).Value!;
+
+        var listed = Assert.Single(await service.ListAsync(default));
+        Assert.Equal("Bifrost", listed.Name);
+        Assert.Equal(expiry.UtcDateTime, listed.ExpiresAtUtc, TimeSpan.FromSeconds(1));
+
+        var first = (await service.RevokeAsync(issued.Id, default)).Value!;
+        var second = (await service.RevokeAsync(issued.Id, default)).Value!;
+        Assert.NotNull(first.RevokedAtUtc);
+        Assert.Equal(first.RevokedAtUtc, second.RevokedAtUtc);
+        Assert.Equal(404, (await service.RevokeAsync(Guid.NewGuid(), default)).StatusCode);
+    }
+
+    [Fact]
     public async Task BearerServiceTokenAuthenticatesAsGlobalAnalyst()
     {
         var context = new DefaultHttpContext();

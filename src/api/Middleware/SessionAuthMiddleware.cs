@@ -45,7 +45,9 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
             if (principal is null)
             {
                 context.Response.StatusCode = 401;
-                await context.Response.WriteAsJsonAsync(new { error = "not authenticated" });
+                await context.Response.WriteAsJsonAsync(
+                    new { error = "not authenticated" },
+                    context.RequestAborted);
                 return;
             }
 
@@ -58,7 +60,9 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         if (cookieId is null)
         {
             context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "not authenticated" });
+            await context.Response.WriteAsJsonAsync(
+                new { error = "not authenticated" },
+                context.RequestAborted);
             return;
         }
 
@@ -66,7 +70,9 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         if (sessionUser is null)
         {
             context.Response.StatusCode = 401;
-            await context.Response.WriteAsJsonAsync(new { error = "session expired or invalid" });
+            await context.Response.WriteAsJsonAsync(
+                new { error = "session expired or invalid" },
+                context.RequestAborted);
             return;
         }
 
