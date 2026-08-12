@@ -5,11 +5,11 @@ public sealed class MailboxSource
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;
     public string Protocol { get; set; } = "imap";
-    public string Host { get; set; } = string.Empty;
-    public int Port { get; set; }
-    public bool UseTls { get; set; } = true;
-    public string Username { get; set; } = string.Empty;
-    public string PasswordEncrypted { get; set; } = string.Empty;
+    public string? Host { get; set; }
+    public int? Port { get; set; }
+    public bool? UseTls { get; set; } = true;
+    public string? Username { get; set; }
+    public string? PasswordEncrypted { get; set; }
     public Guid DefaultClientId { get; set; }
     public bool IsActive { get; set; } = true;
 
@@ -46,4 +46,23 @@ public sealed class MailboxSource
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Client? DefaultClient { get; set; }
+
+    public void NormalizeProtocolState()
+    {
+        if (!string.Equals(Protocol, "api", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Host = null;
+        Port = null;
+        UseTls = null;
+        Username = null;
+        PasswordEncrypted = null;
+        DeleteAfterRetention = false;
+        OldestMessageAtUtc = null;
+        LastSuccessSyncAtUtc = null;
+        LastProcessedUid = null;
+        LastProcessedUidValidity = null;
+    }
 }

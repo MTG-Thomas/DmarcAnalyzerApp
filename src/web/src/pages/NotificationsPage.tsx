@@ -23,7 +23,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
 }
 
 /**
- * Who gets emailed. A recipient with no client is agency-wide and receives
+ * Who gets emailed. A recipient with no client is MSP-wide and receives
  * notifications for every client — useful for an internal ops address.
  */
 export function NotificationsPage() {
@@ -164,7 +164,7 @@ export function NotificationsPage() {
                 <label className="flex min-w-[200px] flex-col gap-1.5">
                   <span className="text-xs font-medium text-secondary">Client</span>
                   <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                    <option value="">All clients (agency-wide)</option>
+                    <option value="">All clients (MSP-wide)</option>
                     {clients.map((client) => (
                       <option key={client.id} value={client.id}>
                         {client.name}

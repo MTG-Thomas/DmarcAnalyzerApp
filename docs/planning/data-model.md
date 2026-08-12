@@ -28,7 +28,7 @@ code against. **Part B is unbuilt target state** for features on the roadmap.
 
 # Part A — Implemented schema
 
-Thirteen tables. Keys and indexes below are the ones actually configured in
+Keys and indexes below are the ones actually configured in
 `DmarcAnalyzerDbContext`.
 
 ## A.1 Identity and access
@@ -135,19 +135,19 @@ A failed lookup keeps the previous policy *and* source. A transient SERVFAIL mus
 not make a `p=reject` domain look unprotected; only a successful lookup finding
 nothing anywhere clears them.
 
-## A.3 Mailbox sources and sync history
+## A.3 Report sources, API credentials, and sync history
 
 ### `mailbox_source`
-An IMAP mailbox to poll. Also carries its own sync checkpoint — there is no
-separate checkpoint table.
+An IMAP mailbox to poll or an API machine-ingestion source. A mailbox row also
+carries its own sync checkpoint — there is no separate checkpoint table.
 
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `Name` (200), `Host` (255), `Port`, `UseTls` | |
-| `Protocol` | max 20 — `imap` (POP3 not implemented) |
-| `Username` | max 255 |
-| `PasswordEncrypted` | max 2048 — AES-256-GCM via `Security:CredentialEncryptionKey` |
+| `Name` (200), `Host` (255), `Port`, `UseTls` | mailbox fields are null for API rows |
+| `Protocol` | max 20 — `imap`, `pop3`, or `api` |
+| `Username` | max 255; null for API rows |
+| `PasswordEncrypted` | max 2048 — AES-256-GCM via `Security:CredentialEncryptionKey`; null for API rows |
 | `DefaultClientId` | FK → `client`, **restrict**, indexed — client assigned to domains auto-created from this mailbox |
 | `IsActive` | bool |
 | `LastSuccessSyncAtUtc` | nullable |
@@ -155,6 +155,48 @@ separate checkpoint table.
 | `DeleteAfterRetention` | default false — opt-in per source; the worker expunges report mail past the *widest* retention window among the clients this source serves, suspended entirely if any of them is under legal hold |
 | `OldestMessageAtUtc` | nullable — internal date of the oldest message still in the polled folder, refreshed each sync; the evidence for how far back the mailbox can still archive-replay from |
 | `CreatedAtUtc`, `UpdatedAtUtc` | |
+
+PostgreSQL enforces the protocol-specific row shape. API sources have no mailbox
+connection, checkpoint, health, or retention state. Mailbox sources require a
+complete host/port/TLS/user/password configuration.
+
+### `api_source_credential`
+Reveal-once machine credentials for API report sources. Two or more rows may be
+active during rotation; the old key remains valid until explicit revocation.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK, uuid |
+| `MailboxSourceId` | FK → `mailbox_source`, **cascade**, indexed with prefix/revocation |
+| `Prefix` | exactly 22 base64url characters; unique with `MailboxSourceId` |
+| `TokenHash` | exactly 32 bytes — SHA-256 of the full token; compared in fixed time |
+| `CreatedAtUtc` | |
+| `RevokedAtUtc` | nullable; non-null credentials cannot authenticate |
+
+The 43-character secret and full `dmarc_v1.<prefix>.<secret>` token are never
+stored. This table is omitted from configuration artifacts, including hashes and
+prefixes, so restore requires credential reissue. PostgreSQL serializes issuance
+against source protocol changes: inserting under a non-API source is refused,
+and changing an API source to a mailbox source revokes every active credential.
+
+### `service_api_credential`
+Reveal-once credentials for server-to-server access to the normal `/api/v1`
+surface. They authenticate as global `agency_analyst` principals and are distinct
+from source-scoped report-upload credentials.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK, uuid |
+| `Name` | max 100; copied into audit actor identity |
+| `Prefix` | exactly 22 base64url characters; globally unique |
+| `TokenHash` | exactly 32 bytes — SHA-256 of the full token; compared in fixed time |
+| `CreatedAtUtc` | |
+| `ExpiresAtUtc` | indexed; must be after creation and no more than 366 days at issuance |
+| `RevokedAtUtc` | nullable; non-null credentials cannot authenticate |
+
+The full `dmarc_api_v1.<prefix>.<secret>` token is never stored or logged. The
+table is excluded from configuration artifacts; restored integrations receive a
+new credential.
 
 ### `mailbox_sync_run`
 One row per sync attempt; the operational audit trail behind

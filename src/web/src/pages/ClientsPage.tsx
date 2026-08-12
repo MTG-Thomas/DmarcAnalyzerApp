@@ -247,7 +247,7 @@ export function ClientsPage() {
           <DialogHeader>
             <DialogTitle>{editingClientId ? 'Edit client' : 'Add client'}</DialogTitle>
             <DialogDescription>
-              Manage the agency client account profile and settings.
+              Manage the MSP client account profile and settings.
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={createOrUpdateClient}>

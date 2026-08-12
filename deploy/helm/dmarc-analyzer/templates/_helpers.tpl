@@ -136,6 +136,10 @@ template time instead.
 {{- fail "postgres.enabled is false, so set externalDatabase.host (or externalDatabase.connectionString)." -}}
 {{- end -}}
 
+{{- if and (not .Values.postgres.enabled) (not .Values.externalDatabase.connectionString) (not .Values.auth.existingSecret) (not .Values.externalDatabase.password) -}}
+{{- fail "postgres.enabled is false, so set externalDatabase.password, auth.existingSecret, or externalDatabase.connectionString." -}}
+{{- end -}}
+
 {{- if and (not .Values.auth.encryptionKey) (not .Values.auth.existingSecret) -}}
 {{- fail "Set auth.encryptionKey (openssl rand -base64 32) or auth.existingSecret. Without it mailbox credentials are stored in plaintext." -}}
 {{- end -}}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Notice } from '@/components/Notice'
@@ -20,7 +20,9 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type {
+  ApiSourceCredential,
   Client,
+  IssuedApiSourceCredential,
   MailboxHealth,
   MailboxSource,
   MailboxSyncRun,
@@ -33,7 +35,7 @@ type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
 const initialMailboxForm = {
   name: '',
-  protocol: 'imap' as 'imap' | 'pop3',
+  protocol: 'imap' as 'imap' | 'pop3' | 'api',
   host: '',
   port: 993,
   useTls: true,
@@ -73,6 +75,291 @@ const formatWhen = (value: string | null) => {
   return date.toLocaleString()
 }
 
+export function ApiSourceCredentialsDialog({
+  source,
+  onClose,
+}: {
+  source: MailboxSource
+  onClose: () => void
+}) {
+  const [credentials, setCredentials] = useState<ApiSourceCredential[]>([])
+  const [loading, setLoading] = useState(true)
+  const [credentialsLoaded, setCredentialsLoaded] = useState(false)
+  const [action, setAction] = useState<'issue' | 'revoke' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [issued, setIssued] = useState<IssuedApiSourceCredential | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [revokeTarget, setRevokeTarget] = useState<ApiSourceCredential | null>(null)
+  const revokeConfirmationRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadCredentials = async () => {
+      try {
+        const result = await fetchJson<ApiSourceCredential[]>(
+          `/api/v1/mailbox-sources/${source.id}/credentials`,
+        )
+        if (!cancelled) {
+          setCredentials(result)
+          setCredentialsLoaded(true)
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to load API keys')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void loadCredentials()
+    return () => {
+      cancelled = true
+    }
+  }, [source.id])
+
+  useEffect(() => {
+    if (revokeTarget) revokeConfirmationRef.current?.focus()
+  }, [revokeTarget])
+
+  const hasActiveCredential = credentials.some((credential) => credential.revokedAtUtc === null)
+
+  const issueCredential = async () => {
+    const rotating = hasActiveCredential
+    setAction('issue')
+    setError(null)
+    setCopied(false)
+    try {
+      const result = await fetchJson<IssuedApiSourceCredential>(
+        `/api/v1/mailbox-sources/${source.id}/credentials${rotating ? '/rotate' : ''}`,
+        { method: 'POST' },
+      )
+      setCredentials((current) => [
+        {
+          id: result.id,
+          sourceId: result.sourceId,
+          prefix: result.prefix,
+          createdAtUtc: result.createdAtUtc,
+          revokedAtUtc: null,
+        },
+        ...current,
+      ])
+      setIssued(result)
+    } catch (issueError) {
+      setError(issueError instanceof Error ? issueError.message : 'Failed to create API key')
+    } finally {
+      setAction(null)
+    }
+  }
+
+  const copyIssuedCredential = async () => {
+    if (!issued) return
+    setError(null)
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable')
+      await navigator.clipboard.writeText(issued.token)
+      setCopied(true)
+    } catch {
+      setError('Could not copy the API key. Select and copy it manually.')
+    }
+  }
+
+  const revokeCredential = async () => {
+    if (!revokeTarget) return
+    setAction('revoke')
+    setError(null)
+    try {
+      const result = await fetchJson<ApiSourceCredential>(
+        `/api/v1/mailbox-sources/${source.id}/credentials/${revokeTarget.id}`,
+        { method: 'DELETE' },
+      )
+      setCredentials((current) =>
+        current.map((credential) => (credential.id === result.id ? result : credential)),
+      )
+      setIssued((current) => (current?.id === result.id ? null : current))
+      setRevokeTarget(null)
+    } catch (revokeError) {
+      setError(revokeError instanceof Error ? revokeError.message : 'Failed to revoke API key')
+    } finally {
+      setAction(null)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (!open && action === null ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>API keys for {source.name}</DialogTitle>
+          <DialogDescription>
+            Keys authenticate report uploads to this source. Secret values are shown only when created.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4">
+          {error ? <Notice tone="danger">{error}</Notice> : null}
+
+          {issued ? (
+            <Notice tone="warn" title="Copy and save this API key now">
+              <p>It will not be shown again after you close this dialog.</p>
+              {credentials.some(
+                (credential) => credential.id !== issued.id && credential.revokedAtUtc === null,
+              ) ? (
+                <p className="mt-1">Existing keys remain active until you revoke them.</p>
+              ) : null}
+              <Input
+                className="mt-2 text-xs"
+                aria-label="API key"
+                readOnly
+                mono
+                value={issued.token}
+                onFocus={(event) => event.currentTarget.select()}
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon="copy"
+                  aria-label="Copy API key"
+                  onClick={() => void copyIssuedCredential()}
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+                <span className="text-xs" aria-live="polite">
+                  {copied ? 'API key copied.' : ''}
+                </span>
+              </div>
+            </Notice>
+          ) : null}
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-body">Issued keys</h3>
+              <p className="text-xs text-secondary">Prefixes identify keys without exposing secrets.</p>
+            </div>
+            {!loading && credentialsLoaded ? (
+              <Button
+                type="button"
+                size="sm"
+                icon={hasActiveCredential ? 'refresh-cw' : 'plus'}
+                disabled={action !== null || revokeTarget !== null}
+                onClick={() => void issueCredential()}
+              >
+                {action === 'issue'
+                  ? hasActiveCredential
+                    ? 'Rotating'
+                    : 'Creating'
+                  : hasActiveCredential
+                    ? 'Rotate API key'
+                    : 'Create API key'}
+              </Button>
+            ) : null}
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Icon name="loader-circle" size={20} className="animate-spin text-secondary" />
+            </div>
+          ) : !credentialsLoaded ? (
+            <p className="rounded-md border border-border px-3 py-6 text-center text-sm text-secondary">
+              API key metadata is unavailable. Close and reopen this dialog to retry.
+            </p>
+          ) : credentials.length === 0 ? (
+            <p className="rounded-md border border-border px-3 py-6 text-center text-sm text-secondary">
+              No API keys have been issued for this source.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {credentials.map((credential) => {
+                const confirmationTitleId = `revoke-api-key-${credential.id}`
+                return (
+                  <div key={credential.id} className="space-y-2">
+                    <div className="flex flex-col gap-2 rounded-md border border-border px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <code className="block truncate font-mono text-xs text-body">
+                          {credential.prefix}
+                        </code>
+                        <p className="mt-0.5 text-xs text-secondary">
+                          Created {formatWhen(credential.createdAtUtc)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Badge variant={credential.revokedAtUtc ? 'neutral' : 'success'}>
+                          {credential.revokedAtUtc ? 'Revoked' : 'Active'}
+                        </Badge>
+                        {credential.revokedAtUtc === null ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            aria-label={`Revoke ${credential.prefix}`}
+                            disabled={action !== null || revokeTarget !== null}
+                            onClick={() => setRevokeTarget(credential)}
+                          >
+                            Revoke
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {revokeTarget?.id === credential.id ? (
+                      <div
+                        ref={revokeConfirmationRef}
+                        role="alertdialog"
+                        aria-labelledby={confirmationTitleId}
+                        tabIndex={-1}
+                        className="focus:outline-none"
+                      >
+                        <Notice
+                          tone="warn"
+                          title={
+                            <span id={confirmationTitleId}>
+                              Revoke API key {revokeTarget.prefix}?
+                            </span>
+                          }
+                        >
+                          <p>Applications using this key will stop sending reports immediately.</p>
+                          <div className="mt-2 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={action !== null}
+                              onClick={() => setRevokeTarget(null)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="sm"
+                              disabled={action !== null}
+                              aria-label="Confirm revoke"
+                              onClick={() => void revokeCredential()}
+                            >
+                              {action === 'revoke' ? 'Revoking' : 'Revoke key'}
+                            </Button>
+                          </div>
+                        </Notice>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button type="button" variant="secondary" disabled={action !== null} onClick={onClose}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function MailboxSourcesPage() {
   usePageTitle('Mailbox sources')
   const { user } = useAuth()
@@ -92,6 +379,7 @@ export function MailboxSourcesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMailboxId, setEditingMailboxId] = useState<string | null>(null)
   const [mailboxForm, setMailboxForm] = useState(initialMailboxForm)
+  const [credentialSource, setCredentialSource] = useState<MailboxSource | null>(null)
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -143,8 +431,8 @@ export function MailboxSourcesPage() {
     return mailboxSources.filter(
       (x) =>
         x.name.toLowerCase().includes(q) ||
-        x.host.toLowerCase().includes(q) ||
-        x.username.toLowerCase().includes(q),
+        x.host?.toLowerCase().includes(q) ||
+        x.username?.toLowerCase().includes(q),
     )
   }, [search, mailboxSources])
 
@@ -215,10 +503,10 @@ export function MailboxSourcesPage() {
       setMailboxForm({
         name: source.name,
         protocol: source.protocol,
-        host: source.host,
-        port: source.port,
-        useTls: source.useTls,
-        username: source.username,
+        host: source.host ?? '',
+        port: source.port ?? 993,
+        useTls: source.useTls ?? true,
+        username: source.username ?? '',
         password: '',
         defaultClientId: source.defaultClientId,
         isActive: source.isActive,
@@ -237,7 +525,17 @@ export function MailboxSourcesPage() {
     event.preventDefault()
     setError(null)
     try {
-      const payload = { ...mailboxForm }
+      const payload = mailboxForm.protocol === 'api'
+        ? {
+            ...mailboxForm,
+            host: null,
+            port: null,
+            useTls: null,
+            username: null,
+            password: null,
+            deleteAfterRetention: false,
+          }
+        : { ...mailboxForm }
       if (editingMailboxId && !payload.password) {
         delete (payload as { password?: string }).password
       }
@@ -282,26 +580,27 @@ export function MailboxSourcesPage() {
   }
 
   const count = mailboxSources.length
-  const subtitle = `${count} ${count === 1 ? 'mailbox' : 'mailboxes'} · ${healthyCount}/${count} healthy`
+  const mailboxCount = mailboxHealth.length
+  const subtitle = `${count} ${count === 1 ? 'source' : 'sources'} · ${healthyCount}/${mailboxCount} mailboxes healthy`
 
   return (
     <>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="font-display text-xl font-bold tracking-tight text-body">Mailbox sources</h1>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Report sources</h1>
           <p className="mt-1 text-sm text-secondary">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:shrink-0">
           <Input
             icon="search"
-            placeholder="Search mailboxes"
+            placeholder="Search sources"
             className="w-full sm:w-56"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {canManage && (
             <Button icon="plus" onClick={() => openMailboxDialog()}>
-              Add mailbox
+              Add source
             </Button>
           )}
         </div>
@@ -337,7 +636,9 @@ export function MailboxSourcesPage() {
                 <TableBody>
                   {filteredMailboxSources.map((source, index) => {
                     const health = healthBySourceId.get(source.id)
-                    const badge = source.isActive
+                    const badge = source.protocol === 'api'
+                      ? { label: source.isActive ? 'API source' : 'Inactive', variant: 'neutral' as const }
+                      : source.isActive
                       ? getHealthBadge(health?.lastRunStatus)
                       : { label: 'Inactive', variant: 'neutral' as const }
                     const isSyncing = syncingId === source.id
@@ -345,11 +646,13 @@ export function MailboxSourcesPage() {
                       <TableRow key={source.id} last={index === filteredMailboxSources.length - 1}>
                         <TableCell mono>{source.name}</TableCell>
                         <TableCell mono>
-                          {source.protocol}:{source.port}
+                          {source.protocol === 'api' ? 'api' : `${source.protocol}:${source.port}`}
                         </TableCell>
-                        <TableCell mono>{source.host}</TableCell>
+                        <TableCell mono>{source.host ?? '—'}</TableCell>
                         <TableCell>
-                          <span className="text-sm text-secondary">{lastSyncLabel(health)}</span>
+                          <span className="text-sm text-secondary">
+                            {source.protocol === 'api' ? 'Not applicable' : lastSyncLabel(health)}
+                          </span>
                         </TableCell>
                         <TableCell mono align="right">
                           {numOrDash(health?.lastRunMessagesScanned)}
@@ -364,6 +667,16 @@ export function MailboxSourcesPage() {
                         </TableCell>
                         <TableCell align="right">
                           <div className="flex justify-end gap-2">
+                            {canManage && source.protocol === 'api' ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon="key-round"
+                                onClick={() => setCredentialSource(source)}
+                              >
+                                API keys
+                              </Button>
+                            ) : null}
                             {canManage && (
                               <Button
                                 variant="secondary"
@@ -374,19 +687,21 @@ export function MailboxSourcesPage() {
                                 Edit
                               </Button>
                             )}
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={isSyncing}
-                              onClick={() => void syncNow(source.id)}
-                            >
-                              <Icon
-                                name="refresh-cw"
-                                size={14}
-                                className={isSyncing ? 'animate-spin' : undefined}
-                              />
-                              {isSyncing ? 'Syncing' : 'Sync now'}
-                            </Button>
+                            {source.protocol !== 'api' ? (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={isSyncing}
+                                onClick={() => void syncNow(source.id)}
+                              >
+                                <Icon
+                                  name="refresh-cw"
+                                  size={14}
+                                  className={isSyncing ? 'animate-spin' : undefined}
+                                />
+                                {isSyncing ? 'Syncing' : 'Sync now'}
+                              </Button>
+                            ) : null}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -397,7 +712,7 @@ export function MailboxSourcesPage() {
             </div>
             {filteredMailboxSources.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-secondary">
-                No mailbox sources found{search ? ' for the current search' : ''}.
+                No report sources found{search ? ' for the current search' : ''}.
               </p>
             ) : null}
           </Card>
@@ -591,8 +906,8 @@ export function MailboxSourcesPage() {
       <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingMailboxId ? 'Edit mailbox source' : 'Add mailbox source'}</DialogTitle>
-            <DialogDescription>Configure mailbox transport and default routing client.</DialogDescription>
+            <DialogTitle>{editingMailboxId ? 'Edit report source' : 'Add report source'}</DialogTitle>
+            <DialogDescription>Configure transport and the authoritative default routing client.</DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={createOrUpdateMailboxSource}>
             <label className="grid gap-1.5 text-sm font-medium text-body">
@@ -609,53 +924,71 @@ export function MailboxSourcesPage() {
                 <Select
                   value={mailboxForm.protocol}
                   onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'pop3' }))
+                    setMailboxForm((x) => ({
+                      ...x,
+                      protocol: e.target.value as 'imap' | 'pop3' | 'api',
+                      deleteAfterRetention: e.target.value === 'api' ? false : x.deleteAfterRetention,
+                    }))
                   }
                 >
                   <option value="imap">IMAP</option>
                   <option value="pop3">POP3</option>
+                  <option value="api">API</option>
                 </Select>
               </label>
-              <label className="grid gap-1.5 text-sm font-medium text-body">
-                Port
-                <Input
-                  type="number"
-                  min={1}
-                  mono
-                  value={mailboxForm.port}
-                  onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
-                  }
-                  required
-                />
-              </label>
+              {mailboxForm.protocol !== 'api' ? (
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Port
+                  <Input
+                    type="number"
+                    min={1}
+                    mono
+                    value={mailboxForm.port}
+                    onChange={(e) =>
+                      setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
+                    }
+                    required
+                  />
+                </label>
+              ) : <div />}
             </div>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              Host
-              <Input
-                mono
-                value={mailboxForm.host}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
-                required
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              Username
-              <Input
-                value={mailboxForm.username}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
-                required
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              {editingMailboxId ? 'New password (optional)' : 'Password'}
-              <Input
-                type="password"
-                value={mailboxForm.password}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
-                required={!editingMailboxId}
-              />
-            </label>
+            {mailboxForm.protocol !== 'api' ? (
+              <>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Host
+                  <Input
+                    mono
+                    value={mailboxForm.host}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Username
+                  <Input
+                    value={mailboxForm.username}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  {editingMailboxId ? 'New password (optional)' : 'Password'}
+                  <Input
+                    type="password"
+                    value={mailboxForm.password}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
+                    required={!editingMailboxId || sourceById.get(editingMailboxId)?.protocol === 'api'}
+                  />
+                </label>
+              </>
+            ) : null}
+            {editingMailboxId && sourceById.get(editingMailboxId)?.protocol !== mailboxForm.protocol ? (
+              <Notice tone="warn" title="This changes how reports reach the source.">
+                {mailboxForm.protocol === 'api'
+                  ? 'The saved mailbox connection, checkpoint, last-success state, and mail-retention setting will be cleared.'
+                  : 'Enter a complete mailbox connection. API delivery state is not reused as a mailbox checkpoint.'}
+              </Notice>
+            ) : null}
             <label className="grid gap-1.5 text-sm font-medium text-body">
               Default client
               <Select
@@ -671,14 +1004,16 @@ export function MailboxSourcesPage() {
                 ))}
               </Select>
             </label>
-            <label className="flex items-center gap-2 text-sm text-secondary">
-              <input
-                type="checkbox"
-                checked={mailboxForm.useTls}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
-              />
-              Use TLS
-            </label>
+            {mailboxForm.protocol !== 'api' ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={mailboxForm.useTls}
+                  onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
+                />
+                Use TLS
+              </label>
+            ) : null}
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input
                 type="checkbox"
@@ -687,17 +1022,19 @@ export function MailboxSourcesPage() {
               />
               Active
             </label>
-            <label className="flex items-center gap-2 text-sm text-secondary">
-              <input
-                type="checkbox"
-                checked={mailboxForm.deleteAfterRetention}
-                onChange={(e) =>
-                  setMailboxForm((x) => ({ ...x, deleteAfterRetention: e.target.checked }))
-                }
-              />
-              Delete mail past the retention window
-            </label>
-            {mailboxForm.deleteAfterRetention ? (
+            {mailboxForm.protocol !== 'api' ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={mailboxForm.deleteAfterRetention}
+                  onChange={(e) =>
+                    setMailboxForm((x) => ({ ...x, deleteAfterRetention: e.target.checked }))
+                  }
+                />
+                Delete mail past the retention window
+              </label>
+            ) : null}
+            {mailboxForm.protocol !== 'api' && mailboxForm.deleteAfterRetention ? (
               <Notice tone="warn" title="This deletes mail from the mailbox.">
                 Report mail older than the widest retention window of the clients this source
                 serves, plus a grace margin, is expunged on a daily pass. It gives the system
@@ -719,6 +1056,13 @@ export function MailboxSourcesPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {credentialSource ? (
+        <ApiSourceCredentialsDialog
+          source={credentialSource}
+          onClose={() => setCredentialSource(null)}
+        />
+      ) : null}
     </>
   )
 }

@@ -7,7 +7,7 @@ namespace DmarcAnalyzer.Api.Application.Backup;
 
 /// <summary>
 /// Produces the configuration artifact: everything a fresh install needs to become this
-/// one, minus the report data.
+/// one, minus replayable report data and reveal-once API credential material.
 /// <para>
 /// The exclusion criterion is volume, not category. <c>dmarc_report</c> and its three
 /// child tables are millions of rows that arrived over IMAP and can arrive again;
@@ -33,6 +33,12 @@ public sealed class BackupExportService(
         "smtp_tls_report",
         "smtp_tls_report_policy",
         "smtp_tls_failure_detail",
+        // Reveal-once API credentials are intentionally not recoverable from a
+        // configuration artifact. A restored API source must receive a new token.
+        "api_source_credential",
+        // Service API credentials are also reveal-once. Integrations must be
+        // re-authorized after a restore rather than inheriting a copied token.
+        "service_api_credential",
     ];
 
     public async Task<ServiceResult<BackupArtifact>> ExportAsync(
@@ -205,5 +211,7 @@ public sealed class BackupExportService(
             [ExcludedTables[4]] = await db.SmtpTlsReports.LongCountAsync(ct),
             [ExcludedTables[5]] = await db.SmtpTlsReportPolicies.LongCountAsync(ct),
             [ExcludedTables[6]] = await db.SmtpTlsFailureDetails.LongCountAsync(ct),
+            [ExcludedTables[7]] = await db.ApiSourceCredentials.LongCountAsync(ct),
+            [ExcludedTables[8]] = await db.ServiceApiCredentials.LongCountAsync(ct),
         };
 }

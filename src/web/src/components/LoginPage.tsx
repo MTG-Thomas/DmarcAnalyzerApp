@@ -229,7 +229,7 @@ export function LoginPage() {
                 id="login-email"
                 type="email"
                 autoComplete="email"
-                placeholder="you@agency.com"
+                placeholder="you@msp.example"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoFocus={!requiresBootstrap}

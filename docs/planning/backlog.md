@@ -21,8 +21,8 @@ all shipped. The near-term sequence below turns it from "works" into
    packaged so the combinations stay in step instead of drifting.
 
 Smaller, independent items to slot in opportunistically: **POP3 ingestion**, the
-**report upload/query API endpoints** (which would also make seeding test data
-far easier), and **CSV/JSON export**. Larger, deferred until a deployment calls
+**report query API endpoints** (authenticated machine upload is complete), and
+**CSV/JSON export**. Larger, deferred until a deployment calls
 for them: **branded PDF reports** and **M365/Google Workspace connectors**.
 (The console **visual redesign** is done — shipped as the new ink-green/teal
 design system.) See the categorized lists below for the full inventory.
@@ -146,17 +146,64 @@ Sequenced; each step is independently shippable.
       inserts nothing; the new order leaves 0 / 0, so a retry can succeed. Happy
       path and duplicate path both re-verified.
 
-- [ ] (todo) **An integration-test harness for the ingestion path.** This is the
-      second real bug in `MailboxSyncService` that the current test suite cannot
-      reach, and the reason is structural: every test uses `UseInMemoryDatabase`,
-      which supports neither the raw SQL nor the transactions this code depends on,
-      and the service needs an IMAP connection. Both fixes were verified by hand
-      against real Postgres, which is honest but not repeatable. Options are
-      Testcontainers for Postgres plus an `IMailStore` seam over MailKit, or a
-      narrower seam that lets the report-and-records write be driven directly.
-      Worth doing before the next change to this file.
+- [x] (done 2026-08-11) **Establish the real PostgreSQL integration harness.**
+      `src/api.integrationtests` keeps the fast InMemory suite intact while
+      giving each xUnit collection a randomly named disposable database. CI
+      runs the full lane on PostgreSQL 16 and a migration smoke on PostgreSQL
+      18; connection material uses an ephemeral test-only password and is
+      masked before it enters the test environment. The first tests pin the
+      latest migration, document the currently no-op v0.9.0/v0.10.0 schema
+      upgrade, preserve seeded configuration, and exercise the DMARC report and
+      ingest-ledger unique indexes plus concurrent `DomainIngestResolver` raw
+      SQL with two contexts.
+- [x] (done 2026-08-11) **Move DMARC persistence acceptance onto a callable
+      service.** `IDmarcReportIngestor` now owns domain routing, the report graph
+      transaction, deduplication, and ingest-ledger writes. PostgreSQL tests
+      prove full graph persistence, mid-child rollback, exact and concurrent
+      replay with separate contexts, invalid-contract rejection, and both new-
+      and existing-domain ownership. `MailboxSyncService` only parses and maps
+      the inserted/duplicate/rejected outcome to its existing counters.
+- [x] (done 2026-08-11) **Add the bounded raw-report extractor.** Bare
+      XML/JSON, GZIP, and multi-entry ZIP payloads now share one standalone
+      classifier with configuration-backed request, expanded, entry-count,
+      per-entry, and compression-ratio limits. Fatal container failures yield
+      no payloads; empty, nested, and unsupported ZIP entries can be rejected
+      alongside valid siblings.
+- [x] (done 2026-08-11) **Route runtime ingestion through the bounded seam.**
+      `IReportPayloadIngestor` composes extraction, both parsers, and the parsed
+      DMARC/TLS ingestors behind one trusted `ReportSourceContext`. Mailbox MIME
+      decoding now streams directly into it and no longer owns classification,
+      archive expansion, parsing, routing, or persistence. PostgreSQL tests pin
+      cross-container replay, rollback/recovery, and TLS source provenance.
+- [x] (done 2026-08-11) **Add the API report-source model.**
+      `mailbox_source.Protocol=api` retains source activation and default-client
+      ownership without fake IMAP fields. A real-PostgreSQL constraint protects
+      both API and mailbox row shapes, the down migration refuses while API rows
+      exist, API rows stay out of mailbox operations, and backup format v2 keeps
+      them round-trippable while still accepting format v1.
+- [x] (done 2026-08-11) **Add reveal-once credentials for API report sources.**
+      Source-scoped `dmarc_v1` keys overlap during rotation, persist only prefix
+      plus SHA-256 hash, compare in fixed time, and resolve the canonical trusted
+      source/client context. Admin issue/rotate/revoke operations are audited;
+      raw tokens are revealed once and all credential material stays out of logs
+      and backup artifacts. A restored source requires reissue.
+- [x] (done 2026-08-11) **Add the authenticated raw-report upload endpoint.**
+      `POST /api/ingest/v1/sources/{sourceId}/reports` accepts bounded raw bodies
+      or exactly one multipart file. Source-scoped bearer authentication is the
+      only identity path; cookie sessions cannot bypass it. Optional digest and
+      idempotency headers are verified against the unchanged payload, and the
+      shared raw ingestor owns extraction, parsing, routing, transactions, and
+      replay deduplication. PostgreSQL acceptance covers insert, replay,
+      rollback, source/client isolation, digest mismatch, and size limits.
+- [x] (done 2026-08-12) **Add service authentication for the normal backend API.**
+      Reveal-once `dmarc_api_v1` credentials authenticate server-to-server callers
+      as global analysts across `/api/v1`, while admin-only configuration and
+      credential operations remain unavailable. Tokens expire within 366 days,
+      persist only a prefix and fixed-time-compared hash, never fall back to a
+      cookie after a bad bearer header, are attributed as service actors in the
+      audit trail, and are excluded from backup artifacts.
 
-- [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
+- [ ] (todo) Implement API endpoints for report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
 - [x] (done) Add initial client/domain CRUD baseline endpoints for API vertical slice.
 - [x] (done) Add mailbox source CRUD baseline endpoints for API vertical slice.
@@ -167,7 +214,7 @@ Sequenced; each step is independently shippable.
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [x] (done) Implement per-client retention rules with default 27 months plus purge job and legal-hold support (`RetentionPurgeService`, daily worker pass, `client.LegalHold`, admin preview/purge endpoints). Archival-before-delete was not implemented — purging is outright deletion.
-- [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64+arm64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
+- [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
 - [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [x] (done) Make the console usable on a phone. The shell was the whole problem: a permanent 230px sidebar plus `main`'s flat `px-8` left ~96px of content at 390px, and there was no breakpoint anywhere in `ConsoleLayout`. Below `lg` the sidebar is now an off-canvas drawer (backdrop, Escape, scroll lock, focus moved in and returned, `invisible` so the closed menu is not tabbable) behind a top bar; at `lg` and up the layout is byte-for-byte the old one. Per-page pass on top: headers and action rows stack, search fields go fluid, the three tables that lacked a scroll container got one, dialogs cap at `100dvh` and scroll internally (the taller forms previously pushed their submit button off a short viewport with no way to reach it), and inputs go 16px below `sm` because iOS Safari zooms the page on any smaller focused field. Verified at 320/390/1023/1024/1280 — zero horizontal overflow on all 11 routes at 320px.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
@@ -183,15 +230,18 @@ Sequenced; each step is independently shippable.
 - [x] (done) Fix horizontal overflow in the two widest tables — Domains needed 1110px and the sending-sources table 1425px inside a 1038px container. Both now fit exactly, with nothing truncated: the options listed here (truncate hostnames with a `title`, narrow the compliance meter) were rejected in favour of letting content occupy a second line and share width across columns. Domains stacks the client under the domain name in one column, which alone reclaimed 178px of the 446px those two columns used to take. Sources moves the reverse-DNS hostname to its own row spanning the first four columns, so a 395px hostname costs the Source IP column nothing, and moves Quarantined and Rejected into the row expansion that already existed. Each source is now its own `<tbody>` so the divider and hover belong to the source rather than to each of its rows. Worth recording because it is counter-intuitive: after the hostname moved, **IPv6 was the entire remaining overflow**. Shortening every hostname in the rendered table changed the Source IP column not at all (348px before and after); shortening every IP took it from 348px to 119px. A `<wbr>` after each colon lets long IPv6 fold at a group boundary — 198 of 1136 rows wrap, IPv4 never does. Sorting by client, quarantined and rejected went away with their headers; the client filter already covers the first.
 - [x] (done) Record the SPF `helo` scope as sent instead of rewriting it to `mfrom`. DmarcRua 2.0.0 modelled only `mfrom`, so `helo` — legal per RFC 7208 and sent by real reporters — was fatal to the whole document, and the parser rewrote it to save the report. That stored a scope the reporter never reported and surfaced it in the per-source SPF table on `DomainDetailPage`, so it was a wrong value rather than a missing one: **82 auth results across the 3242-report corpus**. 2.0.1 added `SpfDomainScope.Helo`, so the rewrite is gone and `scope` moved into `EnumRepairs` (`["mfrom", "helo"]`, falling back to `mfrom`) — the enum still has no empty member, so `<scope/>` or an unrecognised value is fatal and must still be repaired. No migration: the information was destroyed at parse time, so historic rows stay `mfrom` and cannot be recovered. Frontend needed no change; `scope` is already `string | null` there.
 - [x] (done) Write the canonical spelling, not the reporter's, when `EnumRepairs` accepts a value case-insensitively. Latent bug, found while moving `scope` into that table: the pass matched `OrdinalIgnoreCase` and then wrote the reporter's own spelling back, but `XmlSerializer` matches `XmlEnum` names **case-sensitively** — so `PASS` or `HELO` was accepted here and then rejected by the serializer, losing every record in the document, which is the exact failure this pass exists to prevent. Case-only corrections raise no warning, since they substitute no meaning.
-- [ ] (todo) Surface RFC 9990's `pass` action disposition in analytics and the
-      console. The parser now preserves it and the ingestion path stores the raw
-      string in `dmarc_report_record.Disposition` without a schema change, but
-      `AnalyticsDispositionsDto`, its query projections, and the TypeScript/UI
-      contract still expose only `none`, `quarantine`, and `reject`. Compliance
-      and total-message counts remain correct because they derive from aligned
-      DKIM/SPF results; disposition rollups currently omit these messages. Add a
-      `Pass` bucket end to end, with query and render tests, before claiming full
-      RFC 9990 analytics support.
+- [x] (done 2026-08-11) Surface RFC 9990's `pass` action disposition in analytics
+      and the console. `AnalyticsDispositionsDto`, both query projections, both
+      TypeScript contracts, and the source-detail visualization now expose the
+      fourth bucket. Query tests pin the bucket sum and preserve DKIM/SPF-derived
+      compliance plus the `quarantine + reject` blocked total; the render test
+      proves a non-zero `pass` count is visible alongside the v1 buckets.
+- [x] (done 2026-08-11) Make the synthetic Analyzer conformance corpus a CI gate.
+      The deterministic 33-case/35-payload recipe preserves source provenance,
+      `.example` and documentation-address safety, exact hashes, and immediate
+      recovery sentinels. Real-PostgreSQL tests run the production
+      `IReportPayloadIngestor`, compare the exact durable graph and routing, and
+      cover cross-source plus concurrent replay without adding an HTTP test path.
 - [ ] (todo) ~~Drop the namespace-stripping pass now that 2.0.1 ignores namespaces.~~ **Measured and rejected — do not do this.** The claim was that `NamespaceIgnorantXmlReader` makes `NormalizeReportXml`'s namespace pass redundant. It does not: that reader only hides namespaces from the *serializer*, while the validating reader beneath it still sees them, and `rua.xsd` declares no `targetNamespace`. With the pass removed, a namespaced report deserializes but matches no schema, so **every element** raises `Could not find schema information` — 31 warnings on a one-record report, and `HasValidationWarnings` true. Stripping first keeps schema validation meaningful and costs one explanatory message instead of 31 useless ones. Kept as a `[ ]` rather than deleted so the idea is not re-proposed. Unrelated but worth knowing: DmarcRua declares `NamespaceIgnorantXmlReader` as a `public` type in the *global* namespace, so it is visible unqualified everywhere in the API project.
 - [ ] (todo) Emit structured JSON logs, which ADR 0006 lists as an accepted decision and nothing implements — the console logger is plain text, and no `AddJsonConsole` call exists anywhere. Cheap on its own, and it is the half of that ADR still outstanding now that the OTEL pipeline is in: OTLP log export covers a deployment with a collector, and this covers the far more common one that just reads `docker logs`.
 - [x] (done) Add a test framework to `src/web` — vitest + jsdom + testing-library, wired into CI next to the type-check so it actually runs. Sixteen tests to start: the subdomain grouping helper (including the invariant that every domain is rendered exactly once, and that a group lands where its first member fell in the sort rather than at the end), and a render test of the Domains table asserting what the screen shows — a label heading for an unmonitored parent, a monitored parent promoted to its own heading rather than listed twice, the `via yulsn.io` marker on an inheriting row, and no marker on a subdomain publishing its own weaker record. Written because the grouping shipped verified only by transpiling the module and running it over real domain names; the rendering itself was unverified, and checking it in a browser needed a session. Verified load-bearing by mutation: grouping single-child parents fails three of them.
@@ -352,13 +402,12 @@ zero undocumented. The problems are everywhere else.
       login lockout on an unauthenticated endpoint; DNS policy caching;
       reverse-proxy trust ordering; the migration strategy split three ways; and
       the Apache-2.0 licence choice.
-- [ ] (todo) **ADR 0005's routing decision is half-implemented, and the two
-      halves can disagree.** Domain resolution honours ownership, but
-      `MailboxSyncService.cs:200` writes the ingest ledger with the *receiving
-      source's* `DefaultClientId` unconditionally — so the ledger (and the
-      retention purge scope keyed off it) can attribute a report to a different
-      client than `DmarcReport` does. Either resolve the owner before writing,
-      or amend the ADR to say the ledger is per-source by design.
+- [x] (done 2026-08-11) **Make ADR 0005 routing ownership consistent.**
+      `DomainIngestResolver` returns both the domain and its authoritative
+      client. Parsed DMARC persistence uses that owner for the ingest ledger,
+      while a new domain still uses the source's default client. PostgreSQL
+      tests prove an existing domain is neither reassigned nor attributed to
+      the source default.
 
 ### Planning docs and entry points
 
@@ -509,7 +558,7 @@ step is independently shippable.
 - [x] (done) Move the GitHub Actions off the Node 20 runtime. Every action is now
       pinned to the *first* major declaring `using: node24`, verified by reading
       `action.yml` at each tag: checkout/setup-node/setup-dotnet v4 -> v5,
-      login/setup-buildx/setup-qemu v3 -> v4, metadata v5 -> v6, build-push
+      login/setup-buildx v3 -> v4, metadata v5 -> v6, build-push
       v6 -> v7.
 
       Correction to the original note, which said the `docker/*` actions were

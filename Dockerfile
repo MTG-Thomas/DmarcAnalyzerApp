@@ -8,7 +8,7 @@ RUN npm ci
 COPY src/web/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.400 AS dotnet-build
 WORKDIR /src
 
 # The commit this image is built from, stamped into the assembly's
@@ -48,7 +48,7 @@ COPY src/api/ ./api/
 RUN dotnet publish ./api/DmarcAnalyzer.Api.csproj -c Release -o /out --no-restore \
     -p:SourceRevisionId="$SOURCE_REVISION"
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.11
 # Links the GHCR package to this repository (and powers "view source" on ghcr.io).
 LABEL org.opencontainers.image.source="https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp" \
       org.opencontainers.image.description="Open-source, self-hosted, agency-first DMARC analyzer" \

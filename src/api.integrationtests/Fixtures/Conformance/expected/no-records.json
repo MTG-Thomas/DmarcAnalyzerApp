@@ -1,0 +1,27 @@
+{
+  "case_id": "no-records",
+  "deltas": {
+    "compliant_messages": 0,
+    "dispositions": {
+      "none": 0,
+      "pass": 0,
+      "quarantine": 0,
+      "reject": 0
+    },
+    "dkim": {
+      "fail": 0,
+      "pass": 0
+    },
+    "messages": 0,
+    "records": 0,
+    "reports": 0,
+    "spf": {
+      "fail": 0,
+      "pass": 0
+    }
+  },
+  "outcome": "rejected",
+  "reason_class": "schema_invalid",
+  "reports": [],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}

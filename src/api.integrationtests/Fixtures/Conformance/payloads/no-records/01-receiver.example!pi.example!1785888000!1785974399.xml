@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feedback>
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>Synthetic Reporter</org_name>
+    <email>reports@reporter.example</email>
+    <report_id>no-records-001</report_id>
+    <date_range>
+      <begin>1785888000</begin>
+      <end>1785974399</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>pi.example</domain>
+    <adkim>r</adkim>
+    <aspf>r</aspf>
+    <p>none</p>
+    <pct>100</pct>
+  </policy_published>
+</feedback>

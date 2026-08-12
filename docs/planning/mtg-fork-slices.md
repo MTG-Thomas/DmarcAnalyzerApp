@@ -62,7 +62,7 @@ knows neither MailKit nor HTTP authentication.
 | 3 | Add bounded raw-payload ingestion orchestrator | 2 | bounded containers and parsing |
 | 4 | Add API report-source model and reveal-once keys | 1 | source-scoped machine identity |
 | 5 | Add authenticated raw upload endpoint | 3, 4 | safe internal machine ingestion |
-| 6 | Make the synthetic Analyzer corpus a CI gate | 1, 3, 5 | replay, isolation, routing, limits |
+| 6 | Make the synthetic Analyzer corpus a CI gate | 1, 3, 4 | replay, isolation, routing, limits |
 | 7 | Integrate the Bifrost Graph adapter privately | 5, 6 | end-to-end dogfood readiness |
 
 Slices 0 and 1 may run in parallel. The bounded extractor portion of slice 3
@@ -71,8 +71,12 @@ slice 2 so the HTTP edge never invents a second parser or persistence path.
 
 ## 0. RFC 9990 `pass` analytics and UI
 
-The parser and database now preserve `policy_evaluated.disposition=pass`, but
-the analytics DTO, query projections, TypeScript contract, and UI omit it.
+Status: implemented in the fork on 2026-08-11.
+
+The parser, database, analytics DTOs and query projections, TypeScript contract,
+and source-detail UI preserve `policy_evaluated.disposition=pass` end to end.
+Compliance remains aligned-DKIM/SPF based, while blocked totals remain
+`quarantine + reject`.
 
 PR boundary:
 
@@ -119,6 +123,8 @@ changing product behavior.
 
 ## 2. Parsed DMARC persistence service
 
+Status: complete in the MTG fork on 2026-08-11.
+
 Extract the transaction, domain resolution, deduplication, and entity writes
 from `MailboxSyncService` behind `IDmarcReportIngestor`, mirroring the existing
 `ITlsReportIngestor` shape. This is a refactor, not the final upload seam.
@@ -148,6 +154,8 @@ anticipates this seam.
 
 ## 3. Bounded raw-payload ingestion orchestrator
 
+Status: complete in the MTG fork on 2026-08-11.
+
 Add `IReportPayloadIngestor` as the one deep entry point used by mailbox and
 future HTTP callers. It owns format classification, bounded container
 extraction, parser selection, and composition of the DMARC/TLS persistence
@@ -157,7 +165,7 @@ The input is a trusted source context plus a stream, file name, and optional
 media type. The result summarizes inserted, duplicate, and rejected DMARC/TLS
 reports.
 
-PR boundary A — bounded extractor (may start with slice 1):
+PR boundary A — bounded extractor (implemented 2026-08-11):
 
 - classify from content/magic as well as labels;
 - support bare XML/JSON, GZIP, and multi-entry ZIP;
@@ -165,15 +173,21 @@ PR boundary A — bounded extractor (may start with slice 1):
   count, per-entry bytes, and compression-ratio limits while streaming;
 - reject encrypted, corrupt, empty, unsupported, nested, and limit-exceeding
   containers deterministically; and
-- move both mailbox ingestion and backup/import extraction through the shared
-  bounded primitives where their contracts overlap.
+- expose the standalone bounded contract without changing mailbox, parser,
+  persistence, backup/import, or HTTP behavior; callers move onto it in the
+  dependent orchestrator boundary.
 
-PR boundary B — orchestrator (after slice 2):
+PR boundary B — orchestrator (implemented 2026-08-11):
 
 - compose the bounded extractor, DMARC/TLS parsers, and parsed ingestors;
 - make IMAP obtain bytes/metadata and map structured outcomes to its existing
   counters without owning persistence; and
 - preserve checkpoint, archive-before-parse, timeout, and retry behavior.
+
+Mailbox ingestion now opens MimeKit's transfer-decoded attachment stream
+directly into `IReportPayloadIngestor`; it no longer materializes or classifies
+attachments on a separate unbounded path. Both DMARC and TLS persistence receive
+the same trusted `ReportSourceContext` contract that the upload boundary will use.
 
 Acceptance tests cover mislabeled input, junk before a valid ZIP entry, multiple
 valid entries, exact and cross-container replay, corrupt/truncated containers,
@@ -185,6 +199,8 @@ then orchestrator) after fork proof.
 
 ## 4. API report source and reveal-once keys
 
+Status: implemented in the MTG fork on 2026-08-11.
+
 Represent machine ingestion as a source with `Protocol=api` and an authoritative
 `DefaultClientId`. Keep current non-null report/source foreign keys. API rows are
 excluded from mailbox polling, mailbox-health failure calculations, and mailbox
@@ -192,19 +208,24 @@ retention actions.
 
 PR boundary A — source model:
 
-- permit an API source without pretending it has an IMAP host/user/password;
-- retain source activation, client ownership, audit fields, and backup/export
+- [x] permit an API source without pretending it has an IMAP host/user/password;
+- [x] retain source activation, client ownership, audit fields, and backup/export
   behavior; and
-- add a focused, reversible migration.
+- [x] add a focused migration whose down path refuses while API rows exist.
+
+Boundary A also excludes API rows from mailbox health, retention, and manual
+sync actions, and advances the configuration artifact to format v2 while
+retaining format-v1 import compatibility. Boundary B remains required before an
+API source can authenticate or upload a report.
 
 PR boundary B — key lifecycle:
 
-- add a credential table keyed to the source so two keys may overlap during a
+- [x] add a credential table keyed to the source so two keys may overlap during a
   safe rotation;
-- generate a high-entropy reveal-once token;
-- persist only prefix plus SHA-256 hash and created/revoked timestamps;
-- compare hashes in fixed time; and
-- add agency-admin create/rotate/revoke operations with audit events and tests.
+- [x] generate a high-entropy reveal-once token;
+- [x] persist only prefix plus SHA-256 hash and created/revoked timestamps;
+- [x] compare hashes in fixed time; and
+- [x] add agency-admin create/rotate/revoke operations with audit events and tests.
 
 Acceptance: the raw token is never returned after creation, stored, logged, or
 included in backup artifacts. A restored source requires token reissue.
@@ -214,6 +235,8 @@ Upstream disposition: fork-first product capability; propose upstream only after
 the contract is stable in dogfood.
 
 ## 5. Authenticated raw upload endpoint
+
+Status: complete in the MTG fork on 2026-08-11.
 
 Add `POST /api/ingest/v1/sources/{sourceId}/reports` as an internal-first machine
 endpoint. Dedicated middleware or endpoint metadata authenticates the API key;
@@ -236,12 +259,24 @@ Contract:
 Acceptance: cookie authentication cannot bypass machine authentication; source A
 cannot address source B or route to client B; replay is idempotent; partial
 container outcomes are explicit; cancellation/rollback leaves no partial child
-rows.
+rows. Focused endpoint tests and real-PostgreSQL acceptance cover the cookie
+bypass, uniform authentication failure, insert/duplicate replay, source/client
+routing, digest mismatch, lying Content-Length limits, persistence rollback,
+and corrected replay.
 
 Upstream disposition: fork-first, then a contract-focused upstream proposal or
 pull request only with operator approval.
 
 ## 6. Analyzer conformance corpus in CI
+
+Status: implemented in the fork on 2026-08-11.
+
+The repo-owned deterministic recipe produces 33 ordered cases from 35 raw
+payloads and pins their hashes and normalized expected state. The PostgreSQL
+acceptance invokes the production `IReportPayloadIngestor`, compares the exact
+durable graph and routing after every case, and separately proves cross-source
+and concurrent replay. Slice 5 retains endpoint authentication/authorization;
+this gate intentionally tests the shared runtime service beneath it.
 
 Promote the synthetic cases that selected the fork into a repo-owned,
 deterministic Analyzer acceptance suite. Fixtures contain only `.example`

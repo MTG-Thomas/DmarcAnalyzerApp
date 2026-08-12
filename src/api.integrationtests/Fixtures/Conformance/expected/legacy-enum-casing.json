@@ -1,0 +1,73 @@
+{
+  "case_id": "legacy-enum-casing",
+  "deltas": {
+    "compliant_messages": 8,
+    "dispositions": {
+      "none": 8,
+      "pass": 0,
+      "quarantine": 0,
+      "reject": 0
+    },
+    "dkim": {
+      "fail": 0,
+      "pass": 8
+    },
+    "messages": 8,
+    "records": 1,
+    "reports": 1,
+    "spf": {
+      "fail": 8,
+      "pass": 0
+    }
+  },
+  "outcome": "inserted",
+  "reason_class": null,
+  "reports": [
+    {
+      "key": {
+        "policy_domain": "upsilon.example",
+        "range_begin_epoch": 1785888000,
+        "range_end_epoch": 1785974399,
+        "report_id": "legacy-enum-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 1
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [],
+          "envelope_from": null,
+          "envelope_to": null,
+          "header_from": "upsilon.example",
+          "message_count": 8,
+          "reasons": [],
+          "source_ip": "203.0.113.88",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "upsilon.example",
+              "result": "pass",
+              "scope": "helo"
+            }
+          ]
+        }
+      ],
+      "routing": null
+    }
+  ],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}

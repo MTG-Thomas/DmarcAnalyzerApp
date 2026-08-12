@@ -17,7 +17,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("ProductVersion", "10.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -123,6 +123,45 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.HasIndex("ClientId", "RuleType", "DetectedAtUtc");
 
                     b.ToTable("alert_event", (string)null);
+                });
+
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ApiSourceCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MailboxSourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(22)
+                        .HasColumnType("character varying(22)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MailboxSourceId", "Prefix")
+                        .IsUnique();
+
+                    b.HasIndex("MailboxSourceId", "RevokedAtUtc");
+
+                    b.ToTable("api_source_credential", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_api_source_credential_PrefixLength", "char_length(\"Prefix\") = 22");
+
+                            t.HasCheckConstraint("CK_api_source_credential_TokenHashLength", "octet_length(\"TokenHash\") = 32");
+                        });
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.AuditEvent", b =>
@@ -641,7 +680,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasDefaultValue(false);
 
                     b.Property<string>("Host")
-                        .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
@@ -666,11 +704,10 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordEncrypted")
-                        .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("character varying(2048)");
 
-                    b.Property<int>("Port")
+                    b.Property<int?>("Port")
                         .HasColumnType("integer");
 
                     b.Property<string>("Protocol")
@@ -681,11 +718,10 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("UseTls")
+                    b.Property<bool?>("UseTls")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Username")
-                        .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
@@ -693,7 +729,10 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.HasIndex("DefaultClientId");
 
-                    b.ToTable("mailbox_source", (string)null);
+                    b.ToTable("mailbox_source", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_mailbox_source_ProtocolConfiguration", "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR (\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MailboxSyncRun", b =>
@@ -933,6 +972,54 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("notification_recipient", (string)null);
+                });
+
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ServiceApiCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(22)
+                        .HasColumnType("character varying(22)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc");
+
+                    b.HasIndex("Prefix")
+                        .IsUnique();
+
+                    b.HasIndex("RevokedAtUtc");
+
+                    b.ToTable("service_api_credential", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_service_api_credential_Expiry", "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+
+                            t.HasCheckConstraint("CK_service_api_credential_PrefixLength", "char_length(\"Prefix\") = 22");
+
+                            t.HasCheckConstraint("CK_service_api_credential_TokenHashLength", "octet_length(\"TokenHash\") = 32");
+                        });
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.SmtpTlsFailureDetail", b =>
@@ -1288,6 +1375,17 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Navigation("Client");
 
                     b.Navigation("Domain");
+                });
+
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ApiSourceCredential", b =>
+                {
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.MailboxSource", "MailboxSource")
+                        .WithMany()
+                        .HasForeignKey("MailboxSourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MailboxSource");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.DigestDelivery", b =>

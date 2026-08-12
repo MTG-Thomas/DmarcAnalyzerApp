@@ -1,0 +1,265 @@
+{
+  "$defs": {
+    "case": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery_order": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "expected": {
+          "pattern": "^expected/.+\\.json$",
+          "type": "string"
+        },
+        "expected_outcome": {
+          "enum": [
+            "inserted",
+            "rejected",
+            "duplicate"
+          ]
+        },
+        "expected_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9-]+$",
+          "type": "string"
+        },
+        "payloads": {
+          "items": {
+            "$ref": "#/$defs/payloadReference"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "phase": {
+          "enum": [
+            "baseline",
+            "transport",
+            "replay",
+            "invalid",
+            "isolation",
+            "routing",
+            "resource"
+          ]
+        },
+        "recovery_for": {
+          "pattern": "^[a-z0-9][a-z0-9-]+$",
+          "type": "string"
+        },
+        "routing_setup": {
+          "additionalProperties": false,
+          "properties": {
+            "default_client_slug": {
+              "type": "string"
+            },
+            "owned_domains": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "owned_domains",
+            "default_client_slug"
+          ],
+          "type": "object"
+        },
+        "semantic_group": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_case_id": {
+          "pattern": "^[a-z0-9][a-z0-9-]+$",
+          "type": "string"
+        },
+        "validity": {
+          "enum": [
+            "conformant",
+            "real_world_extension",
+            "nonconformant",
+            "non_report"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "source_case_id",
+        "phase",
+        "delivery_order",
+        "validity",
+        "semantic_group",
+        "payloads",
+        "expected",
+        "expected_sha256",
+        "expected_outcome"
+      ],
+      "type": "object"
+    },
+    "fileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "payloadReference": {
+      "additionalProperties": false,
+      "properties": {
+        "container": {
+          "enum": [
+            "plain",
+            "gzip",
+            "zip"
+          ]
+        },
+        "filename": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "path": {
+          "pattern": "^payloads/.+",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "filename",
+        "media_type",
+        "container"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://dmarc-analyzer.example/schemas/conformance-corpus-v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "cases": {
+      "items": {
+        "$ref": "#/$defs/case"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "corpus_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "generation": {
+      "additionalProperties": false,
+      "properties": {
+        "gzip_mtime": {
+          "const": 0
+        },
+        "source_date_epoch": {
+          "const": 0
+        },
+        "zip_entry_order": {
+          "const": "manifest"
+        },
+        "zip_entry_time": {
+          "const": "1980-01-01T00:00:00Z"
+        }
+      },
+      "required": [
+        "source_date_epoch",
+        "gzip_mtime",
+        "zip_entry_time",
+        "zip_entry_order"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "conformance_basis": {
+          "items": {
+            "format": "uri",
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "contains_customer_data": {
+          "const": false
+        },
+        "fixture_origin": {
+          "const": "independently-authored-synthetic"
+        },
+        "recoverable_source": {
+          "additionalProperties": false,
+          "properties": {
+            "commit": {
+              "const": "258d606e1f8ce859fff5422d550d469c3b666111"
+            },
+            "generator_path": {
+              "const": "scripts/generate-dmarc-bakeoff-corpus.py"
+            },
+            "repository": {
+              "const": "MTG-Thomas/bifrost-infra"
+            }
+          },
+          "required": [
+            "repository",
+            "commit",
+            "generator_path"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "contains_customer_data",
+        "fixture_origin",
+        "conformance_basis",
+        "recoverable_source"
+      ],
+      "type": "object"
+    },
+    "schema": {
+      "const": "dmarc-analyzer.conformance-corpus/v1"
+    },
+    "schemas": {
+      "additionalProperties": {
+        "$ref": "#/$defs/fileReference"
+      },
+      "required": [
+        "manifest",
+        "expected_state"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema",
+    "corpus_id",
+    "provenance",
+    "generation",
+    "schemas",
+    "cases"
+  ],
+  "title": "DmarcAnalyzer synthetic conformance corpus",
+  "type": "object"
+}

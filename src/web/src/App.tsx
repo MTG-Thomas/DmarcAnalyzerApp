@@ -15,6 +15,7 @@ import { DomainsPage } from '@/pages/DomainsPage'
 import { FirstRunImportPage } from '@/pages/FirstRunImportPage'
 import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { ThreatsPage } from '@/pages/ThreatsPage'
 import { UsersPage } from '@/pages/UsersPage'
 
@@ -56,6 +57,7 @@ function App() {
         <Route path="/users" element={admin ? <UsersPage /> : fallback} />
         <Route path="/audit" element={admin ? <AuditPage /> : fallback} />
         <Route path="/backup" element={admin ? <BackupPage /> : fallback} />
+        <Route path="/settings" element={admin ? <SettingsPage /> : fallback} />
         {/* Where LoginPage hands off after creating the first administrator. It is
             a normal route, not a special mode, so a reload or a bookmark lands on
             something that still works — the page asks the server whether the

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feedback>
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>Synthetic Reporter</org_name>
+    <email>reports@reporter.example</email>
+    <report_id>null-volume-001</report_id>
+    <date_range>
+      <begin>1785888000</begin>
+      <end>1785974399</end>
+    </date_range>
+  </report_metadata>
+  <policy_published>
+    <domain>lambda.example</domain>
+    <adkim>r</adkim>
+    <aspf>r</aspf>
+    <p>quarantine</p>
+    <sp>quarantine</sp>
+    <pct>100</pct>
+  </policy_published>
+  <record>
+    <row>
+      <source_ip></source_ip>
+      <count>0</count>
+      <policy_evaluated>
+        <disposition></disposition>
+        <dkim></dkim>
+        <spf></spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>lambda.example</header_from>
+    </identifiers>
+    <auth_results>
+    </auth_results>
+  </record>
+</feedback>

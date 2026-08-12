@@ -32,6 +32,13 @@
 # repository secret, so this workflow works as-is.
 name: CI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
 on:
   push:
     branches: [main]
@@ -49,6 +56,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -57,10 +68,36 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
-          dotnet-version: 10.0.x
+          global-json-file: global.json
 
-      - name: API tests
-        run: dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj --nologo
+      - name: Restore locked dependencies
+        run: dotnet restore DmarcAnalyzerApp.slnx --locked-mode --nologo
+
+      - name: Build with analyzers and warnings as errors
+        run: dotnet build DmarcAnalyzerApp.slnx --configuration Release --no-restore --nologo -warnaserror
+
+      - name: API tests with coverage
+        run: dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj --configuration Release --no-build --nologo --collect:"XPlat Code Coverage" --results-directory "$GITHUB_WORKSPACE/TestResults"
+
+      - name: Preserve coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: api-coverage
+          path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload coverage to Codecov
+        if: vars.CODECOV_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          use_oidc: true
+          directory: TestResults
+          fail_ci_if_error: true
+
+      - name: Note pending Codecov onboarding
+        if: vars.CODECOV_ENABLED != 'true'
+        run: echo "::warning::Coverage is preserved as api-coverage. Onboard this fork in Codecov, then set CODECOV_ENABLED=true to activate the fail-closed upload."
 
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
@@ -69,13 +106,91 @@ jobs:
           cache: npm
           cache-dependency-path: src/web/package-lock.json
 
-      - name: Frontend type-check + test + build
+      - name: Frontend audit + lint + type-check + test + build
         working-directory: src/web
         run: |
           npm ci
+          npm audit --audit-level=high
+          npm run lint
           npx tsc --noEmit
           npm test
           npm run build
+
+  postgres-integration:
+    name: PostgreSQL 16 integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg16
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json
+
+      - name: Prepare masked test connection
+        shell: bash
+        run: |
+          connection="Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg16"
+          echo "::add-mask::$connection"
+          echo "DMARC_TEST_POSTGRES=$connection" >> "$GITHUB_ENV"
+
+      - name: PostgreSQL integration tests
+        run: dotnet test src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj --configuration Release --nologo
+
+  postgres-18-migration-smoke:
+    name: PostgreSQL 18 migration smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg18
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json
+
+      - name: Prepare masked test connection
+        shell: bash
+        run: |
+          connection="Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=dmarc-${{ github.run_id }}-${{ github.run_attempt }}-pg18"
+          echo "::add-mask::$connection"
+          echo "DMARC_TEST_POSTGRES=$connection" >> "$GITHUB_ENV"
+
+      - name: PostgreSQL migration tests
+        run: dotnet test src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj --configuration Release --nologo --filter Category=Migration
 
 
   # The chart is checked on every run and published only on a release tag. The
@@ -83,17 +198,33 @@ jobs:
   # rendering it proves it still works, and a broken one fails at `helm install`
   # in someone else's cluster rather than here.
   chart:
-    needs: [test]
+    needs: [test, postgres-integration, postgres-18-migration-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - name: Verify release tag provenance
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          [ "$(git cat-file -t "refs/tags/$GITHUB_REF_NAME")" = tag ] || {
+            echo "::error::$GITHUB_REF_NAME must be an annotated tag."
+            exit 1
+          }
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME does not point to a commit reachable from main."
+            exit 1
+          }
+
+      - name: Verify Helm is available
+        run: helm version --short
 
       # A syntactically valid throwaway key. It has to be real base64 for 32 bytes:
       # values.schema.json checks the shape, so a placeholder like "dummy" fails
@@ -124,8 +255,8 @@ jobs:
           }
           render "bundled + combined"
           render "bundled + split"   --set mode=split
-          render "external + combined" --set postgres.enabled=false --set externalDatabase.host=db.example
-          render "external + split"    --set postgres.enabled=false --set externalDatabase.host=db.example --set mode=split
+          render "external + combined" --set postgres.enabled=false --set externalDatabase.host=db.example --set externalDatabase.password=test-only
+          render "external + split"    --set postgres.enabled=false --set externalDatabase.host=db.example --set externalDatabase.password=test-only --set mode=split
           render "ingress enabled"     --set ingress.enabled=true
           render "existingSecret"      --set auth.existingSecret=creds
 
@@ -139,6 +270,7 @@ jobs:
             --set auth.encryptionKey="$DUMMY_KEY" \
             --set postgres.enabled=false \
             --set externalDatabase.host=db.example \
+            --set externalDatabase.password=test-only \
             --set mode=split \
             --set image.repository="$test_repository" \
             --set-string image.digest="$test_digest")
@@ -173,6 +305,7 @@ jobs:
           refuses "worker.replicas=2"            --set auth.encryptionKey="$DUMMY_KEY" --set mode=split --set worker.replicas=2
           refuses "startup migrations, 3 app replicas" --set auth.encryptionKey="$DUMMY_KEY" --set mode=split --set app.replicas=3 --set migrations.strategy=startup
           refuses "external db without a host"   --set auth.encryptionKey="$DUMMY_KEY" --set postgres.enabled=false
+          refuses "external db without credentials" --set auth.encryptionKey="$DUMMY_KEY" --set postgres.enabled=false --set externalDatabase.host=db.example
           refuses "no encryption key"            --set mode=combined
           refuses "unknown mode"                 --set auth.encryptionKey="$DUMMY_KEY" --set mode=hybrid
           refuses "image tag plus digest"         --set auth.encryptionKey="$DUMMY_KEY" --set image.tag=0.10.0 --set-string image.digest=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -203,46 +336,9 @@ jobs:
           done
           echo "Chart.yaml version and appVersion are both $version."
 
-      - name: Log in to GHCR
-        if: github.ref_type == 'tag'
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Chart version and appVersion both come from the tag. Keeping them equal
-      # means "which app does chart 1.2.3 deploy" has one answer, and the image tag
-      # needs no separate bump — values.image.tag defaults to appVersion.
-      - name: Package and push
-        if: github.ref_type == 'tag'
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          helm package "$CHART_DIR" --version "$version" --app-version "$version" -d dist
-          helm push "dist/dmarc-analyzer-${version}.tgz" "$CHART_REGISTRY"
-          echo "::notice::Published chart $version to ${CHART_REGISTRY}/dmarc-analyzer"
-
-      # The Verified publisher badge. Artifact Hub reads this from the OCI
-      # namespace, not from git, so it has to be pushed like the chart. Done here
-      # rather than by hand because GITHUB_TOKEN already has packages:write and a
-      # personal `gh` token does not — the manual route needs a scope refresh
-      # nobody will remember. Re-pushing an unchanged file is harmless.
-      - name: Push Artifact Hub metadata
-        if: github.ref_type == 'tag'
-        run: |
-          set -euo pipefail
-          curl -sSLo /tmp/oras.tar.gz \
-            https://github.com/oras-project/oras/releases/download/v1.2.3/oras_1.2.3_linux_amd64.tar.gz
-          tar -xzf /tmp/oras.tar.gz -C /tmp oras
-          /tmp/oras login ghcr.io -u '${{ github.actor }}' --password-stdin <<< '${{ secrets.GITHUB_TOKEN }}'
-          /tmp/oras push "${CHART_REGISTRY#oci://}/dmarc-analyzer:artifacthub.io" \
-            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-            deploy/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
-          echo "::notice::Pushed Artifact Hub metadata for the verified-publisher badge"
-
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       image: ${{ steps.decide.outputs.image }}
     steps:
@@ -278,19 +374,19 @@ jobs:
           fi
 
   image:
-    needs: [test, changes]
+    needs: [test, postgres-integration, postgres-18-migration-smoke, changes]
     if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
+      attestations: write
       contents: read
+      id-token: write
       packages: write
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
-
-      - name: Set up QEMU (arm64 builds)
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -341,7 +437,12 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=edge,enable={{is_default_branch}}
+            type=raw,value=ci-smoke,enable=${{ github.event_name == 'pull_request' }}
             type=sha,prefix=sha-
+
+      - name: Resolve canonical image name
+        id: image-name
+        run: echo "name=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       # The commit the image reports as its own, and the thing that lets someone on
       # a mutable tag identify their build: the version reads "0.9.0" for a release
@@ -370,10 +471,12 @@ jobs:
       # One build, pushed to every tag metadata-action produced — which spans both
       # registries when Docker Hub is enabled. Pull requests build without pushing.
       - name: Build and push
+        id: build
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
+          load: ${{ github.event_name == 'pull_request' }}
           push: ${{ github.event_name != 'pull_request' }}
           build-args: |
             SOURCE_REVISION=${{ steps.stamp.outputs.revision }}
@@ -381,6 +484,112 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke-test the built image
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          image=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            image_ref="$image:ci-smoke"
+          else
+            image_ref="$image@$IMAGE_DIGEST"
+          fi
+          network=dmarc-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
+          database=dmarc-smoke-db-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
+          app=dmarc-smoke-app-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
+          password=dmarc-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-smoke
+          docker network create "$network"
+          docker run -d --name "$database" --network "$network" \
+            -e POSTGRES_PASSWORD="$password" postgres:18-alpine
+          for attempt in $(seq 1 30); do
+            docker exec "$database" pg_isready -U postgres -d postgres && break
+            [ "$attempt" -lt 30 ] || { docker logs "$database"; exit 1; }
+            sleep 2
+          done
+          docker run -d --name "$app" --network "$network" -p 18080:8080 \
+            -e APP_MODE=all \
+            -e Database__MigrateOnStartup=true \
+            -e "ConnectionStrings__Default=Host=$database;Port=5432;Database=postgres;Username=postgres;Password=$password" \
+            -e Security__CredentialEncryptionKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            "$image_ref"
+          for attempt in $(seq 1 60); do
+            response=$(curl -fsS http://localhost:18080/api/v1/auth/setup 2>/dev/null || true)
+            [ "$response" = '{"requiresBootstrap":true}' ] && exit 0
+            [ "$attempt" -lt 60 ] || { docker logs "$app"; exit 1; }
+            sleep 2
+          done
+
+      - name: Clean up smoke containers
+        if: always()
+        run: |
+          docker rm -f "dmarc-smoke-app-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" "dmarc-smoke-db-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" 2>/dev/null || true
+          docker network rm "dmarc-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" 2>/dev/null || true
+
+      - name: Create a disposable Kubernetes cluster
+        if: github.event_name == 'pull_request'
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
+        with:
+          cluster_name: dmarc-smoke
+          wait: 90s
+
+      - name: Verify Helm is available
+        if: github.event_name == 'pull_request'
+        run: helm version --short
+
+      - name: Install and probe the chart
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          image=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          kind load docker-image "$image:ci-smoke" --name dmarc-smoke
+          helm install smoke "$CHART_DIR" \
+            --wait --timeout 5m \
+            --set auth.encryptionKey=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+            --set image.repository="$image" \
+            --set image.tag=ci-smoke \
+            --set image.pullPolicy=Never
+          kubectl port-forward service/smoke-dmarc-analyzer 18081:80 >/tmp/dmarc-port-forward.log 2>&1 &
+          forward_pid=$!
+          trap 'kill "$forward_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            response=$(curl -fsS http://localhost:18081/api/v1/auth/setup 2>/dev/null || true)
+            [ "$response" = '{"requiresBootstrap":true}' ] && exit 0
+            [ "$attempt" -lt 30 ] || {
+              cat /tmp/dmarc-port-forward.log
+              kubectl get all -n default
+              kubectl logs deployment/smoke-dmarc-analyzer --all-containers --tail=200
+              exit 1
+            }
+            sleep 2
+          done
+
+      - name: Generate image SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ steps.image-name.outputs.name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: image.spdx.json
+          upload-artifact: false
+
+      - name: Attest image provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.image-name.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest image SBOM
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ steps.image-name.outputs.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: image.spdx.json
+          push-to-registry: true
 
       # GHCR takes its description from the Dockerfile's OCI labels. Docker Hub
       # does not — it needs an API call, so the page sat empty through 2,177
@@ -410,3 +619,54 @@ jobs:
         run: |
           echo "::warning::Docker Hub description not updated (${{ steps.dockerhub_description.outcome }})."
           echo "::warning::DOCKERHUB_TOKEN likely lacks permission to edit repository metadata. The release itself is unaffected."
+
+  # Publishing is intentionally separate from validation. A release chart must
+  # never become visible before its referenced image, smoke test, provenance and
+  # SBOM have all completed successfully.
+  chart-publish:
+    if: github.ref_type == 'tag'
+    needs: [chart, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Verify Helm is available
+        run: helm version --short
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package and push
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          helm package "$CHART_DIR" --version "$version" --app-version "$version" -d dist
+          helm push "dist/dmarc-analyzer-${version}.tgz" "$CHART_REGISTRY"
+          echo "::notice::Published chart $version to ${CHART_REGISTRY}/dmarc-analyzer"
+
+      - name: Install checksum-verified ORAS
+        run: |
+          set -euo pipefail
+          archive=/tmp/oras.tar.gz
+          curl -sSLo "$archive" https://github.com/oras-project/oras/releases/download/v1.3.3/oras_1.3.3_linux_amd64.tar.gz
+          echo '9ce999f8d2de03fc03968b29d743077a58783e545e5eaa53917ca177352d0e59  /tmp/oras.tar.gz' | sha256sum -c -
+          tar -xzf "$archive" -C /tmp oras
+
+      - name: Push Artifact Hub metadata
+        run: |
+          set -euo pipefail
+          /tmp/oras login ghcr.io -u '${{ github.actor }}' --password-stdin <<< '${{ secrets.GITHUB_TOKEN }}'
+          /tmp/oras push "${CHART_REGISTRY#oci://}/dmarc-analyzer:artifacthub.io" \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            deploy/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+          echo "::notice::Pushed Artifact Hub metadata for the verified-publisher badge"

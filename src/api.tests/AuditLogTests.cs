@@ -80,6 +80,26 @@ public sealed class AuditLogTests
     }
 
     [Fact]
+    public async Task ServiceEventsKeepCredentialIdentityWithoutPretendingItIsAUser()
+    {
+        await using var db = NewDb();
+        var service = new TestCurrentUserContext
+        {
+            ActorType = "service",
+            UserId = Guid.NewGuid(),
+            Email = "service:Bifrost",
+            Role = DmarcAnalyzer.Api.Application.Auth.Roles.AgencyAnalyst,
+        };
+
+        await Log(db, service).RecordAsync(AuditEvents.AlertStatusChanged, "Updated alert");
+
+        var entry = Assert.Single(await db.AuditEvents.ToListAsync());
+        Assert.Equal("service", entry.ActorType);
+        Assert.Null(entry.ActorUserId);
+        Assert.Equal("service:Bifrost", entry.ActorEmail);
+    }
+
+    [Fact]
     public async Task OverlongValuesAreTruncatedRatherThanFailingTheWrite()
     {
         await using var db = NewDb();

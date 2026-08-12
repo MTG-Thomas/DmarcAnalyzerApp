@@ -30,7 +30,7 @@ public sealed class MailboxSourcesModule : ICarterModule
             var source = result.Value!;
 
             await audit.RecordAsync(AuditEvents.MailboxSourceCreated,
-                $"Created mailbox source {source.Name} ({source.Host})",
+                $"Created report source {source.Name} ({(source.Protocol == "api" ? "API" : source.Host)})",
                 "mailbox_source", source.Id, ct: ct);
             return Results.Created($"/api/v1/mailbox-sources/{source.Id}", source);
         }).RequireAgencyAdmin();

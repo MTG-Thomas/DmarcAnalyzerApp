@@ -45,6 +45,31 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - Not built: replaying reports back from the bucket archive. Until it exists the
     archive is evidence, not a restore path.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
+- A separate real-PostgreSQL integration project complements the fast EF
+  InMemory suite. Each xUnit collection owns a randomly named disposable
+  database; CI runs the complete lane on PostgreSQL 16 and the migration
+  category on PostgreSQL 18. It pins the expected latest migration, exercises
+  the currently no-op v0.9.0/v0.10.0 upgrade contract, and proves real unique
+  indexes plus concurrent `DomainIngestResolver` raw SQL. The same lane now
+  proves parsed DMARC report/record/auth-result/ledger atomicity, exact and
+  concurrent replay, rejection, and routed ownership through the production
+  `IDmarcReportIngestor`; the harness does not emulate IMAP.
+- API report sources use `Protocol=api` with an authoritative default client and
+  no placeholder mailbox connection. PostgreSQL enforces the protocol-specific
+  shape; mailbox polling, health totals, manual-sync UI, and mailbox retention
+  exclude API rows. Configuration artifact v2 preserves these nullable fields
+  while continuing to read v1 mailbox artifacts. Source-scoped API credentials
+  use `dmarc_v1.<prefix>.<secret>` reveal-once tokens: only the prefix and
+  SHA-256 hash persist, rotation keys overlap until explicit revocation, and
+  inactive, revoked, wrong-source, or invalid tokens all fail authentication
+  identically. Credential material is excluded from configuration artifacts, so
+  restored API sources require reissue. API sources can upload bounded raw or
+  single-file multipart payloads through the internal machine endpoint. That
+  endpoint ignores cookie sessions, authenticates the route's source id with the
+  source-scoped bearer token, accepts optional coherent content-digest and
+  idempotency headers, and delegates unchanged bytes to the shared raw-payload
+  ingestor. API-authenticated source contexts refuse existing domains owned by a
+  different client while mailbox contexts retain multi-client domain routing.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`
@@ -70,9 +95,25 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
+- One `IReportPayloadIngestor` now owns bounded extraction, format routing,
+  DMARC/TLS parsing, and dispatch to parsed persistence. It classifies bare
+  XML/JSON, GZIP, and multi-entry ZIP content; configuration caps request bytes,
+  total and per-entry expansion, entry count, and compression ratio. Mailbox
+  ingestion passes MimeKit's transfer-decoded stream directly into this seam,
+  while preserving archive-before-parse, counters, checkpoints, and run control.
+- A deterministic 33-case Analyzer conformance corpus now gates that same
+  production raw-ingestion seam against disposable PostgreSQL. It pins raw
+  payload and expected-state hashes, validates synthetic-only fixture content,
+  exercises ordered recovery after malformed/resource inputs, and compares the
+  exact report/record/auth-result/ledger/source/client graph. Additional direct
+  cases prove concurrent replay and cross-source provenance preservation.
 - Sync operational history persisted in `mailbox_sync_run`.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing
+  - one `IDmarcReportIngestor` owns DMARC routing, deduplication, transaction,
+    report graph, and ingest-ledger writes for the mailbox and future callers
+  - existing domain ownership overrides a source's default client for both the
+    report and ingest ledger
   - full-fidelity DMARC storage in:
     - `dmarc_report`
     - `dmarc_report_record`
@@ -97,6 +138,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/analytics/summary` (compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup)
   - `GET /api/v1/analytics/domains` (per-domain compliance, DKIM/SPF pass rates, volume, sources, reporters, status classification)
   - relative windows anchored to newest report data (`days` query parameter)
+  - action-disposition rollups preserve `none`, RFC 9990 `pass`, `quarantine`,
+    and `reject` in both summary and source-detail responses; compliance remains
+    DKIM/SPF-alignment based and blocked totals remain `quarantine + reject`
 - Dashboard frontpage with compliance overview and URL routing for all console pages.
 - Published DMARC policy persistence:
   - parse & store `policy_published` (p, sp, pct, adkim, aspf) per report on `dmarc_report`
@@ -129,7 +173,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `agency_user` and `user_session` entities with EF Core configuration
   - local username/password auth with PBKDF2-SHA256 password hashing
   - HTTP-only secure cookie session (12h idle timeout, 7d absolute max)
-  - session auth middleware protecting all `/api/v1/` endpoints
+  - session-or-service auth middleware protecting all `/api/v1/` endpoints
+  - reveal-once, expiring `dmarc_api_v1` service credentials for global analyst API access; prefix plus SHA-256 hash only, fixed-time verification, explicit revocation, service-attributed audit rows, and no cookie fallback after a bad Authorization header
+  - administrator-only Settings UI for listing, creating, copying once, and revoking service API keys; source-scoped report-upload keys remain on their report source
   - auth endpoints: register, login, logout, me
   - CORS credentials support for frontend dev
 

@@ -1,0 +1,105 @@
+{
+  "case_id": "sentinel-after-truncation-mid-record",
+  "deltas": {
+    "compliant_messages": 100,
+    "dispositions": {
+      "none": 100,
+      "pass": 0,
+      "quarantine": 0,
+      "reject": 12
+    },
+    "dkim": {
+      "fail": 12,
+      "pass": 100
+    },
+    "messages": 112,
+    "records": 2,
+    "reports": 1,
+    "spf": {
+      "fail": 12,
+      "pass": 100
+    }
+  },
+  "outcome": "inserted",
+  "reason_class": null,
+  "recovery_for": "truncation-mid-record",
+  "reports": [
+    {
+      "key": {
+        "policy_domain": "recovery-03.example",
+        "range_begin_epoch": 1786147200,
+        "range_end_epoch": 1786233599,
+        "report_id": "recovery-03-001"
+      },
+      "metadata": {
+        "organization": "Synthetic Reporter",
+        "record_count": 2
+      },
+      "policy": {
+        "adkim": "r",
+        "aspf": "r",
+        "discovery_method": null,
+        "fo": null,
+        "np": null,
+        "p": "none",
+        "pct": 100,
+        "sp": null,
+        "testing": null
+      },
+      "records": [
+        {
+          "disposition": "none",
+          "dkim": "pass",
+          "dkim_auth": [
+            {
+              "domain": "recovery-03.example",
+              "result": "pass",
+              "selector": "s1"
+            }
+          ],
+          "envelope_from": "bounce.recovery-03.example",
+          "envelope_to": null,
+          "header_from": "recovery-03.example",
+          "message_count": 100,
+          "reasons": [],
+          "source_ip": "192.0.2.10",
+          "spf": "pass",
+          "spf_auth": [
+            {
+              "domain": "bounce.recovery-03.example",
+              "result": "pass",
+              "scope": "mfrom"
+            }
+          ]
+        },
+        {
+          "disposition": "reject",
+          "dkim": "fail",
+          "dkim_auth": [
+            {
+              "domain": "recovery-03.example",
+              "result": "fail",
+              "selector": "s2"
+            }
+          ],
+          "envelope_from": "sender.third-party.example",
+          "envelope_to": null,
+          "header_from": "recovery-03.example",
+          "message_count": 12,
+          "reasons": [],
+          "source_ip": "198.51.100.12",
+          "spf": "fail",
+          "spf_auth": [
+            {
+              "domain": "sender.third-party.example",
+              "result": "fail",
+              "scope": "mfrom"
+            }
+          ]
+        }
+      ],
+      "routing": null
+    }
+  ],
+  "schema": "dmarc-analyzer.conformance-expected-state/v1"
+}

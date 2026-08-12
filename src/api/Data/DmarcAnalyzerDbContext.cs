@@ -12,6 +12,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<DmarcReportRecordDkimAuthResult> DmarcReportRecordDkimAuthResults => Set<DmarcReportRecordDkimAuthResult>();
     public DbSet<DmarcReportRecordSpfAuthResult> DmarcReportRecordSpfAuthResults => Set<DmarcReportRecordSpfAuthResult>();
     public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
+    public DbSet<ApiSourceCredential> ApiSourceCredentials => Set<ApiSourceCredential>();
+    public DbSet<ServiceApiCredential> ServiceApiCredentials => Set<ServiceApiCredential>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
@@ -132,13 +134,16 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
         modelBuilder.Entity<MailboxSource>(entity =>
         {
-            entity.ToTable("mailbox_source");
+            entity.ToTable("mailbox_source", table => table.HasCheckConstraint(
+                "CK_mailbox_source_ProtocolConfiguration",
+                "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR " +
+                "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)"));
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Protocol).HasMaxLength(20).IsRequired();
-            entity.Property(x => x.Host).HasMaxLength(255).IsRequired();
-            entity.Property(x => x.Username).HasMaxLength(255).IsRequired();
-            entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048).IsRequired();
+            entity.Property(x => x.Host).HasMaxLength(255);
+            entity.Property(x => x.Username).HasMaxLength(255);
+            entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048);
             entity.Property(x => x.LastProcessedUid);
             entity.Property(x => x.LastProcessedUidValidity);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
@@ -148,6 +153,52 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.DefaultClientId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ApiSourceCredential>(entity =>
+        {
+            entity.ToTable("api_source_credential", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_api_source_credential_PrefixLength",
+                    "char_length(\"Prefix\") = 22");
+                table.HasCheckConstraint(
+                    "CK_api_source_credential_TokenHashLength",
+                    "octet_length(\"TokenHash\") = 32");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Prefix).HasMaxLength(22).IsRequired();
+            entity.Property(x => x.TokenHash).IsRequired();
+            entity.HasIndex(x => new { x.MailboxSourceId, x.Prefix }).IsUnique();
+            entity.HasIndex(x => new { x.MailboxSourceId, x.RevokedAtUtc });
+
+            entity.HasOne(x => x.MailboxSource)
+                .WithMany()
+                .HasForeignKey(x => x.MailboxSourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ServiceApiCredential>(entity =>
+        {
+            entity.ToTable("service_api_credential", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_PrefixLength",
+                    "char_length(\"Prefix\") = 22");
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_TokenHashLength",
+                    "octet_length(\"TokenHash\") = 32");
+                table.HasCheckConstraint(
+                    "CK_service_api_credential_Expiry",
+                    "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Prefix).HasMaxLength(22).IsRequired();
+            entity.Property(x => x.TokenHash).IsRequired();
+            entity.HasIndex(x => x.Prefix).IsUnique();
+            entity.HasIndex(x => x.RevokedAtUtc);
+            entity.HasIndex(x => x.ExpiresAtUtc);
         });
 
         modelBuilder.Entity<DmarcReportIngest>(entity =>

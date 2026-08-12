@@ -253,7 +253,71 @@ public sealed class BackupExportTests
              "defaultClientId", "isActive", "createdAtUtc", "updatedAtUtc"],
             root.GetProperty("mailboxSources")[0].EnumerateObject().Select(p => p.Name).ToArray());
 
-        Assert.Equal(1, root.GetProperty("manifest").GetProperty("formatVersion").GetInt32());
+        Assert.Equal(2, root.GetProperty("manifest").GetProperty("formatVersion").GetInt32());
+    }
+
+    [Fact]
+    public async Task VersionTwoCarriesApiSourcesWithoutMailboxFields()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        var source = new MailboxSource
+        {
+            Name = "Bifrost upload",
+            Protocol = "api",
+            Host = null,
+            Port = null,
+            UseTls = null,
+            Username = null,
+            PasswordEncrypted = null,
+            DefaultClientId = client.Id,
+        };
+        var credential = new ApiSourceCredential
+        {
+            MailboxSourceId = source.Id,
+            Prefix = "abcdefghijklmnopqrstuv",
+            TokenHash = Enumerable.Repeat((byte)7, 32).ToArray(),
+        };
+        db.AddRange(client, source, credential);
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var exportedSource = Assert.Single(artifact.MailboxSources);
+        var json = BackupJson.Serialize(artifact);
+
+        Assert.Equal(2, artifact.Manifest.FormatVersion);
+        Assert.Equal("api", exportedSource.Protocol);
+        Assert.Null(exportedSource.Host);
+        Assert.Null(exportedSource.Port);
+        Assert.Null(exportedSource.UseTls);
+        Assert.Null(exportedSource.Username);
+        Assert.Null(exportedSource.PasswordEncrypted);
+        Assert.Equal(1, artifact.Manifest.Excluded["api_source_credential"]);
+        Assert.DoesNotContain(credential.Prefix, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(Convert.ToBase64String(credential.TokenHash), json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ServiceApiCredentialsAreCountedButNeverExported()
+    {
+        await using var db = NewDb();
+        var credential = new ServiceApiCredential
+        {
+            Name = "Bifrost",
+            Prefix = "abcdefghijklmnopqrstuv",
+            TokenHash = Enumerable.Repeat((byte)9, 32).ToArray(),
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(30),
+        };
+        db.ServiceApiCredentials.Add(credential);
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var json = BackupJson.Serialize(artifact);
+
+        Assert.Equal(1, artifact.Manifest.Excluded["service_api_credential"]);
+        Assert.DoesNotContain(credential.Name, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(credential.Prefix, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(Convert.ToBase64String(credential.TokenHash), json, StringComparison.Ordinal);
     }
 
     [Fact]

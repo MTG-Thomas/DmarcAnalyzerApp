@@ -4,6 +4,8 @@ namespace DmarcAnalyzer.Api.Application.Backup;
 /// The configuration export. One JSON document holding everything a fresh install
 /// needs to become this one, minus the report data — which arrived over IMAP and can
 /// arrive again, and which outweighs the rest by roughly four orders of magnitude.
+/// API source credentials are also absent by design: a reveal-once credential cannot
+/// be recovered from this artifact, so restored API sources require token reissue.
 /// <para>
 /// The shape is a published format, not an internal DTO: an artifact written by one
 /// version is read by another, possibly years later, so property names are pinned by
@@ -123,11 +125,11 @@ public sealed record BackupMailboxSource(
     Guid Id,
     string Name,
     string Protocol,
-    string Host,
-    int Port,
-    bool UseTls,
-    string Username,
-    string PasswordEncrypted,
+    string? Host,
+    int? Port,
+    bool? UseTls,
+    string? Username,
+    string? PasswordEncrypted,
     Guid DefaultClientId,
     bool IsActive,
     DateTime CreatedAtUtc,

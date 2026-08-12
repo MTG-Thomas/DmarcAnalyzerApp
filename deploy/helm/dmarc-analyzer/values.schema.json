@@ -114,7 +114,7 @@
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "database": { "type": "string" },
         "username": { "type": "string" },
-        "password": { "type": "string" },
+        "password": { "type": ["string", "null"] },
         "connectionString": {
           "type": "string",
           "description": "Set this to bypass the fields above — useful for sslmode or pooling parameters. Npgsql spells it 'SSL Mode', not 'sslmode'."

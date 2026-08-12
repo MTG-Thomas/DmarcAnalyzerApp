@@ -54,7 +54,7 @@ export type AnalyticsSummary = {
   trend: TrendPoint[]
   topFailingDomains: TopFailingDomain[]
   topReporters: TopReporter[]
-  dispositions: { none: number; quarantine: number; reject: number }
+  dispositions: { none: number; pass: number; quarantine: number; reject: number }
   /** Mailbox ops rollup; null for client_viewer users, who have no mailbox visibility. */
   mailboxes: { total: number; healthy: number; failing: number } | null
 }
@@ -246,7 +246,7 @@ export type SourceDetail = {
   messages: number
   compliantMessages: number
   complianceRate: number
-  dispositions: { none: number; quarantine: number; reject: number }
+  dispositions: { none: number; pass: number; quarantine: number; reject: number }
   evaluated: EvaluatedCombo[]
   headerFroms: ValueCount[]
   envelopeFroms: ValueCount[]
@@ -579,7 +579,7 @@ export type NotificationKind = 'alert' | 'digest' | 'both'
 
 export type NotificationRecipient = {
   id: string
-  /** Null means agency-wide: this address receives notifications for every client. */
+  /** Null means MSP-wide: this address receives notifications for every client. */
   clientId: string | null
   clientName: string | null
   email: string

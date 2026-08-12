@@ -1,5 +1,6 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Clients;
@@ -94,6 +95,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
     workerBuilder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
+    workerBuilder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
     workerBuilder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.AddHttpContextAccessor();
@@ -117,6 +119,12 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
     workerBuilder.Services.AddMtaStsMonitoring(workerBuilder.Configuration);
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
+    workerBuilder.Services.AddOptions<ReportPayloadExtractionOptions>()
+        .Bind(workerBuilder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
+        .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
+        .ValidateOnStart();
+    workerBuilder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
+    workerBuilder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
     // Backup offload runs on the loop, so the worker host needs the whole chain — the
     // export service included. Registering it only on the API host would leave the pass
     // throwing from GetRequiredService in worker mode, visible as nothing but a caught log
@@ -232,13 +240,18 @@ builder.Services.AddScoped<ICurrentUserContext>(sp =>
         ? new SystemUserContext()
         : sp.GetRequiredService<CurrentUserContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IServiceApiCredentialService, ServiceApiCredentialService>();
+builder.Services.AddScoped<IServiceApiAuthenticator, ServiceApiAuthenticator>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();
 builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
+builder.Services.AddScoped<IApiSourceCredentialService, ApiSourceCredentialService>();
+builder.Services.AddScoped<IApiSourceAuthenticator, ApiSourceAuthenticator>();
 builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
 builder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
 builder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
+builder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
 builder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
@@ -267,6 +280,13 @@ builder.Services.AddMtaStsMonitoring(builder.Configuration);
 builder.Services.AddScoped<IMtaStsPolicyHostService, MtaStsPolicyHostService>();
 builder.Services.AddScoped<IMtaStsPolicyAdminService, MtaStsPolicyAdminService>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+builder.Services.AddOptions<ReportPayloadExtractionOptions>()
+    .Bind(builder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
+    .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
+    .ValidateOnStart();
+builder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
+builder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
+builder.Services.AddScoped<ReportUploadHandler>();
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));
 builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();

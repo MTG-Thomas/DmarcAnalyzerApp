@@ -70,7 +70,7 @@ Target: improve reliability and readiness.
       a broader indexing strategy is still open.)*
 - [x] Finalize local username/password auth and operational security controls.
 - [x] Provide production Docker images and Compose deployment guide — CI publishes
-      a multi-arch image to GHCR and Docker Hub; `deploy/compose.yml` plus the
+      an amd64 image to GHCR and Docker Hub; `deploy/compose.yml` plus the
       README quick-start run it without a local build.
 - [ ] Provide Kubernetes deployment guidance at equal depth (manifests/Helm + operations notes).
 - [x] Finalize runbooks, per-client retention operations (default 27 months), and

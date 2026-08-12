@@ -49,11 +49,11 @@ export type Domain = {
 export type MailboxSource = {
   id: string
   name: string
-  protocol: 'imap' | 'pop3'
-  host: string
-  port: number
-  useTls: boolean
-  username: string
+  protocol: 'imap' | 'pop3' | 'api'
+  host: string | null
+  port: number | null
+  useTls: boolean | null
+  username: string | null
   defaultClientId: string
   defaultClientName: string | null
   isActive: boolean
@@ -68,6 +68,31 @@ export type MailboxSource = {
    * far back a replay could actually reach, and where the last deletion pass cut.
    */
   oldestMessageAtUtc: string | null
+}
+
+export type ApiSourceCredential = {
+  id: string
+  sourceId: string
+  prefix: string
+  createdAtUtc: string
+  revokedAtUtc: string | null
+}
+
+export type IssuedApiSourceCredential = Omit<ApiSourceCredential, 'revokedAtUtc'> & {
+  token: string
+}
+
+export type ServiceApiCredential = {
+  id: string
+  name: string
+  prefix: string
+  createdAtUtc: string
+  expiresAtUtc: string
+  revokedAtUtc: string | null
+}
+
+export type IssuedServiceApiCredential = Omit<ServiceApiCredential, 'revokedAtUtc'> & {
+  token: string
 }
 
 export type MailboxHealth = {

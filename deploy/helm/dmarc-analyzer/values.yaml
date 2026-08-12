@@ -78,7 +78,7 @@ externalDatabase:
   database: dmarc_analyzer
   username: dmarc
   # Ignored when auth.existingSecret is set.
-  password: ""
+  password: null
   # Set this to bypass the fields above entirely — useful for sslmode, pooling
   # parameters, or a connection string your platform already issues.
   connectionString: ""

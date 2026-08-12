@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Common;
+using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
 using DmarcAnalyzer.Api.Data;
@@ -9,7 +10,7 @@ namespace DmarcAnalyzer.Api.Application.MailboxSources;
 
 public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IMailboxSourceService
 {
-    private static readonly string[] SupportedProtocols = ["imap", "pop3"];
+    private static readonly string[] SupportedProtocols = ["imap", "pop3", "api"];
 
     public async Task<IReadOnlyList<MailboxSourceDto>> ListAsync(CancellationToken ct)
     {
@@ -23,20 +24,30 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
 
     public async Task<ServiceResult<MailboxSourceDto>> CreateAsync(CreateMailboxSourceRequest request, CancellationToken ct)
     {
-        var protocol = request.Protocol.Trim().ToLowerInvariant();
+        var protocol = request.Protocol?.Trim().ToLowerInvariant() ?? string.Empty;
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap or pop3", 400);
+            return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||
-            string.IsNullOrWhiteSpace(request.Host) ||
-            string.IsNullOrWhiteSpace(request.Username) ||
-            string.IsNullOrWhiteSpace(request.Password) ||
-            request.Port <= 0 ||
             request.DefaultClientId == Guid.Empty)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("name, host, port, username, password, and defaultClientId are required", 400);
+            return ServiceResult<MailboxSourceDto>.Failure("name and defaultClientId are required", 400);
+        }
+
+        var isApi = protocol == "api";
+        if (!isApi && !HasCompleteMailboxConfiguration(
+                request.Host, request.Port, request.UseTls, request.Username, request.Password))
+        {
+            return ServiceResult<MailboxSourceDto>.Failure(
+                "host, port, useTls, username, and password are required for mailbox sources", 400);
+        }
+
+        if (isApi && request.DeleteAfterRetention)
+        {
+            return ServiceResult<MailboxSourceDto>.Failure(
+                "mailbox retention cannot be enabled for an API source", 400);
         }
 
         var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId, ct);
@@ -50,17 +61,18 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             Name = request.Name.Trim(),
             Protocol = protocol,
-            Host = request.Host.Trim().ToLowerInvariant(),
-            Port = request.Port,
-            UseTls = request.UseTls,
-            Username = request.Username.Trim(),
-            PasswordEncrypted = credentialProtector.Protect(request.Password),
+            Host = isApi ? null : request.Host!.Trim().ToLowerInvariant(),
+            Port = isApi ? null : request.Port,
+            UseTls = isApi ? null : request.UseTls,
+            Username = isApi ? null : request.Username!.Trim(),
+            PasswordEncrypted = isApi ? null : credentialProtector.Protect(request.Password!),
             DefaultClientId = request.DefaultClientId,
             IsActive = request.IsActive,
-            DeleteAfterRetention = request.DeleteAfterRetention,
+            DeleteAfterRetention = !isApi && request.DeleteAfterRetention,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
+        source.NormalizeProtocolState();
 
         db.MailboxSources.Add(source);
         await db.SaveChangesAsync(ct);
@@ -76,15 +88,14 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             return ServiceResult<MailboxSourceDto>.Failure("not found", 404);
         }
 
+        var protocol = source.Protocol;
         if (request.Protocol is not null)
         {
-            var protocol = request.Protocol.Trim().ToLowerInvariant();
+            protocol = request.Protocol.Trim().ToLowerInvariant();
             if (!SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap or pop3", 400);
+                return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap, pop3, or api", 400);
             }
-
-            source.Protocol = protocol;
         }
 
         if (request.Name is not null)
@@ -97,44 +108,50 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             source.Name = request.Name.Trim();
         }
 
-        if (request.Host is not null)
+        var host = source.Host;
+        var port = source.Port;
+        var useTls = source.UseTls;
+        var username = source.Username;
+        var passwordEncrypted = source.PasswordEncrypted;
+
+        if (protocol != "api" && request.Host is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Host))
             {
                 return ServiceResult<MailboxSourceDto>.Failure("host cannot be empty", 400);
             }
 
-            source.Host = request.Host.Trim().ToLowerInvariant();
+            host = request.Host.Trim().ToLowerInvariant();
         }
 
-        if (request.Port.HasValue)
+        if (protocol != "api" && request.Port.HasValue)
         {
             if (request.Port.Value <= 0)
             {
                 return ServiceResult<MailboxSourceDto>.Failure("port must be greater than 0", 400);
             }
 
-            source.Port = request.Port.Value;
+            port = request.Port.Value;
         }
 
-        if (request.Username is not null)
+        if (protocol != "api" && request.Username is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Username))
             {
                 return ServiceResult<MailboxSourceDto>.Failure("username cannot be empty", 400);
             }
 
-            source.Username = request.Username.Trim();
+            username = request.Username.Trim();
         }
 
-        if (request.Password is not null)
+        if (protocol != "api" && request.Password is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Password))
             {
                 return ServiceResult<MailboxSourceDto>.Failure("password cannot be empty", 400);
             }
 
-            source.PasswordEncrypted = credentialProtector.Protect(request.Password);
+            passwordEncrypted = credentialProtector.Protect(request.Password);
         }
 
         if (request.DefaultClientId.HasValue)
@@ -153,9 +170,9 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             source.DefaultClientId = request.DefaultClientId.Value;
         }
 
-        if (request.UseTls.HasValue)
+        if (protocol != "api" && request.UseTls.HasValue)
         {
-            source.UseTls = request.UseTls.Value;
+            useTls = request.UseTls.Value;
         }
 
         if (request.IsActive.HasValue)
@@ -163,11 +180,35 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             source.IsActive = request.IsActive.Value;
         }
 
-        if (request.DeleteAfterRetention.HasValue)
+        var deleteAfterRetention = request.DeleteAfterRetention ?? source.DeleteAfterRetention;
+        if (protocol == "api")
         {
-            source.DeleteAfterRetention = request.DeleteAfterRetention.Value;
+            if (request.DeleteAfterRetention == true)
+            {
+                return ServiceResult<MailboxSourceDto>.Failure(
+                    "mailbox retention cannot be enabled for an API source", 400);
+            }
+
+        }
+        else if (!HasCompleteMailboxConfiguration(host, port, useTls, username, passwordEncrypted))
+        {
+            return ServiceResult<MailboxSourceDto>.Failure(
+                "host, port, useTls, username, and password are required when changing an API source to a mailbox source", 400);
         }
 
+        if (source.Protocol == "api" && protocol != "api")
+        {
+            await ApiSourceCredentialLifecycle.RevokeActiveAsync(db, source.Id, ct);
+        }
+
+        source.Protocol = protocol;
+        source.Host = host;
+        source.Port = port;
+        source.UseTls = useTls;
+        source.Username = username;
+        source.PasswordEncrypted = passwordEncrypted;
+        source.DeleteAfterRetention = deleteAfterRetention;
+        source.NormalizeProtocolState();
         source.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -193,4 +234,16 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             x.LastProcessedUidValidity,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);
+
+    private static bool HasCompleteMailboxConfiguration(
+        string? host,
+        int? port,
+        bool? useTls,
+        string? username,
+        string? password)
+        => !string.IsNullOrWhiteSpace(host)
+           && port is > 0
+           && useTls.HasValue
+           && !string.IsNullOrWhiteSpace(username)
+           && !string.IsNullOrWhiteSpace(password);
 }

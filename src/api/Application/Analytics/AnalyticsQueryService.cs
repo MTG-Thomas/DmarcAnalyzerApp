@@ -137,6 +137,7 @@ public sealed class AnalyticsQueryService(
 
         var dispositions = new AnalyticsDispositionsDto(
             dispositionRows.Where(x => x.Disposition == "none").Sum(x => x.Messages),
+            dispositionRows.Where(x => x.Disposition == "pass").Sum(x => x.Messages),
             dispositionRows.Where(x => x.Disposition == "quarantine").Sum(x => x.Messages),
             dispositionRows.Where(x => x.Disposition == "reject").Sum(x => x.Messages));
 
@@ -144,8 +145,12 @@ public sealed class AnalyticsQueryService(
         AnalyticsMailboxesDto? mailboxes = null;
         if (currentUser.IsAgencyStaff)
         {
-            var mailboxTotal = await db.MailboxSources.CountAsync(ct);
+            var mailboxSourceIds = db.MailboxSources
+                .Where(x => x.Protocol != "api")
+                .Select(x => x.Id);
+            var mailboxTotal = await mailboxSourceIds.CountAsync(ct);
             var latestRunStatuses = await db.MailboxSyncRuns
+                .Where(x => mailboxSourceIds.Contains(x.MailboxSourceId))
                 .GroupBy(x => x.MailboxSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
                 .ToListAsync(ct);
@@ -439,6 +444,7 @@ public sealed class AnalyticsQueryService(
 
         var dispositions = new AnalyticsDispositionsDto(
             evaluated.Where(x => x.Disposition == "none").Sum(x => x.Messages),
+            evaluated.Where(x => x.Disposition == "pass").Sum(x => x.Messages),
             evaluated.Where(x => x.Disposition == "quarantine").Sum(x => x.Messages),
             evaluated.Where(x => x.Disposition == "reject").Sum(x => x.Messages));
 

@@ -1,8 +1,8 @@
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
-using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
@@ -10,6 +10,7 @@ public enum TlsReportIngestOutcome
 {
     Inserted,
     Duplicate,
+    Rejected,
 }
 
 public interface ITlsReportIngestor
@@ -22,77 +23,128 @@ public interface ITlsReportIngestor
     /// whole thing back and report as such.
     /// </summary>
     Task<TlsReportIngestOutcome> IngestAsync(
-        TlsRptParseResult parsed, MailboxSource source, CancellationToken ct);
+        ReportSourceContext source, TlsRptParseResult parsed, CancellationToken ct);
 }
 
 /// <summary>
 /// The TLS half of what MailboxSyncService does for DMARC, in its own class so
 /// the 700-line sync service doesn't absorb a second format. Same rules: raw
 /// ON CONFLICT SQL for the dedupe (InMemory tests cannot exercise it — the PR's
-/// manual verification against Postgres is the proof), domains resolved outside
-/// the transaction, strings truncated to column widths because reporters
-/// control them.
+/// PostgreSQL tests are the proof), mailbox domains resolved outside the report
+/// transaction, and strings truncated to column widths because reporters control
+/// them. Restricted machine callers instead resolve and lock domains inside the
+/// transaction so client ownership cannot change before persistence.
 /// </summary>
 public sealed class TlsReportIngestor(
     DmarcAnalyzerDbContext db,
     IDomainIngestResolver domainResolver) : ITlsReportIngestor
 {
     public async Task<TlsReportIngestOutcome> IngestAsync(
-        TlsRptParseResult parsed, MailboxSource source, CancellationToken ct)
+        ReportSourceContext source, TlsRptParseResult parsed, CancellationToken ct)
     {
+        if (source.SourceId == Guid.Empty || source.DefaultClientId == Guid.Empty)
+        {
+            return TlsReportIngestOutcome.Rejected;
+        }
+
         var organizationName = Truncate(parsed.OrganizationName.Trim(), 255)!;
         var reportId = Truncate(parsed.ReportId.Trim(), 255)!;
         var contactInfo = Truncate(parsed.ContactInfo?.Trim(), 320);
 
-        // One resolution per distinct domain, outside the transaction — a domain
-        // is shared by every report for it, not owned by this one.
-        var domainIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        foreach (var policyDomain in parsed.Policies.Select(p => p.PolicyDomain).Distinct(StringComparer.Ordinal))
+        var policyDomains = parsed.Policies
+            .Select(p => p.PolicyDomain)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        IDbContextTransaction? transaction = null;
+        try
         {
-            domainIds[policyDomain] = await domainResolver.ResolveOrCreateAsync(
-                source.DefaultClientId, policyDomain, ct);
-        }
-
-        var totalSuccessful = parsed.Policies.Sum(p => p.SuccessfulSessionCount);
-        var totalFailed = parsed.Policies.Sum(p => p.FailureSessionCount);
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-        var reportEntityId = await TryInsertReportAsync(
-            source.Id, organizationName, reportId, contactInfo, parsed, totalSuccessful, totalFailed, ct);
-
-        if (!reportEntityId.HasValue)
-        {
-            // Already ingested. Disposing the transaction rolls back the no-op.
-            return TlsReportIngestOutcome.Duplicate;
-        }
-
-        foreach (var policy in parsed.Policies)
-        {
-            var policyEntityId = Guid.NewGuid();
-            await db.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO smtp_tls_report_policy
-                    (""Id"", ""SmtpTlsReportId"", ""DomainId"", ""PolicyType"", ""PolicyDomain"", ""PolicyString"", ""MxHostPatterns"", ""SuccessfulSessionCount"", ""FailureSessionCount"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"")
-                VALUES
-                    ({policyEntityId}, {reportEntityId.Value}, {domainIds[policy.PolicyDomain]}, {Truncate(policy.PolicyType, 32)}, {Truncate(policy.PolicyDomain, 255)}, {Truncate(policy.PolicyString, 4000)}, {Truncate(policy.MxHostPatterns, 2000)}, {policy.SuccessfulSessionCount}, {policy.FailureSessionCount}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc});
-                ", ct);
-
-            foreach (var detail in policy.FailureDetails)
+            if (source.RestrictToDefaultClient)
             {
+                transaction = await db.Database.BeginTransactionAsync(ct);
+            }
+
+            var domainIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
+            foreach (var policyDomain in policyDomains)
+            {
+                var domain = await domainResolver.ResolveOrCreateAsync(
+                    source.DefaultClientId, policyDomain, ct);
+                if (source.RestrictToDefaultClient
+                    && !await LockAndVerifyOwnershipAsync(domain, source.DefaultClientId, ct))
+                {
+                    return TlsReportIngestOutcome.Rejected;
+                }
+
+                domainIds[policyDomain] = domain.DomainId;
+            }
+
+            var totalSuccessful = parsed.Policies.Sum(p => p.SuccessfulSessionCount);
+            var totalFailed = parsed.Policies.Sum(p => p.FailureSessionCount);
+
+            transaction ??= await db.Database.BeginTransactionAsync(ct);
+
+            var reportEntityId = await TryInsertReportAsync(
+                source.SourceId, organizationName, reportId, contactInfo, parsed, totalSuccessful, totalFailed, ct);
+
+            if (!reportEntityId.HasValue)
+            {
+                // Already ingested. Disposing the transaction rolls back the no-op.
+                return TlsReportIngestOutcome.Duplicate;
+            }
+
+            foreach (var policy in parsed.Policies)
+            {
+                var policyEntityId = Guid.NewGuid();
                 await db.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO smtp_tls_failure_detail
-                        (""Id"", ""SmtpTlsReportPolicyId"", ""ResultType"", ""FailureCategory"", ""SendingMtaIp"", ""ReceivingMxHostname"", ""ReceivingMxHelo"", ""ReceivingIp"", ""FailedSessionCount"", ""AdditionalInformation"", ""FailureReasonCode"")
+                    INSERT INTO smtp_tls_report_policy
+                        (""Id"", ""SmtpTlsReportId"", ""DomainId"", ""PolicyType"", ""PolicyDomain"", ""PolicyString"", ""MxHostPatterns"", ""SuccessfulSessionCount"", ""FailureSessionCount"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"")
                     VALUES
-                        ({Guid.NewGuid()}, {policyEntityId}, {Truncate(detail.ResultType, 64)}, {TlsRptFailureClassifier.Categorize(detail.ResultType)}, {Truncate(detail.SendingMtaIp, 64)}, {Truncate(detail.ReceivingMxHostname, 255)}, {Truncate(detail.ReceivingMxHelo, 255)}, {Truncate(detail.ReceivingIp, 64)}, {detail.FailedSessionCount}, {Truncate(detail.AdditionalInformation, 2000)}, {Truncate(detail.FailureReasonCode, 255)});
+                        ({policyEntityId}, {reportEntityId.Value}, {domainIds[policy.PolicyDomain]}, {Truncate(policy.PolicyType, 32)}, {Truncate(policy.PolicyDomain, 255)}, {Truncate(policy.PolicyString, 4000)}, {Truncate(policy.MxHostPatterns, 2000)}, {policy.SuccessfulSessionCount}, {policy.FailureSessionCount}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc});
                     ", ct);
+
+                foreach (var detail in policy.FailureDetails)
+                {
+                    await db.Database.ExecuteSqlInterpolatedAsync($@"
+                        INSERT INTO smtp_tls_failure_detail
+                            (""Id"", ""SmtpTlsReportPolicyId"", ""ResultType"", ""FailureCategory"", ""SendingMtaIp"", ""ReceivingMxHostname"", ""ReceivingMxHelo"", ""ReceivingIp"", ""FailedSessionCount"", ""AdditionalInformation"", ""FailureReasonCode"")
+                        VALUES
+                            ({Guid.NewGuid()}, {policyEntityId}, {Truncate(detail.ResultType, 64)}, {TlsRptFailureClassifier.Categorize(detail.ResultType)}, {Truncate(detail.SendingMtaIp, 64)}, {Truncate(detail.ReceivingMxHostname, 255)}, {Truncate(detail.ReceivingMxHelo, 255)}, {Truncate(detail.ReceivingIp, 64)}, {detail.FailedSessionCount}, {Truncate(detail.AdditionalInformation, 2000)}, {Truncate(detail.FailureReasonCode, 255)});
+                        ", ct);
+                }
+            }
+
+            await TryInsertLedgerAsync(
+                source, organizationName, reportId, contactInfo, parsed, totalSuccessful, totalFailed, ct);
+
+            await transaction.CommitAsync(ct);
+            return TlsReportIngestOutcome.Inserted;
+        }
+        finally
+        {
+            if (transaction is not null)
+            {
+                await transaction.DisposeAsync();
             }
         }
+    }
 
-        await TryInsertLedgerAsync(
-            source, organizationName, reportId, contactInfo, parsed, totalSuccessful, totalFailed, ct);
+    private async Task<bool> LockAndVerifyOwnershipAsync(
+        DomainIngestResolution domain,
+        Guid expectedClientId,
+        CancellationToken ct)
+    {
+        if (domain.ClientId != expectedClientId)
+        {
+            return false;
+        }
 
-        await transaction.CommitAsync(ct);
-        return TlsReportIngestOutcome.Inserted;
+        var lockedClientId = await db.Database.SqlQuery<Guid>($"""
+            SELECT "ClientId" AS "Value"
+            FROM domain
+            WHERE "Id" = {domain.DomainId}
+            FOR UPDATE
+            """).SingleAsync(ct);
+        return lockedClientId == expectedClientId;
     }
 
     private async Task<Guid?> TryInsertReportAsync(
@@ -112,7 +164,7 @@ public sealed class TlsReportIngestor(
     }
 
     private async Task TryInsertLedgerAsync(
-        MailboxSource source, string organizationName, string reportId, string? contactInfo,
+        ReportSourceContext source, string organizationName, string reportId, string? contactInfo,
         TlsRptParseResult parsed, long totalSuccessful, long totalFailed, CancellationToken ct)
     {
         var policyDomains = Truncate(
@@ -122,7 +174,7 @@ public sealed class TlsReportIngestor(
             INSERT INTO tls_report_ingest
                 (""Id"", ""ClientId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""PolicyDomains"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""ContactInfo"", ""IngestedAtUtc"")
             VALUES
-                ({Guid.NewGuid()}, {source.DefaultClientId}, {source.Id}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {policyDomains ?? string.Empty}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {contactInfo}, {DateTime.UtcNow})
+                ({Guid.NewGuid()}, {source.DefaultClientId}, {source.SourceId}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {policyDomains ?? string.Empty}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {contactInfo}, {DateTime.UtcNow})
             ON CONFLICT (""ClientId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;
             ", ct);
     }

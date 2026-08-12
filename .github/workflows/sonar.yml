@@ -1,0 +1,101 @@
+name: Sonar analysis
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Sonar quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require Sonar configuration
+        run: |
+          set -euo pipefail
+          [ -n "$SONAR_TOKEN" ] || { echo "::error::SONAR_TOKEN is not configured."; exit 1; }
+          [ -n "$SONAR_ORGANIZATION" ] || { echo "::error::SONAR_ORGANIZATION is not configured."; exit 1; }
+          [ -n "$SONAR_PROJECT_KEY" ] || { echo "::error::SONAR_PROJECT_KEY is not configured."; exit 1; }
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+
+      - name: Frontend tests with coverage
+        working-directory: src/web
+        run: |
+          npm ci --ignore-scripts
+          npm test -- --coverage --coverage.reporter=lcov --coverage.reporter=text-summary
+
+      - name: Install pinned Sonar scanner
+        run: dotnet tool install --tool-path .sonar-scanner dotnet-sonarscanner --version 11.2.1
+
+      - name: Prepare test connection
+        shell: bash
+        run: echo "DMARC_TEST_POSTGRES=Host=localhost;Port=5432;Database=postgres;Username=postgres" >> "$GITHUB_ENV"
+
+      - name: Analyze
+        run: |
+          set -euo pipefail
+          dotnet restore DmarcAnalyzerApp.slnx --locked-mode --nologo
+          .sonar-scanner/dotnet-sonarscanner begin \
+            /k:"$SONAR_PROJECT_KEY" \
+            /o:"$SONAR_ORGANIZATION" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.qualitygate.wait=true \
+            /d:sonar.qualitygate.timeout=300 \
+            /d:sonar.javascript.lcov.reportPaths="src/web/coverage/lcov.info" \
+            /d:sonar.cs.opencover.reportsPaths="TestResults/**/coverage.opencover.xml"
+          dotnet build DmarcAnalyzerApp.slnx --configuration Release --no-restore --no-incremental --nologo
+          dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj \
+            --configuration Release --no-build --nologo \
+            --collect:"XPlat Code Coverage" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          dotnet test src/api.integrationtests/DmarcAnalyzer.Api.IntegrationTests.csproj \
+            --configuration Release --no-build --nologo \
+            --collect:"XPlat Code Coverage" \
+            --results-directory "$GITHUB_WORKSPACE/TestResults" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+          .sonar-scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
