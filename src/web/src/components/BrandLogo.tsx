@@ -77,7 +77,7 @@ export function BrandLogo({
       <span
         className={cn(
           'whitespace-nowrap font-display font-semibold leading-none tracking-tight',
-          dark ? 'text-[#f0fdfa]' : 'text-body',
+          dark ? 'text-[#f0fdfa]' : 'text-[var(--logo-wordmark)]',
         )}
         style={{ fontSize: Math.round(height * 0.55) }}
       >

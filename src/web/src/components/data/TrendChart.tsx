@@ -32,7 +32,7 @@ export function TrendChart({ data = [], height = 160, showLabels = true, classNa
         style={{ height }}
       >
         {[10, 20, 30].map((y) => (
-          <line key={y} x1="0" x2={w} y1={y} y2={y} stroke="#eef3f1" strokeWidth="0.3" />
+          <line key={y} x1="0" x2={w} y1={y} y2={y} stroke="var(--gray-100)" strokeWidth="0.3" />
         ))}
         {data.map((d, i) => {
           const ph = (d.pass / max) * 38
@@ -40,9 +40,9 @@ export function TrendChart({ data = [], height = 160, showLabels = true, classNa
           const x = i * (bw + gap)
           return (
             <g key={`${d.label}-${i}`}>
-              <rect x={x} width={bw} y={40 - ph} height={ph} rx="0.6" fill="#0e9481" />
+              <rect x={x} width={bw} y={40 - ph} height={ph} rx="0.6" fill="var(--status-ok-dot)" />
               {fh > 0 ? (
-                <rect x={x} width={bw} y={40 - ph - fh - 0.5} height={fh} rx="0.6" fill="#dc3d5c" />
+                <rect x={x} width={bw} y={40 - ph - fh - 0.5} height={fh} rx="0.6" fill="var(--status-danger-dot)" />
               ) : null}
             </g>
           )
