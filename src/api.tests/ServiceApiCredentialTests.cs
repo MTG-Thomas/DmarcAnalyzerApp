@@ -146,6 +146,35 @@ public sealed class ServiceApiCredentialTests
         Assert.False(reachedEndpoint);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("expired")]
+    public async Task MissingOrInvalidCookieIsRejected(string? cookieId)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Path = "/api/v1/clients";
+        if (cookieId is not null)
+        {
+            context.Request.Headers.Cookie = $"dmarc_session={cookieId}";
+        }
+
+        var reachedEndpoint = false;
+        var middleware = new SessionAuthMiddleware(_ =>
+        {
+            reachedEndpoint = true;
+            return Task.CompletedTask;
+        });
+
+        await middleware.InvokeAsync(
+            context,
+            new ThrowingAuthService(returnNullSession: true),
+            new StubServiceAuthenticator(null),
+            new CurrentUserContext());
+
+        Assert.Equal(401, context.Response.StatusCode);
+        Assert.False(reachedEndpoint);
+    }
+
     [Fact]
     public async Task ServiceTokenCannotReachAdminEndpoints()
     {
@@ -183,7 +212,7 @@ public sealed class ServiceApiCredentialTests
             => Task.FromResult(principal);
     }
 
-    private sealed class ThrowingAuthService : IAuthService
+    private sealed class ThrowingAuthService(bool returnNullSession = false) : IAuthService
     {
         private static Exception Unexpected() => new InvalidOperationException("cookie session must not run");
         public Task<bool> RequiresBootstrapAsync(CancellationToken ct) => throw Unexpected();
@@ -192,6 +221,7 @@ public sealed class ServiceApiCredentialTests
         public Task<ServiceResult<LoginResultDto>> LoginWithExternalIdentityAsync(Guid userId, string? ipAddress, string? userAgent, CancellationToken ct) => throw Unexpected();
         public Task LogoutAsync(string cookieId, CancellationToken ct) => throw Unexpected();
         public Task<UserDto?> GetCurrentUserAsync(string cookieId, CancellationToken ct) => throw Unexpected();
-        public Task<SessionUserDto?> GetSessionUserAsync(string cookieId, CancellationToken ct) => throw Unexpected();
+        public Task<SessionUserDto?> GetSessionUserAsync(string cookieId, CancellationToken ct)
+            => returnNullSession ? Task.FromResult<SessionUserDto?>(null) : throw Unexpected();
     }
 }
