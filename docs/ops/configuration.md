@@ -222,6 +222,26 @@ Off by default; local accounts work with no identity provider. See
 | `Auth__Oidc__RequireHttpsMetadata` | `true` | Only turn off against a local test provider over plain HTTP. |
 | `Auth__Oidc__DisableLocalLogin` | `false` | Turn off password sign-in and redirect the login page straight to this provider. Requires `Enabled=true` — refused at startup otherwise, since that combination would leave no way to sign in. Registration is unaffected: it already refuses itself once the first account exists, so the first admin can still bootstrap locally before this is turned on. |
 
+## Passkeys (`Auth:Passkeys`)
+
+Passkeys are an additional sign-in method for existing users; password and OIDC
+recovery remain available. Configuration is refused at startup unless every
+origin exactly matches the relying-party host and uses HTTPS. Never derive the
+relying-party ID from a request `Host` header.
+
+| Environment variable | Default | Meaning |
+| --- | --- | --- |
+| `Auth__Passkeys__Enabled` | `false` | Enable passkey registration and sign-in. |
+| `Auth__Passkeys__RelyingPartyId` | *(empty)* | Exact relying-party host, for example `dmarc.midtowntg.com`. |
+| `Auth__Passkeys__RelyingPartyName` | `DMARC Analyzer` | Name shown by authenticators. |
+| `Auth__Passkeys__Origins__0` | *(empty)* | Exact HTTPS browser origin, for example `https://dmarc.midtowntg.com`. Each additional origin uses the next index. |
+
+Registration and sign-in ceremonies are held for five minutes in one API
+process and consumed exactly once. A restart intentionally aborts ceremonies.
+Before running more than one API replica, replace this store with an atomic
+shared PostgreSQL or Redis implementation and persist/share the ASP.NET Data
+Protection key ring.
+
 ## Behind a reverse proxy (`Network`)
 
 Off by default. Without it the audit trail records the proxy's address — on the

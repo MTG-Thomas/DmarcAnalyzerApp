@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Data.Entities;
+using DmarcAnalyzer.Api.Application.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
@@ -16,7 +17,8 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     private const string BeforeApiSourceMigration = "20260806191701_AddSmtpTlsReportIngestion";
     private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
     private const string BeforeServicePermissionsMigration = "20260812012105_AddServiceApiCredentials";
-    private const string ExpectedLatestMigration = "20260812025139_AddServiceApiCredentialPermissions";
+    private const string BeforePasskeyMigration = "20260812025139_AddServiceApiCredentialPermissions";
+    private const string ExpectedLatestMigration = "20260812031904_AddUserPasskeys";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
@@ -90,6 +92,94 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using var current = database.CreateDbContext();
         var credential = await current.ServiceApiCredentials.AsNoTracking().SingleAsync(x => x.Id == id);
         Assert.Equal(["portfolio.read"], credential.Permissions);
+    }
+
+    [Fact]
+    public async Task PasskeyMigration_EnforcesCredentialShapeUniquenessAndSafeDown()
+    {
+        await database.ResetDatabaseAsync();
+        await database.MigrateToLatestAsync();
+
+        var user = new AgencyUser
+        {
+            Email = "passkey-migration@example.test",
+            DisplayName = "Passkey migration",
+            PasswordHash = "not-used",
+            Role = Roles.AgencyAdmin,
+        };
+        var credentialId = Enumerable.Repeat((byte)7, 32).ToArray();
+        await using (var db = database.CreateDbContext())
+        {
+            db.AddRange(user, new UserPasskey
+            {
+                UserId = user.Id,
+                Name = "Security key",
+                CredentialId = credentialId,
+                PublicKey = new byte[64],
+                UserHandle = user.Id.ToByteArray(),
+                SignCount = uint.MaxValue,
+                Transports = "usb,internal",
+                IsBackupEligible = true,
+                IsBackedUp = true,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var duplicate = database.CreateDbContext())
+        {
+            duplicate.UserPasskeys.Add(new UserPasskey
+            {
+                UserId = user.Id,
+                Name = "Duplicate",
+                CredentialId = credentialId,
+                PublicKey = new byte[64],
+                UserHandle = user.Id.ToByteArray(),
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => duplicate.SaveChangesAsync());
+        }
+
+        await using (var invalid = database.CreateDbContext())
+        {
+            invalid.UserPasskeys.Add(new UserPasskey
+            {
+                UserId = user.Id,
+                Name = "Short ID",
+                CredentialId = new byte[15],
+                PublicKey = new byte[64],
+                UserHandle = user.Id.ToByteArray(),
+            });
+            await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+        }
+
+        await using (var down = database.CreateDbContext())
+        {
+            var error = await Assert.ThrowsAsync<PostgresException>(() => down.GetService<IMigrator>()
+                .MigrateAsync(BeforePasskeyMigration));
+            Assert.Contains("while passkey rows exist", error.MessageText, StringComparison.Ordinal);
+        }
+
+        await using (var verification = database.CreateDbContext())
+        {
+            Assert.Equal(ExpectedLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
+            Assert.Equal(uint.MaxValue, (await verification.UserPasskeys.SingleAsync()).SignCount);
+        }
+    }
+
+    [Fact]
+    public async Task PasskeyDownMigrationSucceedsWhenNoCredentialsExist()
+    {
+        await database.ResetDatabaseAsync();
+        await database.MigrateToLatestAsync();
+
+        await using (var db = database.CreateDbContext())
+        {
+            await db.GetService<IMigrator>().MigrateAsync(BeforePasskeyMigration);
+        }
+
+        await using var verification = database.CreateDbContext();
+        Assert.Equal(BeforePasskeyMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
+        Assert.False(await verification.Database.SqlQueryRaw<bool>(
+            "SELECT to_regclass('public.user_passkey') IS NOT NULL AS \"Value\"").SingleAsync());
     }
 
     [Fact]
