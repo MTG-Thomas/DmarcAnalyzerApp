@@ -23,6 +23,12 @@ public sealed class ReportPayloadExtractionOptions
     /// <summary>Maximum expanded-to-compressed byte ratio for GZIP and ZIP data.</summary>
     public double MaxCompressionRatio { get; set; } = 100;
 
+    /// <summary>Requests one source credential may make during one rate-limit window.</summary>
+    public int RateLimitPermits { get; set; } = 60;
+
+    /// <summary>Length of the source-credential rate-limit window.</summary>
+    public int RateLimitWindowSeconds { get; set; } = 60;
+
     public bool IsValid()
         => MaxRequestBytes > 0
            && MaxExpandedBytes > 0
@@ -30,5 +36,7 @@ public sealed class ReportPayloadExtractionOptions
            && MaxEntryBytes > 0
            && MaxEntryBytes <= MaxExpandedBytes
            && double.IsFinite(MaxCompressionRatio)
-           && MaxCompressionRatio >= 1;
+           && MaxCompressionRatio >= 1
+           && RateLimitPermits > 0
+           && RateLimitWindowSeconds > 0;
 }

@@ -229,6 +229,7 @@ public sealed class ApiReportSourceTests
         var service = Service(db);
 
         Assert.Equal(400, (await service.CreateAsync(new() { Protocol = "smtp" }, default)).StatusCode);
+        Assert.Equal(400, (await service.CreateAsync(new() { Protocol = "pop3" }, default)).StatusCode);
         Assert.Equal(400, (await service.CreateAsync(new() { Protocol = "api" }, default)).StatusCode);
         Assert.Equal(400, (await service.CreateAsync(new()
         {
@@ -277,6 +278,7 @@ public sealed class ApiReportSourceTests
 
         Assert.Equal(404, (await service.UpdateAsync(Guid.NewGuid(), new(), default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Protocol = "smtp" }, default)).StatusCode);
+        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Protocol = "pop3" }, default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Name = " " }, default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Host = " " }, default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Port = 0 }, default)).StatusCode);
@@ -288,5 +290,27 @@ public sealed class ApiReportSourceTests
         var api = await service.UpdateAsync(source.Id, new() { Protocol = "api" }, default);
         Assert.True(api.IsSuccess);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { DeleteAfterRetention = true }, default)).StatusCode);
+    }
+
+    [Fact]
+    public async Task LegacyPop3SourceCanBeEditedOrMovedToImap()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        var source = new ReportSource
+        {
+            Name = "Legacy", Protocol = "pop3", Host = "pop.example", Port = 995, UseTls = true,
+            Username = "reports@example", PasswordEncrypted = "encrypted", DefaultClientId = client.Id,
+        };
+        db.AddRange(client, source);
+        await db.SaveChangesAsync();
+        var service = Service(db);
+
+        var renamed = await service.UpdateAsync(source.Id, new() { Name = "Legacy renamed", Protocol = "pop3" }, default);
+        Assert.True(renamed.IsSuccess);
+
+        var changed = await service.UpdateAsync(source.Id, new() { Protocol = "imap" }, default);
+        Assert.True(changed.IsSuccess);
+        Assert.Equal("imap", source.Protocol);
     }
 }

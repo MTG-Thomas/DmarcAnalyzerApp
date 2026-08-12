@@ -49,6 +49,7 @@ export type Domain = {
 export type ReportSource = {
   id: string
   name: string
+  /** POP3 is retained only so legacy rows can be displayed and moved to IMAP or API. */
   protocol: 'imap' | 'pop3' | 'api'
   host: string | null
   port: number | null

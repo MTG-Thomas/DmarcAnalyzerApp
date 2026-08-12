@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using DmarcAnalyzer.Api.Workers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -62,7 +63,7 @@ public sealed class MailboxRetentionPlanner(
         var graceDays = Math.Max(0, _options.MailboxRetentionGraceDays);
         var sources = await db.ReportSources
             .AsNoTracking()
-            .Where(x => x.Protocol != "api")
+            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
         var plans = new List<MailboxRetentionPlan>(sources.Count);

@@ -60,6 +60,8 @@ typed rejections for individual empty, nested, or unsupported entries.
 | `Ingestion__MaxArchiveEntries` | `100` | Maximum ZIP directory and file entries. |
 | `Ingestion__MaxEntryBytes` | `26214400` | Maximum expanded bytes for one report entry. Must not exceed `MaxExpandedBytes`. |
 | `Ingestion__MaxCompressionRatio` | `100` | Maximum expanded-to-compressed ratio for GZIP and ZIP content. |
+| `Ingestion__RateLimitPermits` | `60` | Requests one source credential may make to the machine-upload endpoint per window. |
+| `Ingestion__RateLimitWindowSeconds` | `60` | Length of the source-credential upload rate-limit window. |
 
 ## Mailbox ingestion (`Worker`)
 
