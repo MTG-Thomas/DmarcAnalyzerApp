@@ -14,7 +14,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     // Keep the release pin separate from the expected latest migration so the
     // upgrade test proves this schema-bearing slice preserves configuration.
     private const string BeforeApiSourceMigration = "20260806191701_AddSmtpTlsReportIngestion";
-    private const string PreviousReleaseLatestMigration = "20260811195529_AddApiReportSource";
+    private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
     private const string ExpectedLatestMigration = "20260812012105_AddServiceApiCredentials";
 
     [Fact]
@@ -159,7 +159,11 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var verification = database.CreateDbContext())
         {
             Assert.Equal(PreviousReleaseLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
-            Assert.Equal(1, await verification.ReportSources.CountAsync(x => x.Protocol == "api"));
+            Assert.Equal(
+                1,
+                await verification.Database
+                    .SqlQueryRaw<int>("SELECT COUNT(*)::int AS \"Value\" FROM mailbox_source WHERE \"Protocol\" = 'api'")
+                    .SingleAsync());
         }
     }
 
@@ -191,7 +195,11 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using var verification = database.CreateDbContext();
         Assert.Equal(BeforeApiSourceMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
-        Assert.Equal("imap.example", (await verification.ReportSources.SingleAsync(x => x.Id == sourceId)).Host);
+        Assert.Equal(
+            "imap.example",
+            await verification.Database
+                .SqlQueryRaw<string>("SELECT \"Host\" AS \"Value\" FROM mailbox_source WHERE \"Id\" = {0}", sourceId)
+                .SingleAsync());
     }
 
     [Fact]
