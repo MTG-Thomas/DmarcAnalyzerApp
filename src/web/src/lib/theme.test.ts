@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { readThemePreference, saveThemePreference, watchTheme } from '@/lib/theme'
+import {
+  readThemePreference,
+  saveThemePreference,
+  THEME_STORAGE_KEY,
+  watchTheme,
+} from '@/lib/theme'
 
 afterEach(() => {
   localStorage.clear()
@@ -30,5 +35,21 @@ describe('theme preference', () => {
 
     stop()
     expect(media.removeEventListener).toHaveBeenCalledWith('change', expect.any(Function))
+  })
+
+  it('falls back from an invalid choice without subscribing an explicit theme', () => {
+    localStorage.setItem(THEME_STORAGE_KEY, 'sepia')
+    const media = {
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }
+    vi.stubGlobal('matchMedia', vi.fn(() => media))
+
+    expect(readThemePreference()).toBe('system')
+    watchTheme('light')()
+
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(media.addEventListener).not.toHaveBeenCalled()
   })
 })
