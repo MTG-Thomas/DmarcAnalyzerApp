@@ -18,7 +18,7 @@ feel trustworthy without looking clinical or militarized.
   not compete with them.
 - Use cards to frame metrics, bounded tools, or coherent panels—not as the
   default wrapper for every section.
-- A planned dark theme should extend the upstream brand's ink-panel treatment
+- The dark theme extends the upstream brand's ink-panel treatment
   across the console without changing its density or information hierarchy.
 
 DMARC products such as dmarcian and EasyDMARC are information-domain references,
@@ -80,9 +80,9 @@ Avoid new literal colors in page code.
 primary button to teal-600. Teal-600 remains appropriate for non-text chart
 fills, dots, and borders.
 
-### Planned dark theme
+### Dark theme
 
-Dark theme is planned, not implemented. The canonical brand reference is the
+Dark theme is implemented. The canonical brand reference is the
 upstream [brand page](https://dmarc-analyzer.net/brand/). It defines ink green
 for dark panels, mint for accents and buttons on those panels, and a reversed
 light wordmark. The live brand-site stylesheet currently supplies the supporting
@@ -103,32 +103,31 @@ and reversed-logo panels. It does not define a complete dark application theme.
 Treat this table as the source palette, not permission to guess the remaining
 semantic mappings.
 
-The dark-theme design slice must:
+The implementation:
 
-- map page, card, sunken, overlay, hover, selected, and disabled surfaces from
+- maps page, card, sunken, overlay, hover, selected, and disabled surfaces from
   the existing ink/teal scales;
-- define body, secondary, faint, link, border, and focus tokens with WCAG 2.2 AA
-  contrast evidence;
-- create dark variants for every success, warning, danger, and neutral
+- defines body, secondary, faint, link, border, and focus tokens for dark surfaces;
+- creates dark variants for every success, warning, danger, and neutral
   foreground/background/dot triplet rather than reusing light tinted
   backgrounds;
-- remap chart grids, table headers, row hover, code blocks, inputs, dialogs,
+- remaps chart grids, table headers, row hover, code blocks, inputs, dialogs,
   backdrops, and shadows so depth does not depend on a barely visible shadow;
-- use mint with ink text for primary actions on dark surfaces and mint for the
+- uses mint with ink text for primary actions on dark surfaces and mint for the
   focus indicator; do not place white text on mint;
-- use the reversed `BrandLogo` treatment on a dark shell while preserving the
+- uses the reversed `BrandLogo` treatment on a dark shell while preserving the
   shield gradient exactly; and
-- verify the same loading, empty, error, partial, selected, disabled, keyboard,
-  mobile, and high-risk states in both schemes.
+- exposes System, Light, and Dark through a native select in the console sidebar.
+  System follows `prefers-color-scheme`; explicit choices persist in local storage,
+  and a pre-render head script applies the resolved scheme without a light flash.
 
 Prefer semantic custom-property overrides at the theme root so existing
 components inherit the scheme. Do not add per-page `dark:` class patches or a
-parallel component set. Theme selection behavior—system preference, persisted
-user choice, or both—belongs to the implementation slice and is not decided by
-the brand palette.
+parallel component set. Keep theme selection browser-native: do not add a theme
+library or custom picker.
 
-Before implementation, recheck the canonical brand page because the website is
-upstream-owned and may evolve independently of this fork. Avoid pure black,
+Before changing the dark palette, recheck the canonical brand page because the
+website is upstream-owned and may evolve independently of this fork. Avoid pure black,
 generic charcoal, blue-purple gradients, neon teal overuse, and a dark sidebar
 attached to otherwise unmapped light content.
 

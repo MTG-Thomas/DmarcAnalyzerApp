@@ -14,10 +14,10 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
   /* Semantic aliases — the source of truth referenced by the Tailwind theme. */
-  /* --brand is teal-700, one step darker than teal-600. White on teal-600 is
-     3.8:1 and fails WCAG AA, and --brand carries white text on every primary
-     button. Do not revert it; teal-600 stays valid for non-text use only
+  /* In light mode --brand is teal-700, one step darker than teal-600. White on
+     teal-600 is 3.8:1 and fails WCAG AA. Do not revert it; teal-600 stays valid for non-text use only
      (status dots, chart fills, borders — the 3:1 graphics threshold). */
   --brand: #0c7568;
   --brand-hover: #0b5d54;
@@ -36,6 +36,9 @@
   --text-secondary: #54685f;
   --text-faint: #5c6f67;
   --text-on-brand: #ffffff;
+  --danger-action: #a81f3d;
+  --danger-action-hover: #86162e;
+  --text-on-danger: #ffffff;
 
   --border-default: #e3eae8;
   --border-strong: #cfdad6;
@@ -61,8 +64,11 @@
   --teal-600: #0e9481; --teal-300: #7eddc7;
   --mint-400: #3ae0b0;
   --ink-900: #0b1d18; --ink-800: #0e2620;
-  --gray-50: #f5f8f7; --gray-100: #eef3f1; --gray-200: #e3eae8; --gray-300: #cfdad6;
-  --gray-400: #9fb0ab; --gray-500: #6b807a; --gray-600: #54685f; --gray-900: #101f1c;
+  --gray-25: #fafcfb; --gray-50: #f5f8f7; --gray-100: #eef3f1; --gray-200: #e3eae8;
+  --gray-300: #cfdad6; --gray-400: #9fb0ab; --gray-500: #6b807a; --gray-600: #54685f;
+  --gray-700: #3d4f49; --gray-800: #25332f; --gray-900: #101f1c;
+  --logo-wordmark: var(--text-body);
+  --overlay-bg: rgba(11, 29, 24, 0.45);
 
   --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Public Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -84,6 +90,56 @@
   --shadow-overlay: 0 20px 48px rgba(11,29,24,.18),0 4px 12px rgba(11,29,24,.08);
   --shadow-ink-panel: 0 24px 60px rgba(6,47,43,.25);
   --ease-out: cubic-bezier(.2,.8,.3,1); --dur-fast: 120ms; --dur-normal: 200ms;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --brand: #3ae0b0;
+  --brand-hover: #5ff0c0;
+  --brand-active: #22c996;
+  --brand-subtle: #123029;
+  --brand-ring: rgba(58, 224, 176, 0.38);
+
+  --surface-page: #0b1d18;
+  --surface-card: #0e2620;
+  --surface-sunken: #081a16;
+  --surface-ink: #061d19;
+
+  --text-body: #e8f2ee;
+  --text-secondary: #b7c8c2;
+  --text-faint: #8fa8a0;
+  --text-on-brand: #0b1d18;
+
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.20);
+
+  --status-ok-fg: #9fe8d5;
+  --status-ok-bg: #123a32;
+  --status-ok-dot: #3ae0b0;
+  --status-warn-fg: #f6d08a;
+  --status-warn-bg: #3a2a13;
+  --status-warn-dot: #f59e0b;
+  --status-danger-fg: #ffb3c1;
+  --status-danger-bg: #3d1d26;
+  --status-danger-dot: #fb7185;
+  --status-neutral-fg: #c0d0ca;
+  --status-neutral-bg: #24342f;
+  --status-neutral-dot: #8fa8a0;
+
+  --link: #5ff0c0;
+  --link-hover: #a7f3d0;
+
+  --gray-25: #0d241e; --gray-50: #102923; --gray-100: #16352d; --gray-200: #21443a;
+  --gray-300: #345c50; --gray-400: #6f8d83; --gray-500: #8fa8a0; --gray-600: #b7c8c2;
+  --gray-700: #cbd9d4; --gray-800: #dbe5e1; --gray-900: #e8f2ee;
+  --logo-wordmark: #f0fdfa;
+  --overlay-bg: rgba(2, 12, 10, 0.68);
+
+  --shadow-card: 0 0 0 1px rgba(255,255,255,.02);
+  --shadow-raised: 0 10px 24px rgba(0,0,0,.22);
+  --shadow-overlay: 0 24px 54px rgba(0,0,0,.42);
+  --shadow-ink-panel: 0 24px 60px rgba(0,0,0,.38);
 }
 
 @layer base {
