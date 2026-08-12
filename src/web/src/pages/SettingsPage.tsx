@@ -56,7 +56,10 @@ export function SettingsPage() {
   const [copied, setCopied] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<ServiceApiCredential | null>(null)
   const [revoking, setRevoking] = useState(false)
+  const [revokeError, setRevokeError] = useState<string | null>(null)
   const revealRef = useRef<HTMLHeadingElement>(null)
+  const pageHeadingRef = useRef<HTMLHeadingElement>(null)
+  const revokeTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -157,7 +160,7 @@ export function SettingsPage() {
   const revokeCredential = async () => {
     if (!revokeTarget) return
     setRevoking(true)
-    setError(null)
+    setRevokeError(null)
     try {
       const result = await fetchJson<ServiceApiCredential>(
         `/api/v1/service-credentials/${revokeTarget.id}`,
@@ -167,8 +170,9 @@ export function SettingsPage() {
         current?.map((credential) => (credential.id === result.id ? result : credential)) ?? [],
       )
       setRevokeTarget(null)
+      setTimeout(() => pageHeadingRef.current?.focus())
     } catch (revokeError) {
-      setError(revokeError instanceof Error ? revokeError.message : 'Failed to revoke service API key')
+      setRevokeError(revokeError instanceof Error ? revokeError.message : 'Failed to revoke service API key')
     } finally {
       setRevoking(false)
     }
@@ -177,7 +181,7 @@ export function SettingsPage() {
   return (
     <>
       <div className="mb-5">
-        <h1 className="text-xl font-semibold tracking-tight text-body">Settings</h1>
+        <h1 ref={pageHeadingRef} tabIndex={-1} className="text-xl font-semibold tracking-tight text-body focus-visible:shadow-[var(--focus-ring)] focus:outline-none">Settings</h1>
         <p className="mt-1 text-sm text-secondary">Account-wide configuration and integrations</p>
       </div>
 
@@ -243,7 +247,11 @@ export function SettingsPage() {
                             variant="ghost"
                             size="sm"
                             aria-label={`Revoke ${credential.name}`}
-                            onClick={() => setRevokeTarget(credential)}
+                            onClick={(event) => {
+                              revokeTriggerRef.current = event.currentTarget
+                              setRevokeError(null)
+                              setRevokeTarget(credential)
+                            }}
                           >
                             Revoke
                           </Button>
@@ -258,8 +266,24 @@ export function SettingsPage() {
         ) : null}
       </Card>
 
-      <Dialog open={revokeTarget !== null} onOpenChange={(open) => (!open && !revoking ? setRevokeTarget(null) : undefined)}>
-        <DialogContent role="alertdialog">
+      <Dialog
+        open={revokeTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !revoking) {
+            setRevokeError(null)
+            setRevokeTarget(null)
+          }
+        }}
+      >
+        <DialogContent
+          role="alertdialog"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            const target = revokeTriggerRef.current
+            if (target?.isConnected) target.focus()
+            else pageHeadingRef.current?.focus()
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Revoke {revokeTarget?.name}?</DialogTitle>
             <DialogDescription>
@@ -273,8 +297,12 @@ export function SettingsPage() {
                   .map((permissionId) => permissionCatalog?.find((permission) => permission.id === permissionId)?.name ?? permissionId)
                   .join(', ')}.
               </p>
+              {revokeError ? <div className="mb-4"><Notice tone="danger">{revokeError}</Notice></div> : null}
               <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="secondary" disabled={revoking} onClick={() => setRevokeTarget(null)}>
+                <Button variant="secondary" disabled={revoking} onClick={() => {
+                  setRevokeError(null)
+                  setRevokeTarget(null)
+                }}>
                   Cancel
                 </Button>
                 <Button autoFocus variant="danger" disabled={revoking} onClick={() => void revokeCredential()}>
@@ -297,7 +325,7 @@ export function SettingsPage() {
 
           {issued ? (
             <div className="space-y-4">
-              <h3 ref={revealRef} tabIndex={-1} className="font-display text-base font-semibold text-body focus:outline-none">
+              <h3 ref={revealRef} tabIndex={-1} className="font-display text-base font-semibold text-body focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
                 API key created
               </h3>
               <p role="status" className="text-sm text-secondary">{issued.name} is ready to configure.</p>
@@ -321,11 +349,14 @@ export function SettingsPage() {
                     </li>
                   ))}
                 </ul>
+                <p className="mt-2 text-sm text-secondary">
+                  Permissions cannot be changed after creation; create a replacement key and revoke this one.
+                </p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Button type="button" onClick={() => void copyToken()}>Copy API key</Button>
                 <Button type="button" variant="secondary" onClick={closeCreate}>Close</Button>
-                <span role="status" className="text-sm text-secondary">{copied ? 'API key copied.' : ''}</span>
+                <span role="status" className="basis-full text-sm text-secondary sm:basis-auto">{copied ? 'API key copied.' : ''}</span>
               </div>
             </div>
           ) : (

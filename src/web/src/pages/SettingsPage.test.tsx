@@ -160,4 +160,20 @@ describe('service API key settings', () => {
     ))
     expect(await screen.findByText('Revoked')).toBeInTheDocument()
   })
+
+  it('returns focus to revoke after cancelling with Escape', async () => {
+    vi.mocked(fetchJson)
+      .mockResolvedValueOnce([activeCredential])
+      .mockResolvedValueOnce(permissionCatalog)
+
+    render(<SettingsPage />)
+
+    const revoke = await screen.findByRole('button', { name: 'Revoke Bifrost' })
+    fireEvent.click(revoke)
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(revoke).toHaveFocus()
+  })
 })
