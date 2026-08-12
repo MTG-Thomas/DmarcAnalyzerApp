@@ -178,6 +178,9 @@ Keep the signed-in identity, sign-out action, and running version in the sidebar
 footer. Version links must resolve to the matching release or commit; unknown
 and local builds remain plain text.
 
+Account-wide service API keys belong under administrator-only Settings. Keep
+source-scoped report-upload keys on the report source whose routing they control.
+
 ## Page Hierarchy
 
 Use the established page pattern:

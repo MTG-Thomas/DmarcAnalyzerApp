@@ -7,7 +7,7 @@ not a feature inventory or roadmap. Use
 
 ## Product Promise
 
-DMARC Analyzer is a self-hosted operations console for agencies and MSPs that
+DMARC Analyzer is a self-hosted operations console for MSPs that
 monitor DMARC across many clients and domains. It turns aggregate mail reports,
 live DNS state, and delivery history into evidence an operator can use to find
 unauthorized senders, improve authentication, and advance policy safely.
@@ -25,14 +25,14 @@ relationships remain in infrastructure controlled by the operator.
 
 ## Users And Operators
 
-### Agency administrator
+### MSP administrator
 
 Owns the install. Administrators manage clients, domains, report sources, users,
 notification recipients, retention, backup and recovery, and other high-risk
 settings. They need explicit scope, consequences, and recovery guidance before a
 mutation.
 
-### Agency analyst
+### MSP analyst
 
 Works across all clients. Analysts monitor collection health, investigate
 threats and authentication failures, drill into sending sources, triage alerts,
@@ -49,7 +49,7 @@ counts, search, or error messages.
 ### Self-hosting operator
 
 Deploys, upgrades, monitors, backs up, and recovers the service. This may be the
-same person as the agency administrator. They need the running version, source
+same person as the MSP administrator. They need the running version, source
 health, durable audit evidence, configuration safety warnings, and honest
 degraded states.
 
@@ -109,7 +109,7 @@ The interface must keep these distinctions legible:
 ### Triage and communicate
 
 Review automatically raised compliance drops and policy regressions, acknowledge
-or close them, see whether notification was delivered, and manage agency-wide or
+or close them, see whether notification was delivered, and manage MSP-wide or
 client-specific recipients. A recorded alert and a successfully sent email are
 separate outcomes.
 
@@ -133,8 +133,9 @@ what can be re-ingested, and what cannot be restored from an archive yet.
   disposition.
 - **Enforcement** describes the effective DMARC policy: enforced, ramping,
   spoofing, monitoring, or no data.
-- **Agency** describes the operating model. Existing role labels may use MSP
-  where that is clearer to operators.
+- **MSP** describes the operating model. Internal role identifiers retain their
+  existing `agency_*` names for compatibility; do not expose that vocabulary in
+  operator-facing copy.
 
 Use precise technical values such as domains, IP addresses, policies, report
 IDs, timestamps, and versions. Do not replace them with vague summaries when the
@@ -205,4 +206,4 @@ Avoid:
 
 The current console is the primary product reference. External DMARC products
 may inform domain expectations, but they do not override this product's
-agency-first model, self-hosted trust boundary, or existing operational language.
+MSP operating model, self-hosted trust boundary, or existing operational language.
