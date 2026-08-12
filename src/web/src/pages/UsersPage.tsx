@@ -65,8 +65,8 @@ function RoleOptions({ currentRole }: { currentRole?: string }) {
       {currentRole !== undefined && !isKnownRole(currentRole) && (
         <option value={currentRole}>{currentRole}</option>
       )}
-      <option value="agency_admin">Agency admin</option>
-      <option value="agency_analyst">Agency analyst</option>
+      <option value="agency_admin">MSP admin</option>
+      <option value="agency_analyst">MSP analyst</option>
       <option value="client_viewer">Client viewer</option>
     </>
   )

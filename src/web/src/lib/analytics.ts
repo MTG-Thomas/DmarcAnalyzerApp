@@ -579,7 +579,7 @@ export type NotificationKind = 'alert' | 'digest' | 'both'
 
 export type NotificationRecipient = {
   id: string
-  /** Null means agency-wide: this address receives notifications for every client. */
+  /** Null means MSP-wide: this address receives notifications for every client. */
   clientId: string | null
   clientName: string | null
   email: string
