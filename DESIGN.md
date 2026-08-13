@@ -85,10 +85,10 @@ fills, dots, and borders.
 Dark theme is implemented. The canonical brand reference is the
 upstream [brand page](https://dmarc-analyzer.net/brand/). It defines ink green
 for dark panels, mint for accents and buttons on those panels, and a reversed
-light wordmark. The live brand-site stylesheet currently supplies the supporting
-on-ink tokens below.
+light wordmark. Those values remain the source palette for branded moments,
+not the application canvas.
 
-| Dark role | Upstream source token | Current value |
+| Dark role | Upstream source token | Reference value |
 | --- | --- | --- |
 | Base ink surface | `--surface-ink` / ink green | `#0b1d18` |
 | Raised ink surface | `--surface-ink-raised` | `#0e2620` |
@@ -103,18 +103,34 @@ and reversed-logo panels. It does not define a complete dark application theme.
 Treat this table as the source palette, not permission to guess the remaining
 semantic mappings.
 
+The application theme follows Bifrost's quieter dark-mode structure: neutral
+graphite surfaces establish elevation, while teal is reserved for actions,
+links, focus, and selected states. This avoids flooding the console with green
+or turning the upstream mint into a neon UI accent.
+
+| Application role | Token | Dark value |
+| --- | --- | --- |
+| Page background | `--surface-page` | `#151917` |
+| Card/dialog surface | `--surface-card` | `#1c2220` |
+| Recessed surface | `--surface-sunken` | `#111513` |
+| Primary accent | `--brand` | `#44b8a5` |
+| Subtle selection | `--brand-subtle` | `#263330` |
+| Body text | `--text-body` | `#edf2f0` |
+| Secondary text | `--text-secondary` | `#b5bfbb` |
+| Faint text | `--text-faint` | `#929d99` |
+
 The implementation:
 
 - maps page, card, sunken, overlay, hover, selected, and disabled surfaces from
-  the existing ink/teal scales;
+  a near-neutral graphite scale with a slight green cast;
 - defines body, secondary, faint, link, border, and focus tokens for dark surfaces;
 - creates dark variants for every success, warning, danger, and neutral
   foreground/background/dot triplet rather than reusing light tinted
   backgrounds;
 - remaps chart grids, table headers, row hover, code blocks, inputs, dialogs,
   backdrops, and shadows so depth does not depend on a barely visible shadow;
-- uses mint with ink text for primary actions on dark surfaces and mint for the
-  focus indicator; do not place white text on mint;
+- uses softened teal with ink text for primary actions on dark surfaces and teal
+  for the focus indicator; do not place white text on teal;
 - uses the reversed `BrandLogo` treatment on a dark shell while preserving the
   shield gradient exactly; and
 - exposes System, Light, and Dark through a native select in the console sidebar.
