@@ -601,6 +601,30 @@ jobs:
           sbom-path: image.spdx.json
           push-to-registry: true
 
+      - name: Create infra dispatch token
+        id: infra-token
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.DMARC_INFRA_DISPATCH_APP_ID }}
+          private-key: ${{ secrets.DMARC_INFRA_DISPATCH_APP_PRIVATE_KEY }}
+          owner: MTG-Thomas
+          repositories: bifrost-infra
+
+      - name: Notify the dogfood promoter
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ steps.infra-token.outputs.token }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg source_sha "$GITHUB_SHA" \
+            --arg image_digest "$IMAGE_DIGEST" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            '{event_type:"dmarc-analyzer-image-published",client_payload:{repository:$repository,source_sha:$source_sha,image_digest:$image_digest,run_id:$run_id}}' \
+            | gh api --method POST repos/MTG-Thomas/bifrost-infra/dispatches --input -
+
       # GHCR takes its description from the Dockerfile's OCI labels. Docker Hub
       # does not — it needs an API call, so the page sat empty through 2,177
       # pulls. Synced on a release rather than by hand, for the same reason as the
