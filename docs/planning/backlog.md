@@ -209,8 +209,11 @@ Sequenced; each step is independently shippable.
       only identity path; cookie sessions cannot bypass it. Optional digest and
       idempotency headers are verified against the unchanged payload, and the
       shared raw ingestor owns extraction, parsing, routing, transactions, and
-      replay deduplication. PostgreSQL acceptance covers insert, replay,
-      rollback, source/client isolation, digest mismatch, and size limits.
+      replay deduplication. Optional bounded versioned provenance is retained in
+      the audit trail, and whole-document validation rejects truncated XML/JSON
+      before it can shadow a later complete replay. PostgreSQL acceptance covers
+      insert, replay, rollback, source/client isolation, digest mismatch, and
+      size limits.
 - [x] (done 2026-08-12) **Add service authentication for the normal backend API.**
       Reveal-once `dmarc_api_v1` credentials authenticate server-to-server callers
       as global analysts across `/api/v1`, while admin-only configuration and

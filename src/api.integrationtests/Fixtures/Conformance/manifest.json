@@ -304,8 +304,8 @@
     {
       "delivery_order": 160,
       "expected": "expected/truncation-after-record.json",
-      "expected_outcome": "inserted",
-      "expected_sha256": "3c770fd160728a5b0342903ec2d1b6e5a114413058b9343b6e5929d4c551f7e5",
+      "expected_outcome": "rejected",
+      "expected_sha256": "919b84f4297fc9a5708777c897c51fdaf3df35d85087dc1679c0dd8d030fc3e6",
       "id": "truncation-after-record",
       "payloads": [
         {

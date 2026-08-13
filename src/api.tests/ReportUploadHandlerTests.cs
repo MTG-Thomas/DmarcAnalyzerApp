@@ -317,12 +317,14 @@ public sealed class ReportUploadHandlerTests
     }
 
     [Fact]
-    public async Task AuditContainsOnlySourceOutcomeAndCounts()
+    public async Task AuditContainsSourceOutcomeCountsAndValidatedProvenance()
     {
         var bytes = "<feedback>private-payload</feedback>"u8.ToArray();
         var digest = Sha256(bytes);
         var context = Request(bytes);
         SetIntegrityHeaders(context, digest);
+        const string provenance = "{\"v\":1,\"tenant\":\"mailbox-42\"}";
+        context.Request.Headers["X-Report-Provenance"] = provenance;
         var audit = new RecordingAuditLog();
 
         var result = await Handler(
@@ -335,9 +337,28 @@ public sealed class ReportUploadHandlerTests
         Assert.Equal(AuditEvents.ApiSourceReportUploaded, audit.EventType);
         Assert.Contains(SourceId.ToString(), audit.Details);
         Assert.Contains("inserted=1", audit.Details);
+        Assert.Contains(provenance, audit.Details);
         Assert.DoesNotContain(Token, $"{audit.Summary}{audit.Details}");
         Assert.DoesNotContain(digest, $"{audit.Summary}{audit.Details}");
         Assert.DoesNotContain("private-payload", $"{audit.Summary}{audit.Details}");
+    }
+
+    [Theory]
+    [InlineData("not-json")]
+    [InlineData("[]")]
+    [InlineData("{\"v\":\"one\"}")]
+    public async Task InvalidProvenanceIsRejectedBeforeIngestion(string provenance)
+    {
+        var context = Request("payload"u8.ToArray());
+        context.Request.Headers["X-Report-Provenance"] = provenance;
+        var ingestor = new StubIngestor(_ => Success(inserted: 1));
+
+        var result = await Handler(authenticated: true, ingestor)
+            .HandleAsync(context, SourceId, default);
+
+        Assert.Equal(422, Status(result));
+        Assert.Equal(["InvalidReportProvenance"], Response(result).RejectionCodes);
+        Assert.False(ingestor.WasCalled);
     }
 
     private static ReportUploadHandler Handler(
