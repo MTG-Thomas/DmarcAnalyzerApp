@@ -18,7 +18,8 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     private const string PreviousReleaseLatestMigration = "20260811195529_AddApiMailboxSource";
     private const string BeforeServicePermissionsMigration = "20260812012105_AddServiceApiCredentials";
     private const string BeforePasskeyMigration = "20260812025139_AddServiceApiCredentialPermissions";
-    private const string ExpectedLatestMigration = "20260812033233_AddUserPasskeys";
+    private const string BeforeCredentialUpgradeRepair = "20260812033233_AddUserPasskeys";
+    private const string ExpectedLatestMigration = "20260812234953_RepairApiSourceCredentialUpgrade";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
@@ -184,7 +185,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
 
         await using (var verification = database.CreateDbContext())
         {
-            Assert.Equal(ExpectedLatestMigration, (await verification.Database.GetAppliedMigrationsAsync()).Last());
+            Assert.Equal(BeforeCredentialUpgradeRepair, (await verification.Database.GetAppliedMigrationsAsync()).Last());
             Assert.Equal(uint.MaxValue, (await verification.UserPasskeys.SingleAsync()).SignCount);
         }
     }
@@ -398,6 +399,197 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
             var error = await Assert.ThrowsAsync<PostgresException>(() => down.GetService<IMigrator>()
                 .MigrateAsync(PreviousReleaseLatestMigration));
             Assert.Contains("while credential rows exist", error.MessageText, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public async Task LegacyApiCredentialCatalog_UpgradesToCanonicalSourceSchema()
+    {
+        await database.ResetDatabaseAsync();
+
+        var clientId = Guid.NewGuid();
+        var apiSourceId = Guid.NewGuid();
+        var mailboxSourceId = Guid.NewGuid();
+        await using (var legacy = database.CreateDbContext())
+        {
+            await legacy.GetService<IMigrator>().MigrateAsync(BeforeCredentialUpgradeRepair);
+            legacy.AddRange(
+                new Client
+                {
+                    Id = clientId,
+                    Name = "Legacy credential fixture",
+                    Slug = "legacy-credential-fixture",
+                    Timezone = "UTC",
+                },
+                new ReportSource
+                {
+                    Id = apiSourceId,
+                    Name = "Legacy API source",
+                    Protocol = "api",
+                    UseTls = null,
+                    DefaultClientId = clientId,
+                },
+                new ReportSource
+                {
+                    Id = mailboxSourceId,
+                    Name = "Mailbox source",
+                    Protocol = "imap",
+                    Host = "imap.example",
+                    Port = 993,
+                    UseTls = true,
+                    Username = "reports@example.test",
+                    PasswordEncrypted = "test-only",
+                    DefaultClientId = clientId,
+                });
+            await legacy.SaveChangesAsync();
+            await legacy.Database.ExecuteSqlRawAsync(
+                """
+                DROP TRIGGER TR_report_source_RevokeApiCredentials ON report_source;
+                DROP TRIGGER TR_api_source_credential_RequireApiSource ON api_source_credential;
+
+                ALTER TABLE api_source_credential
+                    RENAME CONSTRAINT "FK_api_source_credential_report_source_ReportSourceId"
+                    TO "FK_api_source_credential_mailbox_source_MailboxSourceId";
+                ALTER INDEX "IX_api_source_credential_ReportSourceId_Prefix"
+                    RENAME TO "IX_api_source_credential_MailboxSourceId_Prefix";
+                ALTER INDEX "IX_api_source_credential_ReportSourceId_RevokedAtUtc"
+                    RENAME TO "IX_api_source_credential_MailboxSourceId_RevokedAtUtc";
+                ALTER TABLE api_source_credential
+                    RENAME COLUMN "ReportSourceId" TO "MailboxSourceId";
+
+                CREATE OR REPLACE FUNCTION dmarc_require_api_source_credential()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                DECLARE source_protocol text;
+                BEGIN
+                    SELECT "Protocol" INTO source_protocol
+                    FROM mailbox_source
+                    WHERE "Id" = NEW."MailboxSourceId"
+                    FOR UPDATE;
+                    RETURN NEW;
+                END;
+                $$;
+
+                CREATE TRIGGER TR_api_source_credential_RequireApiSource
+                BEFORE INSERT OR UPDATE OF "MailboxSourceId"
+                ON api_source_credential
+                FOR EACH ROW
+                EXECUTE FUNCTION dmarc_require_api_source_credential();
+
+                CREATE OR REPLACE FUNCTION dmarc_revoke_credentials_on_protocol_change()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $$
+                BEGIN
+                    UPDATE api_source_credential
+                    SET "RevokedAtUtc" = CURRENT_TIMESTAMP
+                    WHERE "MailboxSourceId" = NEW."Id";
+                    RETURN NEW;
+                END;
+                $$;
+
+                CREATE TRIGGER TR_mailbox_source_RevokeApiCredentials
+                BEFORE UPDATE OF "Protocol"
+                ON report_source
+                FOR EACH ROW
+                EXECUTE FUNCTION dmarc_revoke_credentials_on_protocol_change();
+                """);
+        }
+
+        await using (var repair = database.CreateDbContext())
+        {
+            await repair.Database.MigrateAsync();
+        }
+
+        await using (var verification = database.CreateDbContext())
+        {
+            var columns = await verification.Database.SqlQueryRaw<string>(
+                """
+                SELECT column_name AS "Value"
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'api_source_credential'
+                  AND column_name IN ('MailboxSourceId', 'ReportSourceId')
+                """).ToListAsync();
+            Assert.Equal(["ReportSourceId"], columns);
+
+            var catalogNames = await verification.Database.SqlQueryRaw<string>(
+                """
+                SELECT name AS "Value"
+                FROM (
+                    SELECT indexname AS name
+                    FROM pg_indexes
+                    WHERE schemaname = 'public' AND tablename = 'api_source_credential'
+                    UNION ALL
+                    SELECT conname AS name
+                    FROM pg_constraint
+                    WHERE conrelid = 'api_source_credential'::regclass AND contype = 'f'
+                ) catalog
+                WHERE name LIKE '%SourceId%'
+                ORDER BY name
+                """).ToListAsync();
+            Assert.Equal(
+                [
+                    "FK_api_source_credential_report_source_ReportSourceId",
+                    "IX_api_source_credential_ReportSourceId_Prefix",
+                    "IX_api_source_credential_ReportSourceId_RevokedAtUtc",
+                ],
+                catalogNames);
+
+            var functionBodies = await verification.Database.SqlQueryRaw<string>(
+                """
+                SELECT pg_get_functiondef(oid) AS "Value"
+                FROM pg_proc
+                WHERE proname IN (
+                    'dmarc_require_api_source_credential',
+                    'dmarc_revoke_credentials_on_protocol_change')
+                ORDER BY proname
+                """).ToListAsync();
+            Assert.All(functionBodies, body => Assert.DoesNotContain("MailboxSourceId", body));
+            Assert.All(functionBodies, body => Assert.DoesNotContain("mailbox_source", body));
+            Assert.Contains(functionBodies, body => body.Contains("ReportSourceId", StringComparison.Ordinal));
+            Assert.Contains(functionBodies, body => body.Contains("report_source", StringComparison.Ordinal));
+
+            verification.ApiSourceCredentials.Add(new ApiSourceCredential
+            {
+                ReportSourceId = apiSourceId,
+                Prefix = "abcdefghijklmnopqrstuv",
+                TokenHash = new byte[32],
+            });
+            await verification.SaveChangesAsync();
+        }
+
+        await using (var invalid = database.CreateDbContext())
+        {
+            invalid.ApiSourceCredentials.Add(new ApiSourceCredential
+            {
+                ReportSourceId = mailboxSourceId,
+                Prefix = "zyxwvutsrqponmlkjihgfe",
+                TokenHash = new byte[32],
+            });
+            var error = await Assert.ThrowsAsync<DbUpdateException>(() => invalid.SaveChangesAsync());
+            Assert.Equal(
+                "CK_api_source_credential_SourceProtocol",
+                Assert.IsType<PostgresException>(error.InnerException).ConstraintName);
+        }
+
+        await using (var transition = database.CreateDbContext())
+        {
+            await transition.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE report_source
+                SET "Protocol" = 'imap',
+                    "Host" = 'imap.example',
+                    "Port" = 993,
+                    "UseTls" = true,
+                    "Username" = 'reports@example.test',
+                    "PasswordEncrypted" = 'test-only'
+                WHERE "Id" = {apiSourceId}
+                """);
+            Assert.True(await transition.ApiSourceCredentials
+                .Where(x => x.ReportSourceId == apiSourceId)
+                .Select(x => x.RevokedAtUtc != null)
+                .SingleAsync());
         }
     }
 }
