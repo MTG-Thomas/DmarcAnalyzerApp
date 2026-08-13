@@ -415,10 +415,17 @@ ingestion limits.
 must be well formed and is checked against the server-computed digest; if both
 are present they must agree. Bifrost sends both.
 
+`X-Report-Provenance` is optional. When present it must be a JSON object no
+larger than 3,800 UTF-8 bytes with an integer `v` field. The object is retained
+verbatim in the admin-only audit event so incident review can trace the sending
+tenant, mailbox, or message without teaching this application those external
+identifiers. Malformed provenance is rejected rather than silently discarded.
+
 The response exposes only `inserted`, `duplicates`, `rejected`, and
 `rejectionCodes`. ZIP entry names, report content, tokens, digest values, and
-report provenance are not returned or logged.
-Each authenticated attempt records a source-id/count-only audit event.
+report provenance are not returned or written to application logs.
+Each authenticated attempt records a source-id/count audit event, including
+validated provenance when supplied.
 Requests are rate-limited per source credential using the configured ingestion
 permit count and window; credentials do not share a bucket merely because their
 callers use the same address.
@@ -430,9 +437,10 @@ callers use the same address.
 - `429` — source credential exceeded its configured request rate.
 - `413` — request, entry, expansion, archive-entry, or compression-ratio limit.
 - `415` — unsupported media, multipart shape, format, or container nesting.
-- `422` — malformed/coherency-failed integrity headers, digest mismatch, parse
-  rejection, corrupt/empty/encrypted container, or another bounded payload with
-  no valid report.
+- `422` — malformed/coherency-failed integrity or provenance headers, digest
+  mismatch, truncated or otherwise invalid documents, parse rejection,
+  corrupt/empty/encrypted containers, or another bounded payload with no valid
+  report.
 
 ### GET `/mailbox-sync-runs`
 

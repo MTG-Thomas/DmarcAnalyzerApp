@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
 using AuthenticationHeaderValue = System.Net.Http.Headers.AuthenticationHeaderValue;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
@@ -26,6 +28,9 @@ public sealed class ReportUploadHandler(
 {
     private const string ContentSha256Header = "X-Content-SHA256";
     private const string IdempotencyKeyHeader = "Idempotency-Key";
+    private const string ProvenanceHeader = "X-Report-Provenance";
+    // Audit details are capped at 4,000 characters; reserve room for source and outcome fields.
+    private const int MaxProvenanceBytes = 3800;
     private readonly ReportPayloadExtractionOptions _limits = options.Value;
 
     public async Task<IResult> HandleAsync(
@@ -40,15 +45,20 @@ public sealed class ReportUploadHandler(
             return Response(401, "Unauthorized");
         }
 
+        if (!TryGetProvenance(context.Request.Headers, out var provenance))
+        {
+            return await AuditedResponseAsync(sourceId, 422, "InvalidReportProvenance", null, ct);
+        }
+
         if (context.Request.ContentLength is > 0
             && context.Request.ContentLength > _limits.MaxRequestBytes)
         {
-            return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", ct);
+            return await AuditedResponseAsync(sourceId, 413, "RequestTooLarge", provenance, ct);
         }
 
         if (!TryGetExpectedDigest(context.Request.Headers, out var expectedDigest, out var headerRejection))
         {
-            return await AuditedResponseAsync(sourceId, 422, headerRejection, ct);
+            return await AuditedResponseAsync(sourceId, 422, headerRejection, provenance, ct);
         }
 
         Stream payload;
@@ -62,7 +72,7 @@ public sealed class ReportUploadHandler(
 
             if (!HasValidMultipartBoundary(context.Request.ContentType))
             {
-                return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", ct);
+                return await AuditedResponseAsync(sourceId, 415, "UnsupportedMultipartBody", provenance, ct);
             }
 
             try
@@ -75,12 +85,12 @@ public sealed class ReportUploadHandler(
             }
             catch (MultipartUploadException ex)
             {
-                return await AuditedResponseAsync(sourceId, ex.StatusCode, ex.RejectionCode, ct);
+                return await AuditedResponseAsync(sourceId, ex.StatusCode, ex.RejectionCode, provenance, ct);
             }
         }
         else if (IsOtherMultipart(context.Request.ContentType))
         {
-            return await AuditedResponseAsync(sourceId, 415, "UnsupportedMediaType", ct);
+            return await AuditedResponseAsync(sourceId, 415, "UnsupportedMediaType", provenance, ct);
         }
         else
         {
@@ -102,18 +112,18 @@ public sealed class ReportUploadHandler(
             if (inserted > 0)
             {
                 return await AuditedResponseAsync(
-                    sourceId, 201, inserted, duplicates, codes, ct);
+                    sourceId, 201, inserted, duplicates, codes, provenance, ct);
             }
 
             if (duplicates > 0)
             {
                 return await AuditedResponseAsync(
-                    sourceId, 200, inserted, duplicates, codes, ct);
+                    sourceId, 200, inserted, duplicates, codes, provenance, ct);
             }
 
             var statusCode = StatusFor(result.Rejections);
             return await AuditedResponseAsync(
-                sourceId, statusCode, inserted, duplicates, codes, ct);
+                sourceId, statusCode, inserted, duplicates, codes, provenance, ct);
         }
         finally
         {
@@ -128,8 +138,9 @@ public sealed class ReportUploadHandler(
         Guid sourceId,
         int statusCode,
         string rejectionCode,
+        string? provenance,
         CancellationToken ct)
-        => await AuditedResponseAsync(sourceId, statusCode, 0, 0, [rejectionCode], ct);
+        => await AuditedResponseAsync(sourceId, statusCode, 0, 0, [rejectionCode], provenance, ct);
 
     private async Task<IResult> AuditedResponseAsync(
         Guid sourceId,
@@ -137,12 +148,19 @@ public sealed class ReportUploadHandler(
         int inserted,
         int duplicates,
         IReadOnlyList<string> rejectionCodes,
+        string? provenance,
         CancellationToken ct)
     {
+        var details = $"sourceId={sourceId}; inserted={inserted}; duplicates={duplicates}; rejected={rejectionCodes.Count}";
+        if (provenance is not null)
+        {
+            details += $"; provenance={provenance}";
+        }
+
         await audit.RecordSystemAsync(
             AuditEvents.ApiSourceReportUploaded,
             $"API source report upload completed with HTTP {statusCode}",
-            $"sourceId={sourceId}; inserted={inserted}; duplicates={duplicates}; rejected={rejectionCodes.Count}",
+            details,
             ct: ct);
 
         return Results.Json(
@@ -227,6 +245,51 @@ public sealed class ReportUploadHandler(
 
         digest = (suppliedDigest ?? idempotencyDigest)?.ToLowerInvariant();
         return true;
+    }
+
+    private static bool TryGetProvenance(IHeaderDictionary headers, out string? provenance)
+    {
+        provenance = null;
+        var values = headers[ProvenanceHeader];
+        if (values.Count == 0)
+        {
+            return true;
+        }
+
+        if (values.Count != 1)
+        {
+            return false;
+        }
+
+        var supplied = values.ToString();
+        if (string.IsNullOrWhiteSpace(supplied))
+        {
+            return true;
+        }
+
+        if (Encoding.UTF8.GetByteCount(supplied) > MaxProvenanceBytes)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(supplied);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("v", out var version)
+                || version.ValueKind != JsonValueKind.Number
+                || !version.TryGetInt32(out _))
+            {
+                return false;
+            }
+
+            provenance = supplied;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static int StatusFor(IReadOnlyList<ReportPayloadRejection> rejections)

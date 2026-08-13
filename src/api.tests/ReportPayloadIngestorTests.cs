@@ -163,6 +163,28 @@ public sealed class ReportPayloadIngestorTests
         Assert.Empty(dmarc.Reports);
     }
 
+    [Fact]
+    public async Task TruncatedDocumentsAreRejectedBeforePersistence()
+    {
+        var dmarc = new StubDmarcIngestor(_ => DmarcIngestOutcome.Inserted);
+        var tls = new StubTlsIngestor(_ => TlsReportIngestOutcome.Inserted);
+        var ingestor = CreateIngestor(dmarc, tls);
+        var xml = Fixture("sample-yahoo-aggregate.xml")[..^12];
+        var json = Fixture("sample-rfc8460-tls.json")[..^12];
+        var zip = Zip(("truncated.xml", xml), ("truncated.json", json));
+
+        await using var payload = new MemoryStream(zip, writable: false);
+        var result = await ingestor.IngestAsync(
+            Source, payload, new("truncated.zip"), CancellationToken.None);
+
+        Assert.Equal(1, result.DmarcRejected);
+        Assert.Equal(1, result.TlsRejected);
+        Assert.Contains(result.Rejections, x => x.Code == ReportPayloadRejectionCode.InvalidDmarcReport);
+        Assert.Contains(result.Rejections, x => x.Code == ReportPayloadRejectionCode.InvalidTlsReport);
+        Assert.Empty(dmarc.Reports);
+        Assert.Empty(tls.Reports);
+    }
+
     private static ReportPayloadIngestor CreateIngestor(
         IDmarcReportIngestor dmarc,
         ITlsReportIngestor tls,

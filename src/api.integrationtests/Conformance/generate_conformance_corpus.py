@@ -816,7 +816,7 @@ def build_case_definitions() -> list[dict[str, Any]]:
     cases.append(case_definition(
         "truncation-after-record", "invalid", 150, "nonconformant", "truncation-complete-record",
         [attachment(report_filename(truncatable), "text/xml", after_record, "plain")],
-        expected_state("inserted", [truncatable]),
+        expected_state("rejected", reason_class="xml_malformed"),
     ))
 
     truncated_mid = report_spec("truncated-mid-001", "xi.example", [standard_records("xi.example")[0]])

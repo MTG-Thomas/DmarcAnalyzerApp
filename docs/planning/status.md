@@ -67,9 +67,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   single-file multipart payloads through the internal machine endpoint. That
   endpoint ignores cookie sessions, authenticates the route's source id with the
   source-scoped bearer token, accepts optional coherent content-digest and
-  idempotency headers, and delegates unchanged bytes to the shared raw-payload
-  ingestor. API-authenticated source contexts refuse existing domains owned by a
-  different client while mailbox contexts retain multi-client domain routing.
+  idempotency headers plus bounded, versioned provenance retained in the audit
+  trail, and delegates unchanged bytes to the shared raw-payload ingestor.
+  API-authenticated source contexts refuse existing domains owned by a different
+  client while mailbox contexts retain multi-client domain routing.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`
@@ -449,9 +450,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     deliberately narrower than them — see the note on that upgrade below
   - `unknown` and `error` in an SPF auth result are *translated* to `permerror`
     and `temperror` — the RFC 4408 names for what RFC 7208 renamed
-  - a document truncated after its last complete `</record>` is completed and
-    parsed; one truncated mid-record is still refused, because ingesting a partial
-    report as whole would under-count permanently once the unique index keeps it
+  - the parser can still repair a document truncated after its last complete
+    `</record>` for direct compatibility use, but the shared mailbox/API ingestion
+    boundary now requires a complete XML or JSON document before parsing; this
+    prevents a partial report from permanently shadowing its complete replay
   - measured on a real mailbox: parse failures fell from ~1.5% of attachments to
     0.0%, and one reporter went from 100% discarded to ingesting
   - the parser's `ValidationMessages` are still discarded by `MailboxSyncService`,

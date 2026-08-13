@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Xml;
 using DmarcAnalyzer.Api.Application.Reports;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
@@ -87,6 +89,7 @@ public sealed class ReportPayloadIngestor(
                     TlsRptParseResult parsed;
                     try
                     {
+                        EnsureWellFormed(report.Stream, IsWellFormedJson);
                         parsed = tlsParser.Parse(report.Stream);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
@@ -117,6 +120,7 @@ public sealed class ReportPayloadIngestor(
                 DmarcReportParseResult dmarc;
                 try
                 {
+                    EnsureWellFormed(report.Stream, IsWellFormedXml);
                     dmarc = dmarcParser.Parse(report.Stream);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -162,5 +166,77 @@ public sealed class ReportPayloadIngestor(
             }
         }
 
+    }
+
+    private static void EnsureWellFormed(Stream stream, Func<Stream, bool> validator)
+    {
+        stream.Position = 0;
+        var wellFormed = validator(stream);
+        stream.Position = 0;
+
+        if (!wellFormed)
+        {
+            throw new InvalidDataException("Report payload is not a complete document.");
+        }
+    }
+
+    private static bool IsWellFormedJson(Stream stream)
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse(stream);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsWellFormedXml(Stream stream)
+    {
+        try
+        {
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            RemoveWhitespaceBeforeXmlDeclaration(copy);
+            using var reader = XmlReader.Create(copy, new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                CloseInput = false,
+            });
+
+            while (reader.Read())
+            {
+            }
+
+            return true;
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
+    }
+
+    private static void RemoveWhitespaceBeforeXmlDeclaration(MemoryStream stream)
+    {
+        var bytes = stream.GetBuffer().AsSpan(0, checked((int)stream.Length));
+        var prefixLength = bytes.StartsWith("\uFEFF"u8) ? 3 : 0;
+        var declarationOffset = prefixLength;
+
+        while (declarationOffset < bytes.Length
+               && bytes[declarationOffset] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+        {
+            declarationOffset++;
+        }
+
+        if (declarationOffset > prefixLength && bytes[declarationOffset..].StartsWith("<?xml"u8))
+        {
+            bytes[declarationOffset..].CopyTo(bytes[prefixLength..]);
+            stream.SetLength(stream.Length - (declarationOffset - prefixLength));
+        }
+
+        stream.Position = 0;
     }
 }
