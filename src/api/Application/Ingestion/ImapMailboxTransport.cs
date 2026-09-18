@@ -129,15 +129,21 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
     private static async Task ConnectAsync(
         ImapClient client, ReportSource source, string password, CancellationToken ct)
     {
-        // Non-null by contract: the service layer refuses an incomplete mailbox row
+        // Complete by contract: the service layer refuses an incomplete mailbox row
         // before a transport is ever resolved, and the row-shape check constraint
-        // holds it at rest.
-        var socketOptions = source.UseTls.Value
+        // holds it at rest. Guarded rather than suppressed so a row that reaches
+        // here another way fails fast instead of throwing a bare NullReference.
+        if (source is not { UseTls: bool useTls, Host: { } host, Port: int port, Username: { } username })
+        {
+            throw new InvalidOperationException($"Report source '{source.Id}' is not a complete mailbox row.");
+        }
+
+        var socketOptions = useTls
             ? SecureSocketOptions.SslOnConnect
             : SecureSocketOptions.StartTlsWhenAvailable;
 
-        await client.ConnectAsync(source.Host!, source.Port.Value, socketOptions, ct);
-        await client.AuthenticateAsync(source.Username!, password, ct);
+        await client.ConnectAsync(host, port, socketOptions, ct);
+        await client.AuthenticateAsync(username, password, ct);
     }
 
     private sealed class ImapReadSession(
