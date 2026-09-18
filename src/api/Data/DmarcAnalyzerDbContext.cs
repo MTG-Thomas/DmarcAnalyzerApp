@@ -167,7 +167,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.ToTable("report_source", table => table.HasCheckConstraint(
                 "CK_report_source_ProtocolConfiguration",
                 "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR " +
-                "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)"));
+                "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL) OR " +
+                "(\"Protocol\" = 's3' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NOT NULL AND \"S3Bucket\" IS NOT NULL AND \"S3Bucket\" <> '' AND ((\"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL) OR (\"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)) AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL AND \"LastProcessedUidl\" IS NULL)"));
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Protocol).HasMaxLength(20).IsRequired();
