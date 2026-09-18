@@ -1,7 +1,9 @@
 namespace DmarcAnalyzer.Api.Workers;
 
+/// <summary>The <c>Worker:*</c> settings. Every property here must have a row in docs/ops/configuration.md — a test enforces it.</summary>
 public sealed class WorkerOptions
 {
+    /// <summary>Seconds between worker loop iterations.</summary>
     public int ScheduleIntervalSeconds { get; set; } = 300;
 
     /// <summary>
@@ -38,9 +40,16 @@ public sealed class WorkerOptions
     /// <summary>How often the mailbox retention pass runs. It is measured in months, so daily is plenty.</summary>
     public int MailboxRetentionIntervalHours { get; set; } = 24;
 
+    /// <summary>How many times the scheduled loop attempts a failing sync before giving up until next interval.</summary>
     public int MaxRetryAttempts { get; set; } = 3;
+
+    /// <summary>First retry delay between those attempts; doubles per attempt.</summary>
     public int RetryBaseDelaySeconds { get; set; } = 2;
+
+    /// <summary>Age at which a run still marked running is presumed dead and closed as failed.</summary>
     public int StaleRunTimeoutMinutes { get; set; } = 30;
+
+    /// <summary>Hard cancellation for one sync run; the drain budget should stop it gracefully first.</summary>
     public int SyncRunTimeoutMinutes { get; set; } = 10;
 
     /// <summary>Master switch for retention purging.</summary>
@@ -49,7 +58,6 @@ public sealed class WorkerOptions
     /// <summary>How often the retention purge runs. Daily is plenty — retention is measured in months.</summary>
     public int RetentionIntervalHours { get; set; } = 24;
 
-    /// <summary>Reports deleted per transaction, so a large backlog doesn't hold locks across the table.</summary>
     /// <summary>
     /// Refuse to start when another worker already holds the ingestion lock.
     /// <para>
@@ -61,5 +69,6 @@ public sealed class WorkerOptions
     /// </summary>
     public bool EnforceSingleInstance { get; set; } = true;
 
+    /// <summary>Reports deleted per transaction, so a large backlog doesn't hold locks across the table.</summary>
     public int RetentionBatchSize { get; set; } = 500;
 }

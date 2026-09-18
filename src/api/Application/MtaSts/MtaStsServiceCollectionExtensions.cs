@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>DI registration for the MTA-STS feature set.</summary>
 public static class MtaStsServiceCollectionExtensions
 {
     /// <summary>
@@ -33,6 +34,7 @@ public static class MtaStsServiceCollectionExtensions
         services.AddSingleton<IMtaStsPolicyFetcher, MtaStsPolicyFetcher>();
         services.AddSingleton<IMtaStsCheckService, MtaStsCheckService>();
         services.AddScoped<IMtaStsStateCache, MtaStsStateCache>();
+        services.AddSingleton<ITlsRptRecordChecker, TlsRptRecordChecker>();
         services.AddScoped<ITlsRptQueryService, TlsRptQueryService>();
         services.AddScoped<IMtaStsReadinessService, MtaStsReadinessService>();
         services.AddScoped<IMtaStsInspectionService, MtaStsInspectionService>();

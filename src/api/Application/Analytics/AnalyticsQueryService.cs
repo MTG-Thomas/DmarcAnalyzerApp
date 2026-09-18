@@ -1,9 +1,16 @@
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>
+/// Computes DMARC analytics database-side — EF-composed aggregates for most
+/// paths, raw SQL where EF cannot express the shape (per-source aggregation).
+/// "Compliant" throughout means the record's evaluated DKIM or SPF result was
+/// pass (DMARC pass with alignment).
+/// </summary>
 public sealed class AnalyticsQueryService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
@@ -47,6 +54,7 @@ public sealed class AnalyticsQueryService(
         return effective;
     }
 
+    /// <inheritdoc />
     public async Task<AnalyticsSummaryDto> GetSummaryAsync(int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -145,12 +153,15 @@ public sealed class AnalyticsQueryService(
         AnalyticsMailboxesDto? mailboxes = null;
         if (currentUser.IsAgencyStaff)
         {
-            var mailboxSourceIds = db.ReportSources
-                .Where(x => x.Protocol != "api")
-                .Select(x => x.Id);
-            var mailboxTotal = await mailboxSourceIds.CountAsync(ct);
+            // Counted over polled sources, the same predicate /mailbox-health uses.
+            // Counting every source made a pushed source — which has no sync run and
+            // never will — arrive in the total as silently healthy, so the dashboard
+            // read "1/1 mailboxes healthy" for an install with no mailbox at all.
+            var mailboxTotal = await db.ReportSources
+                .CountAsync(x => ReportSourceProtocols.Polled.Contains(x.Protocol), ct);
             var latestRunStatuses = await db.MailboxSyncRuns
-                .Where(x => mailboxSourceIds.Contains(x.ReportSourceId))
+                .Where(x => db.ReportSources.Any(source =>
+                    source.Id == x.ReportSourceId && ReportSourceProtocols.Polled.Contains(source.Protocol)))
                 .GroupBy(x => x.ReportSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
                 .ToListAsync(ct);
@@ -179,6 +190,7 @@ public sealed class AnalyticsQueryService(
             mailboxes);
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<DomainAnalyticsDto>> ListDomainAnalyticsAsync(int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -294,6 +306,7 @@ public sealed class AnalyticsQueryService(
     }
 
 
+    /// <inheritdoc />
     public async Task<DomainDrilldownDto?> GetDomainDrilldownAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -359,6 +372,7 @@ public sealed class AnalyticsQueryService(
         return new DomainDrilldownDto(domain, window, totals, await TrendAsync(records, ct));
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<DomainSourceDto>?> ListDomainSourcesAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -416,6 +430,7 @@ public sealed class AnalyticsQueryService(
             .ToArray();
     }
 
+    /// <inheritdoc />
     public async Task<SourceDetailDto?> GetSourceDetailAsync(Guid domainId, string sourceIp, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -454,8 +469,10 @@ public sealed class AnalyticsQueryService(
             .OrderByDescending(x => x.Messages)
             .ToArray();
 
-        var headerFroms = await GroupValuesAsync(records.GroupBy(r => r.HeaderFrom), ct);
-        var envelopeFroms = await GroupValuesAsync(records.GroupBy(r => r.EnvelopeFrom), ct);
+        var headerFroms = await GroupValuesAsync(
+            records.Where(r => r.HeaderFrom.Trim() != string.Empty).GroupBy(r => r.HeaderFrom), ct);
+        var envelopeFroms = await GroupValuesAsync(
+            records.Where(r => r.EnvelopeFrom.Trim() != string.Empty).GroupBy(r => r.EnvelopeFrom), ct);
 
         var dkimAuthRows = await db.DmarcReportRecordDkimAuthResults
             .AsNoTracking()
@@ -529,6 +546,7 @@ public sealed class AnalyticsQueryService(
             await TrendAsync(records, ct));
     }
 
+    /// <inheritdoc />
     public async Task<EnforcementGuidanceDto?> GetEnforcementGuidanceAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -625,6 +643,7 @@ public sealed class AnalyticsQueryService(
             blocking.Take(20).ToArray());
     }
 
+    /// <inheritdoc />
     public async Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, Guid? clientId, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -812,6 +831,19 @@ public sealed class AnalyticsQueryService(
             .ToArray();
     }
 
+    /// <summary>
+    /// Top ten values of an already-grouped record identifier.
+    ///
+    /// Callers filter out the values the reporter never sent *before* grouping, and
+    /// have to: this used to drop them here, after the <c>Take</c>, and "the reporter
+    /// omitted this element" is a large group in practice — often the largest — so it won
+    /// a place in the top ten and was then discarded, leaving the panel showing nine
+    /// values with no sign a tenth had been displaced.
+    ///
+    /// They trim, because nothing trims these on the way in: a reporter that pretty-prints
+    /// its XML stores the surrounding newline and indentation as the value, and an
+    /// all-whitespace identifier is the same absence as an empty one.
+    /// </summary>
     private static async Task<IReadOnlyList<SourceValueCountDto>> GroupValuesAsync(
         IQueryable<IGrouping<string, Data.Entities.DmarcReportRecord>> grouped,
         CancellationToken ct)
@@ -823,7 +855,6 @@ public sealed class AnalyticsQueryService(
             .ToListAsync(ct);
 
         return rows
-            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
             .Select(x => new SourceValueCountDto(x.Value, x.Messages))
             .ToArray();
     }

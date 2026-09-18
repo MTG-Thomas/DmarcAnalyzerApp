@@ -278,7 +278,9 @@ public sealed class ApiReportSourceTests
 
         Assert.Equal(404, (await service.UpdateAsync(Guid.NewGuid(), new(), default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Protocol = "smtp" }, default)).StatusCode);
-        Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Protocol = "pop3" }, default)).StatusCode);
+        var toPop3 = await service.UpdateAsync(source.Id, new() { Protocol = "pop3" }, default);
+        Assert.True(toPop3.IsSuccess);
+        Assert.Equal("pop3", source.Protocol);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Name = " " }, default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Host = " " }, default)).StatusCode);
         Assert.Equal(400, (await service.UpdateAsync(source.Id, new() { Port = 0 }, default)).StatusCode);

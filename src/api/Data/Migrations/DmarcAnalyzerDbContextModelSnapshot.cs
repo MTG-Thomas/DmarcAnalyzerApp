@@ -925,11 +925,22 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("LastProcessedObjectAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastProcessedObjectKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
                     b.Property<long?>("LastProcessedUid")
                         .HasColumnType("bigint");
 
                     b.Property<long?>("LastProcessedUidValidity")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("LastProcessedUidl")
+                        .HasMaxLength(70)
+                        .HasColumnType("character varying(70)");
 
                     b.Property<DateTime?>("LastSuccessSyncAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -953,6 +964,35 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
+
+                    b.Property<string>("S3Bucket")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("S3Endpoint")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("S3ForcePathStyle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("S3Prefix")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("S3PruneListingCursorKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("S3ReadListingCursorKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("S3Region")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");

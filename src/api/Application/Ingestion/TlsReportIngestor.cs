@@ -6,13 +6,18 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>What became of one parsed TLS report.</summary>
 public enum TlsReportIngestOutcome
 {
+    /// <summary>Stored, with its policies, failure details, and ledger row.</summary>
     Inserted,
+
+    /// <summary>Already stored (the reporter/report-id/range unique index); nothing written.</summary>
     Duplicate,
     Rejected,
 }
 
+/// <summary>Persists parsed TLS reports — see <see cref="TlsReportIngestor"/>.</summary>
 public interface ITlsReportIngestor
 {
     /// <summary>
@@ -39,6 +44,7 @@ public sealed class TlsReportIngestor(
     DmarcAnalyzerDbContext db,
     IDomainIngestResolver domainResolver) : ITlsReportIngestor
 {
+    /// <inheritdoc />
     public async Task<TlsReportIngestOutcome> IngestAsync(
         ReportSourceContext source, TlsRptParseResult parsed, CancellationToken ct)
     {

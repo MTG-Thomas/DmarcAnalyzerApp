@@ -88,6 +88,7 @@ public sealed record BackupManifest(
 /// <param name="Reports">Report-data coverage: <c>none</c> or <c>legal-hold-only</c>.</param>
 public sealed record BackupScope(bool Config, string History, string Reports);
 
+/// <summary>A client row as the artifact carries it — settings included, report data not.</summary>
 public sealed record BackupClient(
     Guid Id,
     string Name,
@@ -163,6 +164,7 @@ public sealed record BackupUser(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
+/// <summary>An external (OIDC) identity link as the artifact carries it.</summary>
 public sealed record BackupUserIdentity(
     Guid Id,
     Guid UserId,
@@ -171,6 +173,7 @@ public sealed record BackupUserIdentity(
     string? EmailAtLink,
     DateTime CreatedAtUtc);
 
+/// <summary>A client_viewer grant as the artifact carries it.</summary>
 public sealed record BackupUserClientGrant(
     Guid Id,
     Guid UserId,
