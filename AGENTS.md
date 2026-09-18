@@ -120,6 +120,7 @@ cd src/web && npm install              # ~274M; or symlink node_modules if packa
 - [Migrating a running instance](docs/ops/migrating-a-running-instance.md) — and why a green healthcheck does not prove the schema is current.
 - [Upgrading PostgreSQL](docs/ops/upgrading-postgresql.md) — 17 to 18. No in-place path exists; a premature tag bump fails loudly and is reversible.
 - [Mailbox sync operations](docs/ops/mailbox-sync.md)
+- [Folding upstream into the fork](docs/ops/upstream-sync.md) — pin, disposition, rehearse, merge-commit, verify parentage
 - [OIDC login with Zitadel (dev setup)](docs/ops/oidc-zitadel.md)
 
 ## Key domain concepts (so you don't misread the code)

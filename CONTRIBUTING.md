@@ -57,6 +57,9 @@ docker compose up -d --build
 
 - `main` is protected. Branch, implement, verify, open a pull request.
 - **Merges are squash merges**, and branches are not auto-deleted afterwards.
+  The single exception is an upstream-fold PR per
+  [`docs/ops/upstream-sync.md`](docs/ops/upstream-sync.md), which must land as a
+  merge commit so the two-parent ancestry the next sync depends on survives.
 - CI runs on every pull request, whatever branch it targets, so a stacked pull
   request is built and tested like any other. If you see *no* checks at all,
   the usual cause is a merge conflict: GitHub does not run checks on a pull
