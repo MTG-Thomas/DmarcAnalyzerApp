@@ -25,8 +25,10 @@ import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   ENFORCEMENT_STATUS_META,
+  isAttributableSource,
   parseAnalyticsDays,
   resolveEnforcementStatus,
+  UNATTRIBUTED_SOURCE_LABEL,
   type AnalyticsDays,
   type DomainDrilldown,
   type DomainSourceAnalytics,
@@ -40,6 +42,7 @@ import {
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
+  type TlsRptRecord,
   type TlsRptSummary,
   type ValueCount,
 } from '@/lib/analytics'
@@ -54,6 +57,7 @@ import type {
   MtaStsPolicyResponse,
 } from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
+import { useHostnames } from '@/lib/use-hostnames'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -188,7 +192,36 @@ function EvaluatedChip({ combo }: { combo: EvaluatedCombo }) {
   )
 }
 
-function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: string }) {
+/**
+ * `<>` is not a missing value and not a rendering artifact: it is the RFC 5321 null
+ * reverse-path, which a reporter sends when the source's envelope sender was empty —
+ * what bounces, delivery status notifications and auto-replies use. Rendered raw it is
+ * a glyph nobody outside SMTP recognises (#196).
+ *
+ * It is deliberately not labelled "none" or "empty", which is what the issue asked for:
+ * that is the *other* case, the reporter not sending the element at all, and those rows
+ * are dropped from this list upstream. Collapsing the two would say a source sent no
+ * envelope sender when what it actually sent was a bounce.
+ */
+const NULL_REVERSE_PATH = '<>'
+const NULL_REVERSE_PATH_HINT =
+  'Empty envelope sender (RFC 5321 null reverse-path) — bounces, delivery status notifications and auto-replies'
+
+/**
+ * `nullSender` is opt-in per list rather than applied to every value, because the null
+ * reverse-path is a property of the SMTP envelope. This same component also renders
+ * header-from, where `<>` is not a null sender but a malformed `From:` — labelling it
+ * would assert the source sent bounces on the evidence of a broken reporter.
+ */
+export function ValueList({
+  items,
+  emptyText,
+  nullSender = false,
+}: {
+  items: ValueCount[]
+  emptyText: string
+  nullSender?: boolean
+}) {
   if (items.length === 0) {
     return <p className="mt-2 text-sm text-secondary">{emptyText}</p>
   }
@@ -196,7 +229,13 @@ function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: strin
     <ul className="mt-2 space-y-1.5">
       {items.map((item) => (
         <li key={item.value} className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          {nullSender && item.value.trim() === NULL_REVERSE_PATH ? (
+            <span className="min-w-0 break-all text-xs text-body" title={NULL_REVERSE_PATH_HINT}>
+              null sender <span className="font-mono text-secondary">{NULL_REVERSE_PATH}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          )}
           <span className="text-xs tabular-nums text-secondary">{formatCompact(item.messages)}</span>
         </li>
       ))}
@@ -292,26 +331,34 @@ const LOOKUP_STATUS_META: Record<
   inherited: { label: 'Inherited', badge: 'warning' },
 }
 
+/**
+ * One live DNS record: status badge, the raw string, and any findings. Takes
+ * the resolved status meta rather than a status, because each record type
+ * grades its own statuses — a missing DMARC record is a danger, a missing
+ * _smtp._tls record is just a domain that hasn't opted in.
+ */
 function RecordBlock({
   title,
-  status,
+  statusMeta,
   raw,
   meta,
   issues,
 }: {
   title: string
-  status: RecordInspection['dmarc']['status']
+  statusMeta: { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
   raw: string | null
   meta?: string | null
   issues: string[]
 }) {
-  const statusMeta = LOOKUP_STATUS_META[status]
   return (
     <div>
-      <div className="flex items-center gap-2">
+      {/* Wraps and breaks: meta can carry DNS-controlled values (a TLS-RPT rua
+          can be one long unbroken URI), and a flex item defaults to min-width
+          auto, which would push the whole card past the viewport. */}
+      <div className="flex flex-wrap items-center gap-2">
         <PanelSectionTitle>{title}</PanelSectionTitle>
         <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge>
-        {meta ? <span className="font-mono text-xs text-secondary">{meta}</span> : null}
+        {meta ? <span className="min-w-0 break-all font-mono text-xs text-secondary">{meta}</span> : null}
       </div>
       {raw ? (
         <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
@@ -393,13 +440,13 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <RecordBlock
             title="DMARC (live DNS)"
-            status={inspection.dmarc.status}
+            statusMeta={LOOKUP_STATUS_META[inspection.dmarc.status]}
             raw={inspection.dmarc.raw}
             issues={inspection.dmarc.issues}
           />
           <RecordBlock
             title="SPF (live DNS)"
-            status={inspection.spf.status}
+            statusMeta={LOOKUP_STATUS_META[inspection.spf.status]}
             raw={inspection.spf.raw}
             meta={
               inspection.spf.status === 'found'
@@ -576,13 +623,12 @@ function formatMaxAge(seconds: number): string {
  * plain database read, so unlike the record inspection card nothing here waits
  * on live DNS or an HTTPS fetch. Recheck (staff only) runs those on demand.
  */
-function TransportSecurityCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
+function TransportSecurityCard({ domainId }: { domainId: string }) {
   const { user } = useAuth()
   const staff = isStaff(user)
   const admin = isAdmin(user)
   const [state, setState] = useState<MtaStsState | null>(null)
   const [policyResponse, setPolicyResponse] = useState<MtaStsPolicyResponse | null>(null)
-  const [tlsSummary, setTlsSummary] = useState<TlsRptSummary | null>(null)
   const [busy, setBusy] = useState(true)
   const [rechecking, setRechecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -593,15 +639,13 @@ function TransportSecurityCard({ domainId, days }: { domainId: string; days: Ana
     setBusy(true)
     setError(null)
     try {
-      const [statePayload, policyPayload, tlsPayload] = await Promise.all([
+      const [statePayload, policyPayload] = await Promise.all([
         fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`),
         fetchJson<MtaStsPolicyResponse>(`/api/v1/domains/${domainId}/mta-sts-policy`),
-        fetchJson<TlsRptSummary>(`/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`),
       ])
       if (seq === requestSeq.current) {
         setState(statePayload)
         setPolicyResponse(policyPayload)
-        setTlsSummary(tlsPayload)
       }
     } catch (loadError) {
       if (seq === requestSeq.current) {
@@ -610,7 +654,7 @@ function TransportSecurityCard({ domainId, days }: { domainId: string; days: Ana
     } finally {
       if (seq === requestSeq.current) setBusy(false)
     }
-  }, [domainId, days])
+  }, [domainId])
 
   useEffect(() => {
     void load()
@@ -798,7 +842,6 @@ function TransportSecurityCard({ domainId, days }: { domainId: string; days: Ana
           onChanged={() => void load()}
         />
       ) : null}
-      {!busy && !error && tlsSummary ? <TlsRptSection summary={tlsSummary} /> : null}
     </Card>
   )
 }
@@ -1051,6 +1094,8 @@ function HostedPolicySection({
   )
 }
 
+// --- TLS reporting (TLS-RPT) ---
+
 const TLS_CATEGORY_BADGE: Record<string, 'danger' | 'warning' | 'neutral'> = {
   sts: 'danger',       // this policy breaking delivery — the gate's blocker
   dane: 'warning',
@@ -1058,27 +1103,152 @@ const TLS_CATEGORY_BADGE: Record<string, 'danger' | 'warning' | 'neutral'> = {
   other: 'neutral',
 }
 
+const TLS_RPT_RECORD_META: Record<
+  TlsRptRecord['status'],
+  { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
+> = {
+  found: { label: 'Published', badge: 'success' },
+  // Neutral, not danger, for the same reason MTA-STS is: publishing TLS-RPT is
+  // optional and most domains don't. It is a prerequisite for reports, not a
+  // security failing.
+  missing: { label: 'Not configured', badge: 'neutral' },
+  lookup_failed: { label: 'Lookup failed', badge: 'warning' },
+  // Not exactly one usable record — RFC 8460 §3 has reporters treat that as no
+  // TLS-RPT at all, so the domain gets nothing while looking configured.
+  invalid: { label: 'Invalid', badge: 'danger' },
+}
+
+/**
+ * Why zero sessions, in the domain's own terms. The record is what makes the
+ * difference legible: without it no reporter was ever asked, so waiting longer
+ * cannot help.
+ */
+function noSessionsCopy(status: TlsRptRecord['status']): ReactNode {
+  switch (status) {
+    case 'missing':
+      return (
+        <>
+          No TLS reports received in this window. This domain publishes no{' '}
+          <span className="font-mono">_smtp._tls</span> record, so nothing is inviting reporters
+          to send any — publishing one is the prerequisite, and reporting is opt-in on the
+          receiving side.
+        </>
+      )
+    case 'invalid':
+      return (
+        <>
+          No TLS reports received in this window. Reporters discard the record above and treat
+          this domain as not implementing TLS-RPT, so while it stands nothing is inviting them.
+        </>
+      )
+    case 'lookup_failed':
+      return (
+        <>
+          No TLS reports received in this window. The{' '}
+          <span className="font-mono">_smtp._tls</span> lookup failed, so whether reporters are
+          being invited at all could not be checked.
+        </>
+      )
+    default:
+      return (
+        <>
+          No TLS reports received for this domain in this window. The record is published, so
+          reporters have been invited — but reporting is opt-in on the sender side, and most
+          domains attract few or none.
+        </>
+      )
+  }
+}
+
+/**
+ * TLS reporting, in its own card rather than a section of the MTA-STS one.
+ * The two are separate mechanisms (RFC 8460 and RFC 8461): a domain can
+ * publish either without the other, and TLS-RPT reports on DANE and plain
+ * transport failures as readily as on STS policy breakage. Nesting it under
+ * MTA-STS implied a dependency that does not exist — reported in #195.
+ *
+ * Loads on its own because it waits on a live DNS lookup, the same reason the
+ * record inspection card does.
+ */
+function TlsReportingCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
+  const [summary, setSummary] = useState<TlsRptSummary | null>(null)
+  const [busy, setBusy] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
+
+  const load = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setBusy(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<TlsRptSummary>(
+        `/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`,
+      )
+      if (seq === requestSeq.current) setSummary(payload)
+    } catch (loadError) {
+      if (seq === requestSeq.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load TLS reporting')
+      }
+    } finally {
+      if (seq === requestSeq.current) setBusy(false)
+    }
+  }, [domainId, days])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return (
+    <Card pad>
+      <CardHeader
+        title="TLS reporting (TLS-RPT)"
+        description="Whether senders are asked to report on TLS delivery to this domain — the _smtp._tls record — and what they reported"
+      />
+      {busy ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+          <Icon name="loader-circle" size={16} className="animate-spin" />
+          Looking up the TLS-RPT record…
+        </div>
+      ) : error ? (
+        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </p>
+      ) : summary ? (
+        <div className="mt-4 space-y-5">
+          <RecordBlock
+            title="TLS-RPT (live DNS)"
+            statusMeta={TLS_RPT_RECORD_META[summary.record.status]}
+            raw={summary.record.raw}
+            meta={summary.record.rua.length > 0 ? summary.record.rua.join(', ') : null}
+            issues={summary.record.issues}
+          />
+          <TlsRptSessions summary={summary} />
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 /**
  * Encryption in transit, as reporters saw it. Empty is the norm — TLS-RPT has
  * far fewer reporters than DMARC — so no data renders quietly, not as an error.
  */
-function TlsRptSection({ summary }: { summary: TlsRptSummary }) {
+function TlsRptSessions({ summary }: { summary: TlsRptSummary }) {
   if (summary.totalSessions === 0) {
     return (
-      <div className="mt-5 border-t border-border pt-4">
-        <PanelSectionTitle>Encryption in transit (TLS-RPT)</PanelSectionTitle>
+      <div className="border-t border-border pt-4">
+        <PanelSectionTitle>Encryption in transit</PanelSectionTitle>
         <p className="mt-2 text-xs leading-relaxed text-secondary">
-          No TLS reports received for this domain in this window. Reporters are opt-in on the
-          sender side (a `_smtp._tls` record invites them), and most domains never attract any.
+          {noSessionsCopy(summary.record.status)}
         </p>
       </div>
     )
   }
 
   return (
-    <div className="mt-5 border-t border-border pt-4">
+    <div className="border-t border-border pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <PanelSectionTitle>Encryption in transit (TLS-RPT)</PanelSectionTitle>
+        <PanelSectionTitle>Encryption in transit</PanelSectionTitle>
         <Badge variant={summary.failedSessions === 0 ? 'success' : 'warning'}>
           {formatPercent(summary.successRate)} encrypted
         </Badge>
@@ -1597,7 +1767,7 @@ export function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPane
         </section>
         <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Envelope from</PanelSectionTitle>
-          <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." />
+          <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." nullSender />
         </section>
         <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Reporters</PanelSectionTitle>
@@ -1631,22 +1801,26 @@ export function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPane
 /**
  * Renders a source IP, allowing IPv6 to wrap at its colons.
  *
- * IPv6 is 38-40 characters and 316px wide in mono, against 119px for IPv4. Once the
- * hostname moved to its own spanning row, this became the only thing setting the
- * column's width — worth stating precisely, because the hostname is the intuitive
- * culprit and it is not the one. Shortening every hostname in the rendered table moved
- * the column not at all (348px before and after); shortening every IP took it from
- * 348px to 119px and the table from 1138px to 1038px, exactly its container.
+ * The column has ~138px for text once padding and the chevron are spent. A worst-case
+ * IPv4 (255.255.255.255) is 108px at the column's own text-xs (12px) and always fits.
+ * IPv6 does not: even at the smaller text-[10px] this renders it at, an address with no
+ * `::` run to compress (e.g. 2a00:1968:0:9:109:235:175:108) is 174px and still wraps.
+ * What the smaller size buys is the common case — a compressed address like
+ * 2001:4860:4860::8888 drops from ~156px (at 12px, the column's base size) to ~120px,
+ * fitting on one line instead of wrapping to two.
  *
  * A <wbr> after each colon lets a long address fold at a group boundary and never
- * mid-hextet, so nothing is truncated and shorter addresses stay on one line. IPv4 has
- * no colons and is returned untouched.
+ * mid-hextet, so nothing is truncated and an address that does wrap still reads cleanly.
+ * IPv4 has no colons and is returned untouched, inheriting the column's own size.
  */
 function SourceIpText({ ip }: { ip: string }) {
   if (!ip.includes(':')) return <>{ip}</>
   const groups = ip.split(':')
   return (
-    <>
+    // A size down from the column's own text-xs — IPv6 is the address family with
+    // room to lose, since it's the one wrapping, and dropping a size buys back some
+    // of what wrapping was trying to avoid without widening the column.
+    <span className="text-[10px]">
       {groups.map((group, i) => (
         <span key={i}>
           {group}
@@ -1657,7 +1831,58 @@ function SourceIpText({ ip }: { ip: string }) {
           ) : null}
         </span>
       ))}
-    </>
+    </span>
+  )
+}
+
+/**
+ * The first cell of a source row: the IP, as the expander for its detail panel.
+ *
+ * A source whose IP the reporter never sent gets neither — the panel is fetched by IP and
+ * cannot load without one, so an expander there could only ever produce an error banner
+ * (#190). The row itself stays, because its message counts are real; it just says so.
+ * Exported for its own test, since which of the two branches renders is the whole point.
+ */
+export function SourceIpCell({
+  ip,
+  expanded,
+  onToggle,
+}: {
+  ip: string
+  expanded: boolean
+  onToggle: () => void
+}) {
+  if (!isAttributableSource(ip)) {
+    return (
+      <span
+        // text-xs is the column's own size, matching the IP that would otherwise be here.
+        className="text-xs text-secondary italic"
+        title="This reporter sent these messages without a source IP, so they cannot be attributed to a sender."
+      >
+        {UNATTRIBUTED_SOURCE_LABEL}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+      className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+    >
+      <Icon
+        name="chevron-right"
+        size={14}
+        className={cn('mt-0.5 shrink-0 text-secondary transition-transform', expanded && 'rotate-90')}
+      />
+      <span>
+        <SourceIpText ip={ip} />
+      </span>
+    </button>
   )
 }
 
@@ -1688,7 +1913,9 @@ export function DomainDetailPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
   usePageTitle(drilldown?.domain?.name ?? 'Domain')
-  const [hostnames, setHostnames] = useState<Record<string, string | null>>({})
+  // Reverse-DNS enrichment, resolved per row as it scrolls into view: this table
+  // renders every source it has and a real domain reached 1176 of them.
+  const { hostnames, observeSource } = useHostnames()
   const requestSeq = useRef(0)
 
   const loadData = useCallback(async () => {
@@ -1736,26 +1963,6 @@ export function DomainDetailPage() {
     row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [selectedSource, sources])
 
-  // Reverse-DNS enrichment: resolved lazily after the table renders so slow
-  // PTR lookups never block the sources list. Merges keep earlier answers.
-  useEffect(() => {
-    if (sources.length === 0) return
-    let cancelled = false
-    const ips = sources.slice(0, 100).map((s) => s.sourceIp)
-    void fetchJson<Record<string, string | null>>(
-      `/api/v1/analytics/hostnames?ips=${encodeURIComponent(ips.join(','))}`,
-    )
-      .then((resolved) => {
-        if (!cancelled) setHostnames((prev) => ({ ...prev, ...resolved }))
-      })
-      .catch(() => {
-        // Hostname enrichment is best-effort; the table stays IP-only on failure.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [sources])
-
   // Back link to the domains list, preserving the window and client filter it was opened with.
   const backHref = useMemo(() => {
     const params = new URLSearchParams()
@@ -1779,6 +1986,9 @@ export function DomainDetailPage() {
 
   // ?source=<ip> drives the (single) expanded row, so expanded state is linkable.
   const toggleSource = (ip: string) => {
+    // An empty ip would put a bare `?source=` in the URL and expand a row whose detail
+    // panel cannot load. Callers guard too; this is the one that cannot be forgotten.
+    if (!isAttributableSource(ip)) return
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev)
@@ -1976,14 +2186,22 @@ export function DomainDetailPage() {
                     <ul className="mt-2.5 space-y-1 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2">
                       {guidance.blockingSources.slice(0, 5).map((source) => (
                         <li key={source.sourceIp} className="flex items-baseline justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleSource(source.sourceIp)}
-                            className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
-                            title="Show this source in the table below"
-                          >
-                            {source.sourceIp}
-                          </button>
+                          {isAttributableSource(source.sourceIp) ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleSource(source.sourceIp)}
+                              className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                              title="Show this source in the table below"
+                            >
+                              {source.sourceIp}
+                            </button>
+                          ) : (
+                            // Failing mail with no reported IP still blocks enforcement, so it
+                            // belongs in this list — but it has no row below to expand.
+                            <span className="min-w-0 text-xs text-secondary italic">
+                              {UNATTRIBUTED_SOURCE_LABEL}
+                            </span>
+                          )}
                           <span className="whitespace-nowrap text-xs tabular-nums text-secondary">
                             {formatCompact(source.failedMessages)} failed
                           </span>
@@ -2016,7 +2234,9 @@ export function DomainDetailPage() {
 
           <RecordInspectionCard domainId={domainId} />
 
-          <TransportSecurityCard domainId={domainId} days={days} />
+          <TransportSecurityCard domainId={domainId} />
+
+          <TlsReportingCard domainId={domainId} days={days} />
 
           {/* The centerpiece: per-source breakdown */}
           <Card>
@@ -2070,11 +2290,19 @@ export function DomainDetailPage() {
                       hover highlight belong to the source instead of to each row, which
                       is what makes the hostname read as part of the row above it. */}
                   {sortedSources.map((source) => {
-                    const expanded = selectedSource === source.sourceIp
-                    const hostname = hostnames[source.sourceIp]
+                    // A source with no reported IP cannot be expanded, linked or resolved:
+                    // every one of those is keyed by the IP. Its counts are still real, so
+                    // the row stays — it just reads as unattributed and does nothing on click.
+                    const attributable = isAttributableSource(source.sourceIp)
+                    const expanded = attributable && selectedSource === source.sourceIp
+                    const hostname = attributable ? hostnames[source.sourceIp] : undefined
                     return (
                       <tbody
                         key={source.sourceIp}
+                        // Attaching this is what asks for the reverse-DNS name, once the
+                        // group is near the viewport. An unattributed source has no
+                        // address to look up, so it is left unobserved.
+                        ref={attributable ? observeSource(source.sourceIp) : undefined}
                         className={cn(
                           'border-b border-[var(--gray-100)] transition-colors duration-[120ms] ease-out hover:bg-gray-50',
                           expanded && 'bg-gray-50',
@@ -2085,32 +2313,16 @@ export function DomainDetailPage() {
                           // The tbody owns the divider and the hover, so the rows inside
                           // must not draw their own or the group looks like two rows.
                           className="border-0 hover:bg-transparent"
-                          onClick={() => toggleSource(source.sourceIp)}
+                          onClick={attributable ? () => toggleSource(source.sourceIp) : undefined}
                         >
                           <TableCell>
                             {/* IP only. The hostname used to live here and, at 375px for a
                                 64-character Outlook name, it alone set this column's width. */}
-                            <button
-                              type="button"
-                              aria-expanded={expanded}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                toggleSource(source.sourceIp)
-                              }}
-                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
-                            >
-                              <Icon
-                                name="chevron-right"
-                                size={14}
-                                className={cn(
-                                  'mt-0.5 shrink-0 text-secondary transition-transform',
-                                  expanded && 'rotate-90',
-                                )}
-                              />
-                              <span>
-                                <SourceIpText ip={source.sourceIp} />
-                              </span>
-                            </button>
+                            <SourceIpCell
+                              ip={source.sourceIp}
+                              expanded={expanded}
+                              onToggle={() => toggleSource(source.sourceIp)}
+                            />
                           </TableCell>
                           <TableCell align="right" className="tabular-nums">
                             {formatCompact(source.messages)}
@@ -2153,6 +2365,15 @@ export function DomainDetailPage() {
                             >
                               {hostname}
                             </TableCell>
+                            {/* Empty filler spanning the remaining columns so the group's
+                                hover/expanded background paints the full row width instead
+                                of leaving the uncovered columns showing through as a blank
+                                rectangle — this row still only reserves width for its own
+                                colspan, so the layout stays as narrow as before. */}
+                            <TableCell
+                              colSpan={SOURCE_COLUMN_COUNT - SOURCE_HOSTNAME_COLSPAN}
+                              className="pt-0 pb-3"
+                            />
                           </TableRow>
                         ) : null}
                         {expanded ? (

@@ -20,9 +20,9 @@ all shipped. The near-term sequence below turns it from "works" into
    and ADR 0008. Bundled-or-external Postgres × combined-or-split × Compose-or-K8s,
    packaged so the combinations stay in step instead of drifting.
 
-Smaller, independent items to slot in opportunistically: **POP3 ingestion**, the
-**report query API endpoints** (authenticated machine upload is complete), and
-**CSV/JSON export**. Larger, deferred until a deployment calls
+Smaller, independent items to slot in opportunistically: the **report query
+API endpoints** (authenticated machine upload is complete), and **CSV/JSON
+export**. Larger, deferred until a deployment calls
 for them: **branded PDF reports** and **M365/Google Workspace connectors**.
 (The console **visual redesign** is done — shipped as the new ink-green/teal
 design system.) See the categorized lists below for the full inventory.
@@ -33,10 +33,22 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Scaffold solution in `src/` with C# web app backend and React frontend.
 - [x] (done) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
 - [x] (done) Design PostgreSQL schema for agency, clients, domains, report sources, reports, records, and retention policies.
-- [ ] (todo) Add POP3 support to mailbox ingestion (IMAP via MailKit is implemented).
-      `pop3` is not accepted for new sources because no worker path implements it.
-      Existing rows remain editable so they can be moved to IMAP or API. Add the value
-      back only with the ingestion path that makes it operational.
+- [x] (done) Add POP3 support to mailbox ingestion. `Pop3MailboxTransport` alongside
+      `ImapMailboxTransport` behind `IPolledSourceTransport`, so the drain budget, batched
+      checkpoints, archive-before-parse, run rows and retention deletion are shared rather
+      than reimplemented per protocol. `pop3` is an accepted `protocol` value again — put
+      back in the same change as the code that reads it, which is the lesson from the first
+      round. Checkpoint is `LastProcessedUidl` (POP3 has no UID space or UIDVALIDITY); a
+      server without UIDL is refused, because no durable checkpoint is possible and every
+      pass would re-read the whole mailbox.
+- [x] (done) Add an S3 bucket as a report source. `S3ReportSourceTransport` alongside the
+      two mail transports behind `IPolledSourceTransport`, so it shares the drain, the run
+      rows and the retention deletion rather than growing a second ingestion route. Objects
+      may be bare report files or whole RFC822 messages and are classified per object, which
+      also makes the application's own `.eml.gz` archive prefix replayable. Credentials are
+      per source (or the ambient chain); the checkpoint is a (last-modified, key) pair, not
+      a key, because S3's `StartAfter` resumes on key order and nothing makes a key sort in
+      arrival order.
 - [x] (done) Implement tenant-aware data access model with strict client isolation for agency operators (client_viewer scoping via per-request user context).
 - [x] (done) Implement single-database tenant-keyed architecture (direct or transitive ClientId on all client-scoped entities, enforced in query services).
 - [x] (done) Define RBAC with agency_admin/agency_analyst/client_viewer roles (deny-by-default endpoint enforcement; in-app client grants).
@@ -241,7 +253,7 @@ Sequenced; each step is independently shippable.
 - [x] (done) Add monthly email digest delivery and SMTP relay configuration (`DigestService`, previous-whole-month period, `digest_delivery` for idempotency, worker check pass, admin preview/send endpoints).
 - [x] (done) Add alert engine for failure spikes and policy regression with per-client thresholds (`AlertEvaluationService`, hourly worker pass, `alert_event` history with cooldown, per-client overrides on `client`, email notification, `GET /alerts` + admin evaluate endpoint).
 - [x] (done) Add core audit logging for login events, config changes, and manual sync triggers (`audit_event`, `IAuditLog`, admin query endpoint, `/audit` console page, 2-year retention). Scheduled sync runs are covered by `mailbox_sync_run` rather than duplicated; magic-link events will be added with magic links.
-- [ ] (todo) Surface parse validation warnings instead of discarding them. `DmarcRuaReportParser` returns `ValidationMessages`, `HasValidationWarnings` and `HasValidationErrors`, and `MailboxSyncService` references none of them — so every normalization the parser performs is invisible in production. That currently hides three repairs: stripped DMARCbis namespaces, SPF `scope=helo` rewritten to `mfrom`, and empty `policy_evaluated` dkim/spf read as `fail`. The last one substitutes a verdict the reporter never sent, which is defensible only if an operator can find out it happened. Nothing is persisted either — `dmarc_report` has no column for it — so a report cannot be traced back to the repairs applied to it. Found while fixing the empty-result crash, not from a report.
+- [ ] (todo) Surface parse validation warnings instead of discarding them. `DmarcRuaReportParser` returns `ValidationMessages`, `HasValidationWarnings` and `HasValidationErrors`, and `MailboxSyncService` references none of them — so every normalization the parser performs is invisible in production. That currently hides three repairs: stripped DMARCbis namespaces, SPF `scope=helo` rewritten to `mfrom`, and empty `policy_evaluated` dkim/spf read as `fail`. The last one substitutes a verdict the reporter never sent, which is defensible only if an operator can find out it happened. Nothing is persisted either — `dmarc_report` has no column for it — so a report cannot be traced back to the repairs applied to it. Found while fixing the empty-result crash, not from a report — but #190 then arrived *because* of it: an operator saw a blank sending source with zeroes across it and had no way to find out why. That is now a fourth hidden message, the warning raised when a record reporting no source IP and no messages is dropped, and the only trace of it an operator can reach is `dmarc_report.RecordCount` exceeding the number of rows in `dmarc_report_record` for that report.
 - [x] (done) Instrument the API and worker with OpenTelemetry — traces, metrics and logs over OTLP, configured entirely through the specification's own `OTEL_*` variables so the values a self-hoster already has work unchanged. Off by default and free when off: with none set the SDK is never registered. Instrumented: ASP.NET Core requests, **Npgsql at the driver** (the point of the exercise — EF's `Executed DbCommand` duration stops at the first row, so a query that streams for seconds logs milliseconds, which is why the 7.7s `/enforcement` request appeared to spend ~1s in SQL), outbound `HttpClient`, and runtime meters. Probe paths are excluded from tracing, including `/api/v1/auth/setup` — the readiness target in both Compose and the chart, kept there rather than moved to `/health/ready` because a 200 from it proves migrations were applied and `CanConnectAsync` does not. One `IHostApplicationBuilder` extension covers every `APP_MODE`; both halves share a `service.name` and are told apart by an `app.mode` resource attribute.
 - [x] (done) Fix the analytics window scans. The plan recorded here — indexes on `dmarc_report (DomainId, RangeBeginUtc)` and `(RangeEndUtc)` — was measured and **does not work**: with the window filter reaching through the record->report navigation, the planner still hash-joined and sequentially scanned all 5.27M records. Tested by creating the index inside a rolled-back transaction, so the disproof cost nothing. What worked instead was denormalising the report's range start onto `dmarc_report_record` and indexing that (`ReportRangeBeginUtc`), turning a window into a bitmap index scan: 179,849 rows located in 3.5ms over 1,137 heap blocks, rather than a 740MB scan repeated once per aggregate. `/analytics/summary` 1074ms -> 380ms. The window anchor (`MAX(RangeEndUtc)`) needs no index of its own; it measures 19-26ms.
 - [x] (done) Fix per-group correlated subqueries in the analytics aggregates. `Min`/`Max`/`COUNT(DISTINCT)` over a navigation inside a `GroupBy` makes EF emit one subquery per output group. `/enforcement` spent 7.7s wall against 70ms of process CPU and ~1s of logged SQL (`GroupAggregate ... actual time=567..25497 rows=1136`); `/threats` spent 4.1s. Rewritten as explicit joins over a flattened projection — keeping InMemory testability rather than dropping to raw SQL — and the results checked against independently written SQL, all six aggregates matching exactly. `/enforcement` 7.7s -> ~70ms, `/threats` 4.1s -> 162ms.
@@ -250,20 +262,29 @@ Sequenced; each step is independently shippable.
 - [x] (done) Record the SPF `helo` scope as sent instead of rewriting it to `mfrom`. DmarcRua 2.0.0 modelled only `mfrom`, so `helo` — legal per RFC 7208 and sent by real reporters — was fatal to the whole document, and the parser rewrote it to save the report. That stored a scope the reporter never reported and surfaced it in the per-source SPF table on `DomainDetailPage`, so it was a wrong value rather than a missing one: **82 auth results across the 3242-report corpus**. 2.0.1 added `SpfDomainScope.Helo`, so the rewrite is gone and `scope` moved into `EnumRepairs` (`["mfrom", "helo"]`, falling back to `mfrom`) — the enum still has no empty member, so `<scope/>` or an unrecognised value is fatal and must still be repaired. No migration: the information was destroyed at parse time, so historic rows stay `mfrom` and cannot be recovered. Frontend needed no change; `scope` is already `string | null` there.
 - [x] (done) Write the canonical spelling, not the reporter's, when `EnumRepairs` accepts a value case-insensitively. Latent bug, found while moving `scope` into that table: the pass matched `OrdinalIgnoreCase` and then wrote the reporter's own spelling back, but `XmlSerializer` matches `XmlEnum` names **case-sensitively** — so `PASS` or `HELO` was accepted here and then rejected by the serializer, losing every record in the document, which is the exact failure this pass exists to prevent. Case-only corrections raise no warning, since they substitute no meaning.
 - [x] (done 2026-08-11) Surface RFC 9990's `pass` action disposition in analytics
-      and the console. `AnalyticsDispositionsDto`, both query projections, both
-      TypeScript contracts, and the source-detail visualization now expose the
-      fourth bucket. Query tests pin the bucket sum and preserve DKIM/SPF-derived
-      compliance plus the `quarantine + reject` blocked total; the render test
-      proves a non-zero `pass` count is visible alongside the v1 buckets.
+      and the console, in the same change that taught the parser to preserve it.
+      Splitting the two would have shipped a screen that contradicts itself: the
+      rollups bucket by exact string, so a preserved `pass` counted in the message
+      total while accounting for none of the breakdown. `AnalyticsDispositionsDto`,
+      both query projections, both TypeScript contracts, and the source-detail
+      visualization now expose the fourth bucket; `none` is "no action taken" while
+      `pass` is "no action, passing DMARC w/enforcing policy". Storage needed
+      nothing: `Disposition` is already `varchar(32)`. **No historic data can be
+      backfilled**: until the parser change a reported `pass` was rewritten to
+      `none` before persistence and no raw XML is retained. Query tests pin the
+      bucket sum and preserve DKIM/SPF-derived compliance plus the
+      `quarantine + reject` blocked total; the render test proves a non-zero
+      `pass` count is visible alongside the v1 buckets.
 - [x] (done 2026-08-11) Make the synthetic Analyzer conformance corpus a CI gate.
       The deterministic 33-case/35-payload recipe preserves source provenance,
       `.example` and documentation-address safety, exact hashes, and immediate
       recovery sentinels. Real-PostgreSQL tests run the production
       `IReportPayloadIngestor`, compare the exact durable graph and routing, and
       cover cross-source plus concurrent replay without adding an HTTP test path.
-- [ ] (todo) ~~Drop the namespace-stripping pass now that 2.0.1 ignores namespaces.~~ **Measured and rejected — do not do this.** The claim was that `NamespaceIgnorantXmlReader` makes `NormalizeReportXml`'s namespace pass redundant. It does not: that reader only hides namespaces from the *serializer*, while the validating reader beneath it still sees them, and `rua.xsd` declares no `targetNamespace`. With the pass removed, a namespaced report deserializes but matches no schema, so **every element** raises `Could not find schema information` — 31 warnings on a one-record report, and `HasValidationWarnings` true. Stripping first keeps schema validation meaningful and costs one explanatory message instead of 31 useless ones. Kept as a `[ ]` rather than deleted so the idea is not re-proposed. Unrelated but worth knowing: DmarcRua declares `NamespaceIgnorantXmlReader` as a `public` type in the *global* namespace, so it is visible unqualified everywhere in the API project.
+- [ ] (todo) ~~Drop the namespace-stripping pass now that 2.0.1 ignores namespaces.~~ **Measured and rejected — do not do this.** The claim was that `NamespaceIgnorantXmlReader` makes `NormalizeReportXml`'s namespace pass redundant. It does not: that reader only hides namespaces from the *serializer*, while the validating reader beneath it still sees them, and `rua.xsd` declares no `targetNamespace`. With the pass removed, a namespaced report deserializes but matches no schema, so **every element** raises `Could not find schema information` — 31 warnings on a one-record report, and `HasValidationWarnings` true. Stripping first keeps schema validation meaningful and costs one explanatory message instead of 31 useless ones. Kept as a `[ ]` rather than deleted so the idea is not re-proposed, and re-measured on 2.1.0 when the pin moved: still 26 warnings on a one-record report with the pass removed, because 2.1.0 changed neither the validating reader nor the missing `targetNamespace`. Unrelated but worth knowing: DmarcRua declared `NamespaceIgnorantXmlReader` as a `public` type in the *global* namespace up to 2.0.1, so it was visible unqualified everywhere in the API project; 2.1.0 moved it into the `DmarcRua` namespace.
 - [ ] (todo) Emit structured JSON logs, which ADR 0006 lists as an accepted decision and nothing implements — the console logger is plain text, and no `AddJsonConsole` call exists anywhere. Cheap on its own, and it is the half of that ADR still outstanding now that the OTEL pipeline is in: OTLP log export covers a deployment with a collector, and this covers the far more common one that just reads `docker logs`.
 - [x] (done) Add a test framework to `src/web` — vitest + jsdom + testing-library, wired into CI next to the type-check so it actually runs. Sixteen tests to start: the subdomain grouping helper (including the invariant that every domain is rendered exactly once, and that a group lands where its first member fell in the sort rather than at the end), and a render test of the Domains table asserting what the screen shows — a label heading for an unmonitored parent, a monitored parent promoted to its own heading rather than listed twice, the `via yulsn.io` marker on an inheriting row, and no marker on a subdomain publishing its own weaker record. Written because the grouping shipped verified only by transpiling the module and running it over real domain names; the rendering itself was unverified, and checking it in a browser needed a session. Verified load-bearing by mutation: grouping single-child parents fails three of them.
+- [x] (done) Resolve reverse-DNS hostnames for the rows on screen, not the first 100 the server happened to return. Reported against a domain with 1,176 sources, where only the top of the table carried a hostname. Two independent causes. The first was a cap that was never a decision: the enrichment asked for `sources.slice(0, 100)` because 100 is the batch endpoint's own per-request ceiling, and nothing ever paged past the first batch — so 1,076 rows were never enriched at all. Worse, the slice came off the *server's* order (failed desc) while the table renders the user's chosen sort, so which rows got a hostname bore no relation to which rows were visible. Now an `IntersectionObserver` per source `<tbody>` asks for a row when it comes within a screen of the viewport, batched on a 120ms window and split at the endpoint's 100; a table nobody scrolls resolves one screenful in one request rather than sweeping 1,176 addresses across twelve, and one scrolled end to end pays for the rows it actually showed. Measured on a seeded 304-source domain: 28 rows resolved on the first request, 92 after scrolling to the bottom, and the 212 never scrolled to were never asked about. The second cause was silent and hit IPv6 only: `dmarc_report_record.SourceIp` stores the address exactly as the reporter wrote it, and `HostnameResolver` answered keyed by `IPAddress.ToString()` — always lowercase and compressed — so an uppercase or uncompressed IPv6 source was looked up under a key the table had no row for and stayed bare however often it was requested. The response is now keyed by the spelling the caller asked with, while the cache still keys on the canonical form so two spellings share one lookup. Note for whoever does the virtualisation item below: the observer is what makes this work, and it needs the row in the DOM to fire — windowed rendering has to attach the same ref to whatever it renders, or hostnames go away again.
 - [ ] (todo) Virtualise or page the sending-sources table. The busiest domain reports 1,136 distinct sources in a 30-day window and the table renders every one of them at once: 1,236 `<tr>`, 9,188 `<td>`, and 22,931 DOM nodes — 98% of everything on the page. Re-sorting by clicking a column header costs 253-306ms of blocking main-thread work, three to four times the `/sources` request it is displaying (~80ms), so the page feels slow for a reason no server timing will ever show. Found while measuring the overflow fix above, not from a report. Options: windowed rendering, server-side paging with the sort pushed into SQL, or a "top N + show all" disclosure — note that sorting is currently client-side over the full set, so paging would have to move it to the server to stay correct. Pairs with the OpenTelemetry item above: browser-side cost is invisible to backend instrumentation in the same way row streaming is invisible to EF's command duration.
 - [x] (done) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (`/enforcement` endpoint + Domain Detail panel).
 - [x] (done) Persist published DMARC policy (`policy_published` from reports) and add a record-inspection view comparing published DMARC/SPF records (live DNS via host resolver) against observed report data (`/records` endpoint + Domain Detail card).
@@ -632,3 +653,24 @@ step is independently shippable.
       `mailbox_sync_run`, surfaced beside parse failures, so operators can see
       TLS traffic arriving before support lands. Left out of the fix above
       because it needs a migration and a UI change.
+
+- [x] (done 2026-08-29) **Show the `_smtp._tls` record, and stop nesting TLS-RPT
+      under MTA-STS.** Both reported in #195, which also asked whether the
+      record name was wrong — it is not: RFC 8460 §3 and Appendix A both put the
+      policy at `_smtp._tls`, and `_tlsrpt` resolves nowhere.
+
+      *Why the other two were right:* MTA-STS (RFC 8461) and TLS-RPT (RFC 8460)
+      are independent — TLS-RPT reports on DANE and plain transport failures as
+      readily as on STS breakage, and either can be published without the other
+      — so rendering the panel inside the MTA-STS card implied a dependency that
+      does not exist. And the record was never checked at all: TLS-RPT data came
+      only from ingested reports, so the empty state blamed reporter scarcity for
+      what is, on a domain with no `_smtp._tls` record, structural. Nobody was
+      asked, and no amount of waiting changes that.
+
+      *The work:* `TlsRptRecordChecker` (one cached TXT lookup, the RFC's
+      not-exactly-one rule, rua schemes), carried on the existing `tls-rpt`
+      response so the card stays one fetch; a separate TLS reporting card; and
+      empty-state copy that names the actual reason per record status. No
+      migration — the lookup is live, like record inspection, not persisted
+      state like the MTA-STS pass.

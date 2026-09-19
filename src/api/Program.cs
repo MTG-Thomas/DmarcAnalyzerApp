@@ -37,6 +37,11 @@ if (mode == AppMode.Migrate)
     // trail, nothing that serves or ingests. It runs to completion and exits, so
     // an orchestrator can order schema changes ahead of every application pod.
     var migrateBuilder = Host.CreateApplicationBuilder(args);
+    // A value that cannot be converted to the type it is bound to fails here,
+    // as one sentence naming the variable, rather than as an unhandled binder
+    // exception somewhere later. A mistyped variable *name* is a different
+    // problem and this cannot see it — nothing binds it, so the default applies.
+    ConfigurationPreflight.Validate(migrateBuilder.Configuration);
     var migrateTelemetry = migrateBuilder.AddTelemetry(mode);
     var migrateConnectionString = ConnectionStringResolver.Resolve(migrateBuilder.Configuration)
         ?? throw new InvalidOperationException(
@@ -90,6 +95,7 @@ if (mode == AppMode.Migrate)
 if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);
+    ConfigurationPreflight.Validate(workerBuilder.Configuration);
     var workerTelemetry = workerBuilder.AddTelemetry(mode);
     var workerConnectionString = ConnectionStringResolver.Resolve(workerBuilder.Configuration)
         ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
@@ -102,6 +108,13 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
     workerBuilder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
     workerBuilder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
+    // One transport per protocol, resolved by name rather than branched on. Both are
+    // registered wherever a sync can be triggered, so a manual sync from the console and
+    // the worker's scheduled pass reach the same code.
+    workerBuilder.Services.AddSingleton<IPolledSourceTransport, ImapMailboxTransport>();
+    workerBuilder.Services.AddSingleton<IPolledSourceTransport, Pop3MailboxTransport>();
+    workerBuilder.Services.AddSingleton<IPolledSourceTransportFactory, PolledSourceTransportFactory>();
+    workerBuilder.Services.AddSingleton<IPolledSourceTransport, S3ReportSourceTransport>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.AddHttpContextAccessor();
     workerBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
@@ -163,6 +176,7 @@ if (mode == AppMode.MtaSts)
     // (never migrate from an internet-facing, replica-able pod — the console or
     // a migrate Job owns the schema), hosted services, and credential handling.
     var mtaStsBuilder = WebApplication.CreateBuilder(args);
+    ConfigurationPreflight.Validate(mtaStsBuilder.Configuration);
     var mtaStsTelemetry = mtaStsBuilder.AddTelemetry(mode);
 
     // No localhost fallback, unlike api/worker: this mode exists to face the
@@ -219,6 +233,7 @@ if (mode == AppMode.MtaSts)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+ConfigurationPreflight.Validate(builder.Configuration);
 var apiTelemetry = builder.AddTelemetry(mode);
 var connectionString = ConnectionStringResolver.Resolve(builder.Configuration)
     ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
@@ -304,6 +319,10 @@ builder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
 builder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
 builder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
 builder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
+builder.Services.AddSingleton<IPolledSourceTransport, ImapMailboxTransport>();
+builder.Services.AddSingleton<IPolledSourceTransport, Pop3MailboxTransport>();
+builder.Services.AddSingleton<IPolledSourceTransportFactory, PolledSourceTransportFactory>();
+builder.Services.AddSingleton<IPolledSourceTransport, S3ReportSourceTransport>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();

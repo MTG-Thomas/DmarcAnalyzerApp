@@ -44,6 +44,7 @@ public sealed class BackupExportService(
         "user_passkey",
     ];
 
+    /// <inheritdoc />
     public async Task<ServiceResult<BackupArtifact>> ExportAsync(
         bool allowPlaintextCredentials,
         CancellationToken ct)

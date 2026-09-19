@@ -157,6 +157,42 @@ Content-Type: application/json
   "isActive": true
 }
 
+### Create a POP3 report source (replace defaultClientId)
+# Same pass as IMAP; the server must support UIDL, or the sync refuses rather than
+# re-reading the whole mailbox every time.
+POST {{baseUrl}}/api/v1/report-sources
+Content-Type: application/json
+
+{
+  "name": "Acme DMARC Inbox (POP3)",
+  "protocol": "pop3",
+  "host": "pop3.example.com",
+  "port": 995,
+  "useTls": true,
+  "username": "dmarc@example.com",
+  "password": "replace-me",
+  "defaultClientId": "00000000-0000-0000-0000-000000000000",
+  "isActive": true
+}
+
+### Create an S3 report source (replace defaultClientId)
+# Objects may be bare report files or whole RFC822 messages; each is classified on its own
+# content. Leave username/password out entirely to use the ambient credential chain.
+POST {{baseUrl}}/api/v1/report-sources
+Content-Type: application/json
+
+{
+  "name": "Acme reports bucket",
+  "protocol": "s3",
+  "s3Bucket": "acme-dmarc-reports",
+  "s3Prefix": "rua/",
+  "s3Region": "eu-west-1",
+  "username": "AKIAEXAMPLE",
+  "password": "replace-me",
+  "defaultClientId": "00000000-0000-0000-0000-000000000000",
+  "isActive": true
+}
+
 ### Patch report source (replace id)
 PATCH {{baseUrl}}/api/v1/report-sources/00000000-0000-0000-0000-000000000000
 Content-Type: application/json
@@ -167,7 +203,7 @@ Content-Type: application/json
   "protocol": "pop3"
 }
 
-### Manual mailbox sync (IMAP only; read-only, does not delete emails)
+### Manual mailbox sync (IMAP and POP3; read-only, does not delete emails)
 POST {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/sync
 
 ### List mailbox sync runs (optional reportSourceId, optional limit)
@@ -175,3 +211,28 @@ GET {{baseUrl}}/api/v1/mailbox-sync-runs?reportSourceId={{reportSourceId}}&limit
 
 ### Mailbox health summary (optional reportSourceId)
 GET {{baseUrl}}/api/v1/mailbox-health?reportSourceId={{reportSourceId}}
+
+### Issue an API source credential (admin; token is returned once)
+POST {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/credentials
+Content-Type: application/json
+
+{ "name": "mail-gateway-production" }
+
+### List API source credentials (never returns a token)
+GET {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/credentials
+
+### Rotate an API source credential (issues a new token; does not revoke the old one)
+POST {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/credentials/rotate
+Content-Type: application/json
+
+{ "name": "mail-gateway-production" }
+
+### Revoke an API source credential
+DELETE {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/credentials/00000000-0000-0000-0000-000000000000
+
+### Push a report (source credential only; a session is refused)
+POST {{baseUrl}}/api/ingest/v1/sources/{{reportSourceId}}/reports
+Authorization: Bearer [REDACTED]
+Content-Type: application/gzip
+
+< ./report.xml.gz

@@ -17,7 +17,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.10")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -925,11 +925,22 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("LastProcessedObjectAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastProcessedObjectKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
                     b.Property<long?>("LastProcessedUid")
                         .HasColumnType("bigint");
 
                     b.Property<long?>("LastProcessedUidValidity")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("LastProcessedUidl")
+                        .HasMaxLength(70)
+                        .HasColumnType("character varying(70)");
 
                     b.Property<DateTime?>("LastSuccessSyncAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -954,6 +965,35 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<string>("S3Bucket")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("S3Endpoint")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("S3ForcePathStyle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("S3Prefix")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("S3PruneListingCursorKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("S3ReadListingCursorKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("S3Region")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -970,7 +1010,7 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.ToTable("report_source", null, t =>
                         {
-                            t.HasCheckConstraint("CK_report_source_ProtocolConfiguration", "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR (\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)");
+                            t.HasCheckConstraint("CK_report_source_ProtocolConfiguration", "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR (\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL) OR (\"Protocol\" = 's3' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NOT NULL AND \"S3Bucket\" IS NOT NULL AND \"S3Bucket\" <> '' AND ((\"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL) OR (\"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)) AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL AND \"LastProcessedUidl\" IS NULL)");
                         });
                 });
 

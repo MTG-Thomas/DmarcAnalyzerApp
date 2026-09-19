@@ -34,6 +34,7 @@ public sealed record MailboxRetentionPlan(
     IReadOnlyList<string> LegalHoldClientSlugs,
     DateTime? OldestMessageAtUtc);
 
+/// <summary>Plans mailbox retention without touching a mailbox — see <see cref="MailboxRetentionPlanner"/>.</summary>
 public interface IMailboxRetentionPlanner
 {
     /// <summary>
@@ -58,12 +59,13 @@ public sealed class MailboxRetentionPlanner(
 {
     private readonly WorkerOptions _options = options.Value;
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<MailboxRetentionPlan>> PlanAsync(CancellationToken ct)
     {
         var graceDays = Math.Max(0, _options.MailboxRetentionGraceDays);
         var sources = await db.ReportSources
             .AsNoTracking()
-            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
+            .Where(x => ReportSourceProtocols.Polled.Contains(x.Protocol))
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
         var plans = new List<MailboxRetentionPlan>(sources.Count);

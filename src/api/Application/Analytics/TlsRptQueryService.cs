@@ -5,9 +5,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>TLS-RPT analytics for the domain detail page — see <see cref="TlsRptQueryService"/>.</summary>
 public interface ITlsRptQueryService
 {
-    /// <summary>Per-domain TLS-RPT summary. Null for unknown or cross-tenant ids (→ 404).</summary>
+    /// <summary>
+    /// Per-domain TLS-RPT summary, plus the live `_smtp._tls` record the counts
+    /// have to be read against. Null for unknown or cross-tenant ids (→ 404).
+    /// Unlike the MTA-STS state endpoint this one does touch DNS, so it is not
+    /// instant — which is why its card loads on its own.
+    /// </summary>
     Task<TlsRptDomainSummaryDto?> GetDomainSummaryAsync(Guid domainId, int days, CancellationToken ct);
 
     /// <summary>The gate's evidence since <paramref name="sinceUtc"/> — wall-clock, not data-anchored.</summary>
@@ -23,15 +29,17 @@ public interface ITlsRptQueryService
 /// </summary>
 public sealed class TlsRptQueryService(
     DmarcAnalyzerDbContext db,
-    ICurrentUserContext currentUser) : ITlsRptQueryService
+    ICurrentUserContext currentUser,
+    ITlsRptRecordChecker recordChecker) : ITlsRptQueryService
 {
+    /// <inheritdoc />
     public async Task<TlsRptDomainSummaryDto?> GetDomainSummaryAsync(
         Guid domainId, int days, CancellationToken ct)
     {
         var domain = await db.Domains
             .AsNoTracking()
             .Where(x => x.Id == domainId)
-            .Select(x => new { x.Id, x.ClientId })
+            .Select(x => new { x.Id, x.Name, x.ClientId })
             .SingleOrDefaultAsync(ct);
 
         // Cross-tenant ids read as not-found to avoid an existence oracle.
@@ -39,6 +47,11 @@ public sealed class TlsRptQueryService(
         {
             return null;
         }
+
+        // Started before the queries and awaited last: one cached TXT lookup is
+        // cheap, but it is the only network call on this path and there is no
+        // reason to serialize it behind the database.
+        var recordTask = recordChecker.CheckAsync(domain.Name, ct);
 
         days = ClampDays(days);
         var window = await ResolveWindowAsync(days, ct);
@@ -102,9 +115,11 @@ public sealed class TlsRptQueryService(
                     g.Select(x => x.ResultType).Distinct(StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal).ToList()))
                 .OrderByDescending(x => x.FailedSessions)
                 .Take(10)
-                .ToList());
+                .ToList(),
+            await recordTask);
     }
 
+    /// <inheritdoc />
     public async Task<TlsRptGateSample> GetGateSampleAsync(
         Guid domainId, DateTime sinceUtc, CancellationToken ct)
     {

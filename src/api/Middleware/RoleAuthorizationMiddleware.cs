@@ -10,6 +10,7 @@ namespace DmarcAnalyzer.Api.Middleware;
 /// </summary>
 public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
 {
+    /// <summary>Enforces the endpoint's role or service-permission requirement for one request.</summary>
     public async Task InvokeAsync(HttpContext context, ICurrentUserContext currentUser)
     {
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;

@@ -23,6 +23,7 @@ public sealed class ReportSourcesModuleTests
     private static readonly ReportSourceDto Source = new(
         SourceId, "Inbox", "imap", "imap.example", 993, true, "reports@example",
         Guid.NewGuid(), "Acme", true, false, null, null, null, null,
+        null, null, null, null, null, false, null, null,
         DateTime.UtcNow, DateTime.UtcNow);
 
     [Fact]

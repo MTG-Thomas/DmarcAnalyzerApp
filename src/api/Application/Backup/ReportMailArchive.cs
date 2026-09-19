@@ -1,9 +1,69 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Options;
 using MimeKit;
 
 namespace DmarcAnalyzer.Api.Application.Backup;
 
+/// <summary>
+/// What one archived message is called, in terms both protocols can express.
+/// </summary>
+/// <param name="Generation">
+/// The scope <paramref name="Uid"/> is unique within. IMAP puts UIDVALIDITY here, because a
+/// UID only identifies a message within one generation; POP3 has no generations and puts a
+/// literal <c>pop3</c>, which also keeps the two protocols' keys from ever colliding.
+/// </param>
+/// <param name="Uid">The message's own name within that scope: an IMAP UID, or a POP3 UIDL.</param>
+public readonly record struct ReportMailIdentity(string Generation, string Uid)
+{
+    /// <summary>An IMAP message, named by UID within its UIDVALIDITY generation.</summary>
+    public static ReportMailIdentity ForImap(uint uid, long uidValidity)
+        => new(uidValidity.ToString(System.Globalization.CultureInfo.InvariantCulture),
+               uid.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>
+    /// A POP3 message, named by its UIDL.
+    /// <para>
+    /// RFC 1939 lets a UIDL be any 1–70 printable ASCII characters, which includes plenty
+    /// that have meaning in an object key — <c>/</c> would silently split the key into
+    /// another prefix level, and a lifecycle rule written against the documented layout
+    /// would then miss it. So a UIDL is used verbatim only while it is unambiguous, and
+    /// otherwise replaced by a SHA-256 of itself: still deterministic, which is all the
+    /// archive needs, since <c>ExistsAsync</c> recomputes the same key from the same UIDL.
+    /// </para>
+    /// </summary>
+    public static ReportMailIdentity ForPop3(string uidl)
+        => new("pop3", IsKeySafe(uidl) ? uidl : "h-" + Sha256Hex(uidl));
+
+    /// <summary>
+    /// An object pulled from a bucket, named by its key.
+    /// <para>
+    /// The key is almost always hashed rather than used verbatim, and that is expected: a real
+    /// key has slashes in it, and a slash left alone would push the archived copy into a
+    /// prefix nobody documented — where a lifecycle rule written against the documented layout
+    /// would never expire it. The hash is deterministic, which is all the archive needs.
+    /// </para>
+    /// </summary>
+    public static ReportMailIdentity ForS3(string key)
+        => new("s3", IsKeySafe(key) ? key : "h-" + Sha256Hex(key));
+
+    /// <summary>
+    /// Whether a name can go into an object key as it stands: unambiguous characters only,
+    /// and no longer than RFC 1939 allows a UIDL to be. The length bound is shared rather
+    /// than per-protocol because its purpose is the same either way — keep the key readable
+    /// and keep it bounded — and an S3 key over that length simply gets hashed, which is the
+    /// common case and costs nothing.
+    /// </summary>
+    private static bool IsKeySafe(string value)
+        => value.Length is > 0 and <= 70 && value.All(c =>
+            c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '.' or '_' or '-');
+
+    private static string Sha256Hex(string value)
+        => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+}
+
+/// <summary>Archives raw report mail to the bucket before deletion — see <see cref="ReportMailArchive"/>.</summary>
 public interface IReportMailArchive
 {
     /// <summary>False when archiving is off or no bucket is configured.</summary>
@@ -17,8 +77,7 @@ public interface IReportMailArchive
     Task<bool> TryArchiveAsync(
         MimeMessage message,
         Guid reportSourceId,
-        uint uid,
-        long uidValidity,
+        ReportMailIdentity identity,
         DateTime receivedAtUtc,
         CancellationToken ct);
 
@@ -29,8 +88,7 @@ public interface IReportMailArchive
     /// </summary>
     Task<bool> ExistsAsync(
         Guid reportSourceId,
-        uint uid,
-        long uidValidity,
+        ReportMailIdentity identity,
         DateTime receivedAtUtc,
         CancellationToken ct);
 }
@@ -57,13 +115,14 @@ public sealed class ReportMailArchive(
 {
     private readonly BackupOptions _options = options.Value;
 
+    /// <inheritdoc />
     public bool IsEnabled => _options.ArchiveReportMail && storage.IsConfigured;
 
+    /// <inheritdoc />
     public async Task<bool> TryArchiveAsync(
         MimeMessage message,
         Guid reportSourceId,
-        uint uid,
-        long uidValidity,
+        ReportMailIdentity identity,
         DateTime receivedAtUtc,
         CancellationToken ct)
     {
@@ -72,7 +131,7 @@ public sealed class ReportMailArchive(
             return false;
         }
 
-        var key = Key(_options.Prefix, reportSourceId, uid, uidValidity, receivedAtUtc);
+        var key = Key(_options.Prefix, reportSourceId, identity, receivedAtUtc);
 
         try
         {
@@ -103,10 +162,10 @@ public sealed class ReportMailArchive(
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> ExistsAsync(
         Guid reportSourceId,
-        uint uid,
-        long uidValidity,
+        ReportMailIdentity identity,
         DateTime receivedAtUtc,
         CancellationToken ct)
     {
@@ -115,7 +174,7 @@ public sealed class ReportMailArchive(
             return false;
         }
 
-        var key = Key(_options.Prefix, reportSourceId, uid, uidValidity, receivedAtUtc);
+        var key = Key(_options.Prefix, reportSourceId, identity, receivedAtUtc);
 
         return await storage.GetLengthAsync(key, ct) is > 0;
     }
@@ -123,15 +182,20 @@ public sealed class ReportMailArchive(
     /// <summary>
     /// Dated for legibility and for S3 lifecycle rules, which match on key prefixes — a
     /// date-partitioned prefix is what makes "expire the archive after N months"
-    /// expressible at all. UIDVALIDITY is in the name because a UID only identifies a
+    /// expressible at all. The generation is in the name because a UID only identifies a
     /// message within one validity generation.
+    /// <para>
+    /// The IMAP form is unchanged from before POP3 existed, deliberately: mail already in a
+    /// bucket has to keep answering <c>ExistsAsync</c>, and a key format that shifted under
+    /// it would make every archived message read as unarchived — which the retention pass
+    /// would then refuse to delete, quietly and for ever.
+    /// </para>
     /// </summary>
     public static string Key(
         string prefix,
         Guid reportSourceId,
-        uint uid,
-        long uidValidity,
+        ReportMailIdentity identity,
         DateTime receivedAtUtc)
         => $"{prefix.Trim().Trim('/')}/reports/{receivedAtUtc:yyyy}/{receivedAtUtc:MM}/{receivedAtUtc:dd}/" +
-           $"{reportSourceId}/{uidValidity}-{uid}.eml.gz";
+           $"{reportSourceId}/{identity.Generation}-{identity.Uid}.eml.gz";
 }

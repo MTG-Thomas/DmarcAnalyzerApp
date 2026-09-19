@@ -11,13 +11,18 @@ public sealed record ReportSourceContext(
     Guid DefaultClientId,
     bool RestrictToDefaultClient = false);
 
+/// <summary>What became of one parsed DMARC report.</summary>
 public enum DmarcIngestOutcome
 {
+    /// <summary>Stored, with its records, auth results, and ledger row.</summary>
     Inserted,
+
+    /// <summary>Already stored (the domain/report-id/range unique index); nothing written.</summary>
     Duplicate,
     Rejected,
 }
 
+/// <summary>Persists parsed DMARC reports — see <see cref="DmarcReportIngestor"/>.</summary>
 public interface IDmarcReportIngestor
 {
     Task<DmarcIngestOutcome> IngestParsedAsync(
@@ -30,6 +35,7 @@ public sealed class DmarcReportIngestor(
     DmarcAnalyzerDbContext db,
     IDomainIngestResolver domainResolver) : IDmarcReportIngestor
 {
+    /// <inheritdoc />
     public async Task<DmarcIngestOutcome> IngestParsedAsync(
         ReportSourceContext source,
         DmarcReportParseResult report,

@@ -19,7 +19,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     private const string BeforeServicePermissionsMigration = "20260812012105_AddServiceApiCredentials";
     private const string BeforePasskeyMigration = "20260812025139_AddServiceApiCredentialPermissions";
     private const string BeforeCredentialUpgradeRepair = "20260812033233_AddUserPasskeys";
-    private const string ExpectedLatestMigration = "20260812234953_RepairApiSourceCredentialUpgrade";
+    private const string ExpectedLatestMigration = "20260918235748_WidenProtocolConfigurationForS3";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()
@@ -413,35 +413,21 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
         await using (var legacy = database.CreateDbContext())
         {
             await legacy.GetService<IMigrator>().MigrateAsync(BeforeCredentialUpgradeRepair);
-            legacy.AddRange(
-                new Client
-                {
-                    Id = clientId,
-                    Name = "Legacy credential fixture",
-                    Slug = "legacy-credential-fixture",
-                    Timezone = "UTC",
-                },
-                new ReportSource
-                {
-                    Id = apiSourceId,
-                    Name = "Legacy API source",
-                    Protocol = "api",
-                    UseTls = null,
-                    DefaultClientId = clientId,
-                },
-                new ReportSource
-                {
-                    Id = mailboxSourceId,
-                    Name = "Mailbox source",
-                    Protocol = "imap",
-                    Host = "imap.example",
-                    Port = 993,
-                    UseTls = true,
-                    Username = "reports@example.test",
-                    PasswordEncrypted = "test-only",
-                    DefaultClientId = clientId,
-                });
-            await legacy.SaveChangesAsync();
+            // Seed with SQL, not the current model: later migrations add columns
+            // (S3, POP3 UIDL) that do not exist at this point in history, so a
+            // current-model SaveChanges would reference columns that are not there yet.
+            var now = DateTime.UtcNow;
+            await legacy.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO client
+                    ("Id", "Name", "Slug", "Timezone", "IsActive", "RetentionMonths", "CreatedAtUtc", "UpdatedAtUtc")
+                VALUES
+                    ({clientId}, {"Legacy credential fixture"}, {"legacy-credential-fixture"}, {"UTC"}, {true}, {27}, {now}, {now});
+                INSERT INTO report_source
+                    ("Id", "Name", "Protocol", "Host", "Port", "UseTls", "Username", "PasswordEncrypted", "DefaultClientId", "IsActive", "DeleteAfterRetention", "CreatedAtUtc", "UpdatedAtUtc")
+                VALUES
+                    ({apiSourceId}, {"Legacy API source"}, {"api"}, {null}, {null}, {null}, {null}, {null}, {clientId}, {true}, {false}, {now}, {now}),
+                    ({mailboxSourceId}, {"Mailbox source"}, {"imap"}, {"imap.example"}, {993}, {true}, {"reports@example.test"}, {"test-only"}, {clientId}, {true}, {false}, {now}, {now});
+                """);
             await legacy.Database.ExecuteSqlRawAsync(
                 """
                 DROP TRIGGER TR_report_source_RevokeApiCredentials ON report_source;

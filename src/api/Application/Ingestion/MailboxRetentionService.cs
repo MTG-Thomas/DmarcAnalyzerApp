@@ -2,10 +2,6 @@ using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Data;
-using MailKit;
-using MailKit.Net.Imap;
-using MailKit.Search;
-using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
@@ -26,12 +22,15 @@ public sealed record MailboxRetentionSourceResult(
     int SkippedUnarchived,
     string? Error);
 
+/// <summary>A whole pass: whether it was a dry run, and what happened per source.</summary>
 public sealed record MailboxRetentionRunResult(
     bool DryRun,
     IReadOnlyList<MailboxRetentionSourceResult> Sources);
 
+/// <summary>Deletes aged report mail from source mailboxes — see <see cref="MailboxRetentionService"/>.</summary>
 public interface IMailboxRetentionService
 {
+    /// <summary>Executes (or previews, when <paramref name="dryRun"/>) the planner's current plan.</summary>
     Task<MailboxRetentionRunResult> RunAsync(bool dryRun, CancellationToken ct);
 }
 
@@ -55,9 +54,11 @@ public sealed class MailboxRetentionService(
     IMailboxRetentionPlanner planner,
     ICredentialProtector credentialProtector,
     IReportMailArchive reportMailArchive,
+    IPolledSourceTransportFactory transportFactory,
     IAuditLog audit,
     ILogger<MailboxRetentionService> logger) : IMailboxRetentionService
 {
+    /// <inheritdoc />
     public async Task<MailboxRetentionRunResult> RunAsync(bool dryRun, CancellationToken ct)
     {
         var plans = await planner.PlanAsync(ct);
@@ -113,40 +114,24 @@ public sealed class MailboxRetentionService(
         CancellationToken ct)
     {
         var source = await db.ReportSources.SingleAsync(x => x.Id == plan.ReportSourceId, ct);
-        if (source.Protocol == "api"
-            || string.IsNullOrWhiteSpace(source.Host)
-            || source.Port is not > 0
-            || !source.UseTls.HasValue
-            || string.IsNullOrWhiteSpace(source.Username)
-            || string.IsNullOrWhiteSpace(source.PasswordEncrypted))
-        {
-            throw new InvalidOperationException("mailbox retention source configuration is incomplete");
-        }
-        var password = credentialProtector.Unprotect(source.PasswordEncrypted);
+        var secret = string.IsNullOrEmpty(source.PasswordEncrypted)
+            ? string.Empty
+            : credentialProtector.Unprotect(source.PasswordEncrypted);
 
-        using var client = new ImapClient();
-        var socketOptions = source.UseTls.Value
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTlsWhenAvailable;
+        // The planner already excluded anything without a mailbox, so a missing transport
+        // here is a source whose protocol was removed from under it rather than an ordinary
+        // outcome — and deleting mail is not a thing to attempt on a guess.
+        var transport = transportFactory.For(source.Protocol)
+            ?? throw new InvalidOperationException(
+                $"no mailbox transport for protocol '{source.Protocol}'");
 
-        await client.ConnectAsync(source.Host, source.Port.Value, socketOptions, ct);
-        await client.AuthenticateAsync(source.Username, password, ct);
+        await using var session = await transport.OpenForPruneAsync(source, secret, cutoff, dryRun, ct);
 
-        // Read-write, unlike the sync pass. This is the only place in the application that
-        // opens a customer's mailbox for writing.
-        var inbox = client.Inbox;
-        await inbox.OpenAsync(dryRun ? FolderAccess.ReadOnly : FolderAccess.ReadWrite, ct);
-
-        var uidValidity = (long)inbox.UidValidity;
-
-        // Delivered-before, not "processed": a message that never parsed must age out too,
-        // or the mailbox accumulates permanent failures for ever.
-        var eligible = await inbox.SearchAsync(SearchQuery.DeliveredBefore(cutoff), ct);
-
+        var eligible = session.Eligible;
         var deleted = 0;
         var skippedUnarchived = 0;
 
-        foreach (var uid in eligible)
+        foreach (var candidate in eligible)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -155,12 +140,8 @@ public sealed class MailboxRetentionService(
                 // No delete without a confirmed write. Checked against the bucket rather
                 // than inferred from configuration, because "archiving is on" and "this
                 // message is archived" are different claims.
-                var summaries = await inbox.FetchAsync(
-                    new[] { uid }, MessageSummaryItems.InternalDate, ct);
-                var receivedAtUtc = summaries.FirstOrDefault()?.InternalDate?.UtcDateTime ?? cutoff;
-
                 if (!await reportMailArchive.ExistsAsync(
-                        source.Id, uid.Id, uidValidity, receivedAtUtc, ct))
+                        source.Id, candidate.ArchiveIdentity, candidate.ReceivedAtUtc, ct))
                 {
                     skippedUnarchived++;
                     continue;
@@ -169,25 +150,29 @@ public sealed class MailboxRetentionService(
 
             if (!dryRun)
             {
-                await inbox.AddFlagsAsync(uid, MessageFlags.Deleted, silent: true, ct);
+                await session.DeleteAsync(candidate, ct);
                 deleted++;
             }
         }
 
         if (!dryRun && deleted > 0)
         {
-            await inbox.ExpungeAsync(ct);
+            await session.CommitAsync(ct);
         }
 
-        // Refreshed while the folder is open, since this pass has just changed the answer.
-        await RefreshOldestMessageAsync(source.Id, inbox, ct);
+        // Asked while the mailbox is open, since this pass has just changed the answer.
+        var oldest = await session.GetOldestMessageAtUtcAsync(ct);
 
-        await client.DisconnectAsync(true, ct);
+        // Last, and it matters that it is last: on POP3 the deletions do not take effect
+        // until the session ends cleanly, so this call is where the mail actually goes.
+        await session.CloseAsync(ct);
+
+        await RecordOldestMessageAsync(source.Id, oldest, ct);
 
         logger.LogInformation(
-            "Mailbox retention pass for {ReportSourceName}: {Eligible} eligible before {Cutoff:yyyy-MM-dd}, " +
-            "{Deleted} deleted, {Skipped} skipped as unarchived{DryRun}",
-            plan.ReportSourceName, eligible.Count, cutoff, deleted, skippedUnarchived,
+            "Mailbox retention pass for {ReportSourceName} ({Protocol}): {Eligible} eligible before " +
+            "{Cutoff:yyyy-MM-dd}, {Deleted} deleted, {Skipped} skipped as unarchived{DryRun}",
+            plan.ReportSourceName, source.Protocol, eligible.Count, cutoff, deleted, skippedUnarchived,
             dryRun ? " (dry run)" : string.Empty);
 
         return new MailboxRetentionSourceResult(
@@ -200,18 +185,8 @@ public sealed class MailboxRetentionService(
     /// that the mailbox is a usable archive, and after a deletion pass it is how an operator
     /// confirms the cut landed where it was meant to.
     /// </summary>
-    private async Task RefreshOldestMessageAsync(Guid sourceId, IMailFolder inbox, CancellationToken ct)
+    private async Task RecordOldestMessageAsync(Guid sourceId, DateTime? oldest, CancellationToken ct)
     {
-        var all = await inbox.SearchAsync(SearchQuery.All, ct);
-        DateTime? oldest = null;
-
-        if (all.Count > 0)
-        {
-            var summaries = await inbox.FetchAsync(
-                new[] { all[0] }, MessageSummaryItems.InternalDate, ct);
-            oldest = summaries.FirstOrDefault()?.InternalDate?.UtcDateTime;
-        }
-
         var tracked = await db.ReportSources.SingleAsync(x => x.Id == sourceId, ct);
         tracked.OldestMessageAtUtc = oldest;
         tracked.UpdatedAtUtc = DateTime.UtcNow;

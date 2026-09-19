@@ -183,8 +183,8 @@
     {
       "delivery_order": 100,
       "expected": "expected/null-report.json",
-      "expected_outcome": "inserted",
-      "expected_sha256": "7af6a148d1ce461d2bffb0966297509c35bf906d0289bebe5c3783b08cf79bf4",
+      "expected_outcome": "rejected",
+      "expected_sha256": "080fc5694181c0e7b44f53b26e809dcc08135b70ae51c2d3036b5b93ff0cb17e",
       "id": "null-report",
       "payloads": [
         {

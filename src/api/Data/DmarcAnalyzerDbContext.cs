@@ -3,6 +3,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Data;
 
+/// <summary>
+/// The one EF context. Mappings, keys, and cascade rules live in
+/// OnModelCreating; there are deliberately no global query filters — tenancy is
+/// enforced in the service layer, so nothing here saves a query that forgets it.
+/// </summary>
 public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbContext> options) : DbContext(options)
 {
     public DbSet<Client> Clients => Set<Client>();
@@ -33,6 +38,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<SmtpTlsFailureDetail> SmtpTlsFailureDetails => Set<SmtpTlsFailureDetail>();
     public DbSet<TlsReportIngest> TlsReportIngests => Set<TlsReportIngest>();
 
+    /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AgencyUser>(entity =>
@@ -161,7 +167,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.ToTable("report_source", table => table.HasCheckConstraint(
                 "CK_report_source_ProtocolConfiguration",
                 "(\"Protocol\" = 'api' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NULL AND \"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL AND \"DeleteAfterRetention\" = FALSE AND \"OldestMessageAtUtc\" IS NULL AND \"LastSuccessSyncAtUtc\" IS NULL AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL) OR " +
-                "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)"));
+                "(\"Protocol\" IN ('imap', 'pop3') AND \"Host\" IS NOT NULL AND \"Port\" > 0 AND \"UseTls\" IS NOT NULL AND \"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL) OR " +
+                "(\"Protocol\" = 's3' AND \"Host\" IS NULL AND \"Port\" IS NULL AND \"UseTls\" IS NOT NULL AND \"S3Bucket\" IS NOT NULL AND \"S3Bucket\" <> '' AND ((\"Username\" IS NULL AND \"PasswordEncrypted\" IS NULL) OR (\"Username\" IS NOT NULL AND \"PasswordEncrypted\" IS NOT NULL)) AND \"LastProcessedUid\" IS NULL AND \"LastProcessedUidValidity\" IS NULL AND \"LastProcessedUidl\" IS NULL)"));
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Protocol).HasMaxLength(20).IsRequired();
@@ -170,6 +177,24 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048);
             entity.Property(x => x.LastProcessedUid);
             entity.Property(x => x.LastProcessedUidValidity);
+
+            // 70 by RFC 1939, which caps a UIDL at 70 printable ASCII characters. Bounded
+            // at the schema rather than left as unlimited text so a server that ignores the
+            // limit is refused at the insert instead of silently redefining the checkpoint.
+            entity.Property(x => x.LastProcessedUidl).HasMaxLength(70);
+
+            // 1024 on both, which is S3's own limit on a key. Bucket and region are far
+            // shorter in practice but are bounded for the same reason every other string
+            // here is: an unbounded text column is a column nobody has thought about.
+            entity.Property(x => x.S3Bucket).HasMaxLength(255);
+            entity.Property(x => x.S3Prefix).HasMaxLength(1024);
+            entity.Property(x => x.S3Region).HasMaxLength(64);
+            entity.Property(x => x.S3Endpoint).HasMaxLength(255);
+            entity.Property(x => x.S3ForcePathStyle).HasDefaultValue(true);
+            entity.Property(x => x.LastProcessedObjectAtUtc);
+            entity.Property(x => x.LastProcessedObjectKey).HasMaxLength(1024);
+            entity.Property(x => x.S3ReadListingCursorKey).HasMaxLength(1024);
+            entity.Property(x => x.S3PruneListingCursorKey).HasMaxLength(1024);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
             entity.HasIndex(x => x.DefaultClientId);
 
