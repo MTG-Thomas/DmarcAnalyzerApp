@@ -51,7 +51,7 @@ public sealed class WorkerOptions
 
     /// <summary>Reports deleted per transaction, so a large backlog doesn't hold locks across the table.</summary>
     /// <summary>
-    /// Refuse to start when another worker already holds the ingestion lock.
+    /// Wait before ingestion when another worker already holds the ingestion lock.
     /// <para>
     /// On by default. Two ingestion loops duplicate every sync pass and can send
     /// duplicate alert and digest email — see <see cref="WorkerSingleInstanceLock"/>
