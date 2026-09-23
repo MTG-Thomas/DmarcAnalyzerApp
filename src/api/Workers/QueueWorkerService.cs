@@ -13,6 +13,7 @@ namespace DmarcAnalyzer.Api.Workers;
 
 public sealed class QueueWorkerService(
     IServiceScopeFactory scopeFactory,
+    WorkerSingleInstanceLock workerLock,
     IOptions<WorkerOptions> options,
     IOptions<BackupOptions> backupOptions,
     ILogger<QueueWorkerService> logger) : BackgroundService
@@ -24,6 +25,10 @@ public sealed class QueueWorkerService(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Wait in the background, not host startup: a rolling replacement must
+        // serve API probes before the platform stops the previous worker. No
+        // ingestion or scheduled side effect may run until that owner exits.
+        await workerLock.AcquireAsync(stoppingToken);
         logger.LogInformation("Queue worker started.");
 
         // Everything runs inside the loop: a pass that throws (database not

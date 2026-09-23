@@ -89,7 +89,7 @@ then and its log says so.
 | `Worker__RetentionEnabled` | `true` | Run the retention purge pass. |
 | `Worker__RetentionIntervalHours` | `24` | Gap between purge passes. |
 | `Worker__RetentionBatchSize` | `500` | Rows deleted per purge batch. Smaller batches hold locks for less time. |
-| `Worker__EnforceSingleInstance` | `true` | Refuse to start when another worker already holds the ingestion lock (a Postgres advisory lock). Two loops duplicate every sync pass, inflate the sync-run counts, and can send duplicate alert and digest email. Turning this off removes the only guard that works on every platform. |
+| `Worker__EnforceSingleInstance` | `true` | Wait in the background when another worker holds the ingestion lock (a Postgres advisory lock). The API can serve readiness probes during rolling replacement, but the ingestion loop runs only after ownership transfers. Cancelling a standby worker closes its waiting connection. Two loops duplicate every sync pass, inflate the sync-run counts, and can send duplicate alert and digest email. Turning this off removes the only guard that works on every platform. |
 
 ## Retention (`Retention`)
 

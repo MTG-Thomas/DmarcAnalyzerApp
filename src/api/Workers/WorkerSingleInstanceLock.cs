@@ -5,7 +5,7 @@ using Npgsql;
 namespace DmarcAnalyzer.Api.Workers;
 
 /// <summary>
-/// Refuses to start if another worker is already running against this database.
+/// Waits for exclusive ingestion ownership without blocking API startup.
 /// <para>
 /// Two ingestion loops against one database is not a supported configuration, and
 /// the failures are quiet ones: two IMAP sessions per mailbox, two
@@ -30,7 +30,7 @@ namespace DmarcAnalyzer.Api.Workers;
 public sealed class WorkerSingleInstanceLock(
     IConfiguration configuration,
     IOptions<WorkerOptions> options,
-    ILogger<WorkerSingleInstanceLock> logger) : IHostedService, IAsyncDisposable
+    ILogger<WorkerSingleInstanceLock> logger) : IAsyncDisposable
 {
     /// <summary>
     /// Arbitrary but fixed: any two processes using this key contend, and nothing
@@ -40,7 +40,7 @@ public sealed class WorkerSingleInstanceLock(
 
     private NpgsqlConnection? _connection;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public async Task AcquireAsync(CancellationToken cancellationToken)
     {
         if (!options.Value.EnforceSingleInstance)
         {
@@ -63,32 +63,28 @@ public sealed class WorkerSingleInstanceLock(
         // A dedicated connection, held open for the life of the process: advisory
         // locks are scoped to a session, so it has to be this connection rather
         // than one borrowed from the pool and returned.
-        _connection = new NpgsqlConnection(connectionString);
-        await _connection.OpenAsync(cancellationToken);
-
-        await using var command = _connection.CreateCommand();
-        command.CommandText = "SELECT pg_try_advisory_lock(@key)";
-        command.Parameters.AddWithValue("key", LockKey);
-
-        var acquired = await command.ExecuteScalarAsync(cancellationToken) as bool? ?? false;
-
-        if (!acquired)
+        _connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Pooling = false,
+        }.ConnectionString);
+        try
+        {
+            await _connection.OpenAsync(cancellationToken);
+            await using var command = _connection.CreateCommand();
+            command.CommandText = "SELECT pg_advisory_lock(@key)";
+            command.CommandTimeout = 0;
+            command.Parameters.AddWithValue("key", LockKey);
+            logger.LogInformation("Waiting for exclusive ingestion ownership; API remains available.");
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+        catch
         {
             await DisposeAsync();
-
-            throw new InvalidOperationException(
-                "Another worker already holds the ingestion lock on this database. Running two " +
-                "ingestion loops duplicates every sync pass and can send duplicate alert and " +
-                "digest email, so this process is stopping instead. Run exactly one container " +
-                "with APP_MODE=worker or APP_MODE=all. " +
-                "If a previous worker was killed abruptly, its lock is released when Postgres " +
-                "notices the dead connection, which can take a couple of minutes.");
+            throw;
         }
 
         logger.LogInformation("Acquired the ingestion lock; this is the only worker on this database.");
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>
     /// Closing the connection releases the lock. Postgres also releases it if this
