@@ -504,6 +504,68 @@ definitive `missing` clears them. Excluded from the backup config artifact
 (counted in the manifest's `excluded` map, not carried) — it is a cache the
 pass rebuilds within one interval.
 
+### `scheduled_task_state`
+Durable maintenance cadence: one row per worker pass, replacing the old
+process-local `_last*` gates so a fresh process (or a run-once job) never
+re-runs fresh tasks. Rows are lazy-created on first record; no seeding.
+
+| Column | Notes |
+|---|---|
+| `TaskKey` | PK, max 64 — `alert`, `digest`, `retention`, `dns_refresh`, `mta_sts`, `spf_drift`, `backup_offload`, `mailbox_retention` |
+| `LastRunAtUtc` | last attempt started, success or failure — the due gate reads this |
+| `LastSuccessAtUtc` | last successful run, for "last verified" copy |
+| `ConsecutiveFailures` | failures since the last success; success resets to 0 |
+| `UpdatedAtUtc` | row maintenance stamp |
+
+### `sync_request`
+Durable manual sync requests: the console persists a row and polls it while a
+worker claims queued rows and writes outcomes back. Tenancy derives from the
+source; cross-tenant ids read as 404.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `ReportSourceId` | FK → `report_source`, **cascade** |
+| `Status` | max 16, check-constrained — `queued` \| `running` \| `completed` \| `partial` \| `failed` \| `cancelled` |
+| `RequestedByUserId` | nullable — the signed-in user, if any; service callers record null |
+| `CreatedAtUtc`, `StartedAtUtc`, `FinishedAtUtc` | lifecycle stamps |
+| `Attempts` | claims so far; drives the poison guard |
+| `LastError` | max 2000 — failure reason |
+| `ResultJson` | max 8000 — outcome counters JSON, rendered as the status summary object |
+
+At most one `queued`/`running` row per source (partial unique index), so a
+duplicate trigger returns the live row instead of double-syncing. Abandoned
+`running` rows requeue after the stale timeout; rows interrupted 3 times fail
+instead. Excluded from the backup artifact like the other run state.
+
+### `passkey_ceremony`
+In-flight WebAuthn ceremonies, keyed by the opaque handle the browser returns
+with the credential. Must live in the database because the completing request
+may land on a different replica than the one that started it.
+
+| Column | Notes |
+|---|---|
+| `Handle` | PK — 32 random bytes, base64, DP-protected in the cookie |
+| `UserId` | nullable — set for registration, null for authentication (also the kind discriminator) |
+| `Challenge` | the issued challenge bytes |
+| `OptionsJson` | nullable — the exact options creation produced, as Fido2 JSON; null only for rows predating the column (challenge-rebuild fallback) |
+| `CreatedAtUtc`, `ExpiresAtUtc` (5 min) | lifetime window |
+| `ConsumedAtUtc` | single-use marker; the consume is one atomic conditional `UPDATE ... RETURNING` |
+| `Attempts` | completions attempted, including replays (abuse forensics) |
+
+Capacity is an abuse backstop (4096 live rows), not a hard invariant; expiry
+purge runs ahead of every start in bounded batches. Short-lived rows — excluded
+from the backup artifact.
+
+### `dp_key`
+The ASP.NET Core Data Protection key ring: every API replica and cold start
+reads and appends here, so session cookies, ceremony handles, and OIDC
+correlation/nonce state decrypt no matter where they were sealed. A handful of
+rows, no tenancy: `Id` (PK, identity), `Xml` (the key XML, required).
+At-rest encryption via Key Vault is an explicit follow-up; the ring is
+currently stored unencrypted. Excluded from the backup artifact — a restored
+ring would resurrect retired keys; rotation appends instead.
+
 ### `mta_sts_policy`
 A hosted MTA-STS policy: what this instance serves at
 `https://mta-sts.{domain}/.well-known/mta-sts.txt` for a domain whose mta-sts

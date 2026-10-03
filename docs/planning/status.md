@@ -103,6 +103,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
+  - `APP_MODE=worker-once` runs every pass once and exits (0 = complete/partial/contention-skip, 1 = required work failed), with per-pass isolation and a `WorkerOnce__OverallTimeoutMinutes` bound; the advisory lock is try-acquire with bounded wait
+  - maintenance cadence is durable on `scheduled_task_state` (all 8 passes) — a fresh process never re-runs fresh tasks
+  - manual sync is a durable `sync_request` row: `POST .../sync` returns 202 (200 with the live row on duplicate), the drain pass claims/runs/finishes under worker ownership with stale requeue and a poison guard, and `GET .../sync-requests/{id}` reports queued/running/completed/partial/failed/cancelled
 - One `IReportPayloadIngestor` now owns bounded extraction, format routing,
   DMARC/TLS parsing, and dispatch to parsed persistence. It classifies bare
   XML/JSON, GZIP, and multi-entry ZIP content; configuration caps request bytes,
@@ -271,6 +274,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - administrator-only Settings UI for listing, creating, copying once, and revoking service API keys; source-scoped report-upload keys remain on their report source
   - auth endpoints: register, login, logout, me
   - CORS credentials support for frontend dev
+  - passkey ceremonies persist on `passkey_ceremony` (atomic one-time consume, 5-min expiry, exact-options round-trip) and the Data Protection key ring on `dp_key`, so ceremonies complete across replicas, replacements, and cold starts; at-rest key encryption via Key Vault is an explicit follow-up
 
 - Mailbox credential encryption at rest:
   - AES-256-GCM via `Security:CredentialEncryptionKey` (base64, 32 bytes)

@@ -187,7 +187,7 @@ Two things are worth knowing before you turn this on:
 | Variable | Default | Meaning |
 |---|---|---|
 | `Backup__Bucket` | *(empty)* | Destination bucket. Empty disables offload. |
-| `Backup__IntervalMinutes` | `30` | Gap between offload passes. **Effective resolution is `Worker__ScheduleIntervalSeconds`** — with the shipped hourly schedule, 30 here still means roughly hourly. Shorten the schedule interval too if the cadence matters. |
+| `Backup__IntervalMinutes` | `30` | Gap between offload passes. **Effective resolution is `Worker__ScheduleIntervalSeconds`** — with the shipped hourly schedule, 30 here still means roughly hourly. Shorten the schedule interval too if the cadence matters. Under an hourly run-once job (`worker-once`), every sub-hourly cadence collapses to hourly by construction — accepted for backup (snapshots stay usable, just coarser); do not lower this expecting a faster offload there. |
 | `Backup__Endpoint` | *(empty)* | Custom S3 endpoint for MinIO, Cloudflare R2, Backblaze B2. Empty targets AWS. |
 | `Backup__Region` | `us-east-1` | AWS region. Used only as the signing region when `Endpoint` is set. |
 | `Backup__AccessKeyId` | *(empty)* | Static credential. Leave both key settings empty to use the ambient chain — an instance role or IRSA beats a long-lived key in configuration. |
