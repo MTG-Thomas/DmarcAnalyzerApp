@@ -39,6 +39,7 @@ public sealed class ServicePermissionEndpointMetadataTests
         builder.Services.AddScoped<IMailboxHealthQueryService>(_ => null!);
         builder.Services.AddScoped<IReportSourceService>(_ => null!);
         builder.Services.AddScoped<IMailboxSyncService>(_ => null!);
+        builder.Services.AddScoped<ISyncRequestService>(_ => null!);
         builder.Services.AddScoped<IMailboxSyncRunQueryService>(_ => null!);
         builder.Services.AddScoped<IMtaStsPolicyAdminService>(_ => null!);
         builder.Services.AddScoped<IMtaStsInspectionService>(_ => null!);
@@ -70,6 +71,7 @@ public sealed class ServicePermissionEndpointMetadataTests
         AssertPermission(endpoints, "/api/v1/domains", ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.DomainsManage);
         AssertPermission(endpoints, "/api/v1/report-sources", ServiceApiPermissions.PortfolioRead, ServiceApiPermissions.SourcesManage);
         AssertPermission(endpoints, "/api/v1/report-sources/{id:guid}/sync", ServiceApiPermissions.SourcesSync);
+        AssertPermission(endpoints, "/api/v1/report-sources/sync-requests/{requestId:guid}", ServiceApiPermissions.SourcesSync);
         AssertPermission(endpoints, "/api/v1/alerts/{id:guid}", ServiceApiPermissions.AlertsManage);
         AssertPermission(endpoints, "/api/v1/admin/audit-events", ServiceApiPermissions.AuditRead);
         AssertPermission(endpoints, "/api/v1/notification-recipients",

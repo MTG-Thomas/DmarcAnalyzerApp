@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Ingestion;
@@ -30,12 +31,12 @@ public sealed class ReportSourcesModuleTests
     public async Task RoutesReturnServiceStatuses()
     {
         var sources = new StubReportSourceService();
-        var sync = new StubMailboxSyncService();
+        var syncRequests = new StubSyncRequestService();
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<IReportSourceService>(sources);
-        builder.Services.AddSingleton<IMailboxSyncService>(sync);
+        builder.Services.AddSingleton<ISyncRequestService>(syncRequests);
         builder.Services.AddSingleton<IAuditLog>(new StubAuditLog());
 
         await using var app = builder.Build();
@@ -66,23 +67,54 @@ public sealed class ReportSourcesModuleTests
         Assert.Equal(HttpStatusCode.OK, (await client.PatchAsJsonAsync(
             $"/api/v1/report-sources/{SourceId}", new UpdateReportSourceRequest { DeleteAfterRetention = true })).StatusCode);
 
-        sync.Result = ServiceResult<MailboxSyncResult>.Failure("not found", 404);
+        syncRequests.EnqueueResult = ServiceResult<SyncRequestEnqueueResult>.Failure("not found", 404);
         Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync(
             $"/api/v1/report-sources/{SourceId}/sync", null)).StatusCode);
-        sync.Result = ServiceResult<MailboxSyncResult>.Failure("busy", 409);
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsync(
-            $"/api/v1/report-sources/{SourceId}/sync", null)).StatusCode);
-        sync.Result = ServiceResult<MailboxSyncResult>.Success(SyncResult(false));
-        Assert.Equal(HttpStatusCode.BadGateway, (await client.PostAsync(
-            $"/api/v1/report-sources/{SourceId}/sync", null)).StatusCode);
-        sync.Result = ServiceResult<MailboxSyncResult>.Success(SyncResult(true));
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync(
-            $"/api/v1/report-sources/{SourceId}/sync", null)).StatusCode);
-    }
+        syncRequests.EnqueueResult = ServiceResult<SyncRequestEnqueueResult>.Failure("mailbox source configuration is incomplete", 409);
+        var conflict = await client.PostAsync($"/api/v1/report-sources/{SourceId}/sync", null);
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
 
-    private static MailboxSyncResult SyncResult(bool success) => new(
-        SourceId, 1, 1, 1, 0, 0, 0, 0, success, success ? null : "failed",
-        DateTime.UtcNow, DateTime.UtcNow);
+        // A fresh enqueue answers 202 with the request and where to poll it.
+        var requestId = Guid.NewGuid();
+        syncRequests.EnqueueResult = ServiceResult<SyncRequestEnqueueResult>.Success(
+            new SyncRequestEnqueueResult(requestId, SyncRequestStatus.Queued, IsNew: true));
+        var accepted = await client.PostAsync($"/api/v1/report-sources/{SourceId}/sync", null);
+        Assert.Equal(HttpStatusCode.Accepted, accepted.StatusCode);
+        var acceptedBody = await accepted.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(requestId.ToString(), acceptedBody.GetProperty("requestId").GetString());
+        Assert.Equal(SyncRequestStatus.Queued, acceptedBody.GetProperty("status").GetString());
+        Assert.Equal($"/api/v1/report-sources/sync-requests/{requestId}",
+            acceptedBody.GetProperty("statusUrl").GetString());
+
+        // A source with a request already in flight answers 200 with that
+        // same request in the same shape — including when it is running.
+        syncRequests.EnqueueResult = ServiceResult<SyncRequestEnqueueResult>.Success(
+            new SyncRequestEnqueueResult(requestId, SyncRequestStatus.Running, IsNew: false));
+        var deduped = await client.PostAsync($"/api/v1/report-sources/{SourceId}/sync", null);
+        Assert.Equal(HttpStatusCode.OK, deduped.StatusCode);
+        var dedupedBody = await deduped.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(requestId.ToString(), dedupedBody.GetProperty("requestId").GetString());
+        Assert.Equal(SyncRequestStatus.Running, dedupedBody.GetProperty("status").GetString());
+        Assert.Equal($"/api/v1/report-sources/sync-requests/{requestId}",
+            dedupedBody.GetProperty("statusUrl").GetString());
+
+        syncRequests.GetResult = ServiceResult<SyncRequestDetails>.Failure("not found", 404);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(
+            $"/api/v1/report-sources/sync-requests/{requestId}")).StatusCode);
+
+        var finishedAtUtc = DateTime.UtcNow;
+        syncRequests.GetResult = ServiceResult<SyncRequestDetails>.Success(new SyncRequestDetails(
+            requestId, SourceId, SyncRequestStatus.Completed, finishedAtUtc.AddMinutes(-2),
+            finishedAtUtc.AddMinutes(-2), finishedAtUtc, 1, null, """{"reportsInserted":3}"""));
+        var status = await client.GetAsync($"/api/v1/report-sources/sync-requests/{requestId}");
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+        var statusBody = await status.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(requestId.ToString(), statusBody.GetProperty("requestId").GetString());
+        Assert.Equal(SourceId.ToString(), statusBody.GetProperty("reportSourceId").GetString());
+        Assert.Equal(SyncRequestStatus.Completed, statusBody.GetProperty("status").GetString());
+        Assert.Equal(1, statusBody.GetProperty("attempts").GetInt32());
+        Assert.Equal("""{"reportsInserted":3}""", statusBody.GetProperty("summary").GetString());
+    }
 
     private sealed class StubReportSourceService : IReportSourceService
     {
@@ -99,15 +131,35 @@ public sealed class ReportSourcesModuleTests
             => Task.FromResult(UpdateResult);
     }
 
-    private sealed class StubMailboxSyncService : IMailboxSyncService
+    private sealed class StubSyncRequestService : ISyncRequestService
     {
-        public ServiceResult<MailboxSyncResult> Result { get; set; } = ServiceResult<MailboxSyncResult>.Success(SyncResult(true));
+        public ServiceResult<SyncRequestEnqueueResult> EnqueueResult { get; set; } =
+            ServiceResult<SyncRequestEnqueueResult>.Success(
+                new SyncRequestEnqueueResult(Guid.NewGuid(), SyncRequestStatus.Queued, IsNew: true));
 
-        public Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, CancellationToken ct)
-            => Task.FromResult(Result);
+        public ServiceResult<SyncRequestDetails> GetResult { get; set; } =
+            ServiceResult<SyncRequestDetails>.Failure("not found", 404);
 
-        public Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(
-            Guid reportSourceId, string trigger, CancellationToken ct) => Task.FromResult(Result);
+        public Task<ServiceResult<SyncRequestEnqueueResult>> EnqueueAsync(Guid reportSourceId, CancellationToken ct)
+            => Task.FromResult(EnqueueResult);
+
+        public Task<ServiceResult<SyncRequestDetails>> GetAsync(Guid requestId, CancellationToken ct)
+            => Task.FromResult(GetResult);
+
+        public Task<SyncRequestClaim?> ClaimNextAsync(CancellationToken ct)
+            => Task.FromResult<SyncRequestClaim?>(null);
+
+        public Task<bool> CompleteAsync(Guid requestId, string? resultJson, CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> MarkPartialAsync(Guid requestId, string? resultJson, CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> FailAsync(Guid requestId, string error, string? resultJson, CancellationToken ct)
+            => Task.FromResult(false);
+
+        public Task<bool> HeartbeatAsync(Guid requestId, string? progressJson, CancellationToken ct)
+            => Task.FromResult(false);
     }
 
     private sealed class StubAuditLog : IAuditLog
