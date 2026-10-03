@@ -18,23 +18,25 @@ const ALLOWLIST_PATH = path.resolve(
   '../npm-audit-allowlist.json',
 );
 
+export class GateFailure extends Error {
+  constructor(exitCode, message) {
+    super(message);
+    this.exitCode = exitCode;
+  }
+}
+
 export function ghsaIdFromUrl(url) {
   const match = /\/GHSA-[a-z0-9-]+$/i.exec(url ?? '');
   return match ? match[0].slice(1).toLowerCase() : null;
 }
 
-// Pure filter over `npm audit --json` output so it stays testable without the
-// network. npm attributes each advisory (with URL) to the vulnerable
-// package's own entry; dependent packages in the chain reference it by name
-// only, so those echo entries carry no independent signal. The gate therefore
-// works at advisory granularity: it fails iff any advisory attached to a
-// high/critical finding is not allowlisted. A high/critical finding with an
-// empty trail fails safe, since there is nothing to disposition.
-export function evaluateAudit(auditJson, allowlist) {
-  const vulnerabilities = auditJson?.vulnerabilities ?? {};
+// npm attributes each advisory (with URL) to the vulnerable package's own
+// entry; dependent packages in the chain reference it by name only, so those
+// echo entries carry no independent signal.
+export function collectAdvisories(vulnerabilities) {
   const seen = new Map();
   const trailless = [];
-  for (const [name, finding] of Object.entries(vulnerabilities)) {
+  for (const [name, finding] of Object.entries(vulnerabilities ?? {})) {
     if (!FAIL_SEVERITIES.has(finding?.severity)) continue;
     const via = finding?.via ?? [];
     if (via.length === 0) {
@@ -43,74 +45,113 @@ export function evaluateAudit(auditJson, allowlist) {
     }
     for (const item of via) {
       if (typeof item === 'object' && item !== null && item.url) {
-        const id = ghsaIdFromUrl(item.url);
-        if (!seen.has(id)) {
-          seen.set(id, { id, title: item.title ?? '', url: item.url, packages: [] });
-        }
-        if (!seen.get(id).packages.includes(name)) {
-          seen.get(id).packages.push(name);
-        }
+        recordAdvisory(seen, name, item);
       }
     }
   }
+  return { advisories: [...seen.values()], trailless };
+}
+
+function recordAdvisory(seen, packageName, item) {
+  const id = ghsaIdFromUrl(item.url);
+  if (!seen.has(id)) {
+    seen.set(id, { id, title: item.title ?? '', url: item.url, packages: [] });
+  }
+  const entry = seen.get(id);
+  if (!entry.packages.includes(packageName)) {
+    entry.packages.push(packageName);
+  }
+}
+
+export function partitionAdvisories(advisories, allowlist) {
   const covered = [];
   const uncovered = [];
-  for (const advisory of seen.values()) {
+  for (const advisory of advisories) {
     if (advisory.id !== null && allowlist[advisory.id] !== undefined) {
       covered.push({ ...advisory, reason: allowlist[advisory.id].reason });
     } else {
       uncovered.push(advisory);
     }
   }
+  return { covered, uncovered };
+}
+
+// A high/critical finding with an empty trail fails safe: there is nothing
+// to disposition, so it stays uncovered.
+export function evaluateAudit(auditJson, allowlist) {
+  const { advisories, trailless } = collectAdvisories(auditJson?.vulnerabilities);
+  const { covered, uncovered } = partitionAdvisories(advisories, allowlist);
   for (const name of trailless) {
-    uncovered.push({ id: null, title: 'high/critical finding with no audit trail', url: '', packages: [name] });
+    uncovered.push({
+      id: null,
+      title: 'high/critical finding with no audit trail',
+      url: '',
+      packages: [name],
+    });
   }
   return { covered, uncovered };
 }
 
-function loadAuditJson() {
-  // The report arrives on stdin so this script never resolves tool paths
-  // itself. The TTY check deliberately uses fstat rather than
-  // process.stdin: merely touching the stdin stream object switches fd 0 to
-  // non-blocking mode, which turns the read below into an EAGAIN race against
-  // the slow npm audit writer. fstat leaves the descriptor alone, so the
-  // blocking read waits for the full report. Failing to parse means npm audit
-  // itself failed (registry down, lockfile unreadable) — fail closed, never
-  // open.
-  let isTerminal = false;
+export function loadAuditJson(
+  readStdin = () => readFileSync(0, 'utf8'),
+  statStdin = () => fstatSync(0),
+) {
+  // The TTY check deliberately uses fstat rather than process.stdin: merely
+  // touching the stdin stream object switches fd 0 to non-blocking mode,
+  // which turns the read below into an EAGAIN race against the slow npm
+  // audit writer. fstat leaves the descriptor alone, so the blocking read
+  // waits for the full report.
+  let isTerminal = true;
   try {
-    isTerminal = fstatSync(0).isCharacterDevice();
+    isTerminal = statStdin().isCharacterDevice();
   } catch {
     isTerminal = true;
   }
   if (isTerminal) {
-    console.error('::error::npm-audit-gate expects `npm audit --json` on stdin');
-    process.exit(2);
+    throw new GateFailure(2, 'npm-audit-gate expects `npm audit --json` on stdin');
   }
   try {
-    return JSON.parse(readFileSync(0, 'utf8'));
+    return JSON.parse(readStdin());
   } catch {
-    console.error('::error::npm audit produced no parseable JSON report');
-    process.exit(2);
+    throw new GateFailure(2, 'npm audit produced no parseable JSON report');
   }
+}
+
+// Pure decision step: everything main() prints and exits on, unit-testable
+// without a subprocess.
+export function runGate(auditJson, allowlist) {
+  const { covered, uncovered } = evaluateAudit(auditJson, allowlist);
+  const warnings = covered.map((c) => `npm audit: ${c.id} allowlisted (via ${c.packages.join(', ')})`);
+  const errors = uncovered.map(
+    (u) => `npm audit: ${u.id ?? 'untraceable finding'} not allowlisted (via ${u.packages.join(', ')})`,
+  );
+  return { exitCode: uncovered.length > 0 ? 1 : 0, warnings, errors };
 }
 
 function main() {
   const allowlist = JSON.parse(readFileSync(ALLOWLIST_PATH, 'utf8'));
-  const { covered, uncovered } = evaluateAudit(loadAuditJson(), allowlist);
-  for (const c of covered) {
-    console.log(`::warning::npm audit: ${c.id} allowlisted (via ${c.packages.join(', ')})`);
-  }
-  if (uncovered.length > 0) {
-    for (const u of uncovered) {
-      console.error(`::error::npm audit: ${u.id ?? 'untraceable finding'} not allowlisted (via ${u.packages.join(', ')})`);
+  try {
+    const { exitCode, warnings, errors } = runGate(loadAuditJson(), allowlist);
+    for (const warning of warnings) {
+      console.log(`::warning::${warning}`);
     }
-    console.error(`npm audit gate failed: ${uncovered.length} non-allowlisted high/critical advisories`);
-    process.exit(1);
+    if (exitCode !== 0) {
+      for (const error of errors) {
+        console.error(`::error::${error}`);
+      }
+      console.error(`npm audit gate failed: ${errors.length} non-allowlisted high/critical advisories`);
+      process.exit(exitCode);
+    }
+    console.log(
+      `npm audit gate passed (${warnings.length} allowlisted high/critical advisories, 0 unlisted)`,
+    );
+  } catch (err) {
+    if (err instanceof GateFailure) {
+      console.error(`::error::${err.message}`);
+      process.exit(err.exitCode);
+    }
+    throw err;
   }
-  console.log(
-    `npm audit gate passed (${covered.length} allowlisted high/critical advisories, 0 unlisted)`,
-  );
 }
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,7 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { evaluateAudit, ghsaIdFromUrl } from './npm-audit-gate.mjs';
+import {
+  evaluateAudit,
+  ghsaIdFromUrl,
+  loadAuditJson,
+  runGate,
+} from './npm-audit-gate.mjs';
 
 const ALLOWLIST = {
   'ghsa-vfj7-8cjw-p6xm': { reason: 'test entry' },
@@ -16,6 +21,14 @@ const ADVISORY = {
 
 function audit(entries) {
   return { vulnerabilities: entries };
+}
+
+function charDeviceStat() {
+  return { isCharacterDevice: () => true };
+}
+
+function pipeStat() {
+  return { isCharacterDevice: () => false };
 }
 
 describe('ghsaIdFromUrl', () => {
@@ -80,6 +93,54 @@ describe('evaluateAudit', () => {
       {},
     );
     expect(uncovered).toHaveLength(1);
+  });
+});
+
+describe('loadAuditJson', () => {
+  it('parses a piped report', () => {
+    const parsed = loadAuditJson(() => '{"a":1}', pipeStat);
+    expect(parsed).toEqual({ a: 1 });
+  });
+
+  it('refuses a terminal stdin without reading', () => {
+    let read = false;
+    try {
+      loadAuditJson(() => {
+        read = true;
+        return '';
+      }, charDeviceStat);
+    } catch (err) {
+      expect(err.exitCode).toBe(2);
+    }
+    expect(read).toBe(false);
+  });
+
+  it('fails closed on an unreadable report', () => {
+    expect(() => loadAuditJson(() => 'not json', pipeStat)).toThrowError(
+      expect.objectContaining({ exitCode: 2 }),
+    );
+  });
+});
+
+describe('runGate', () => {
+  it('passes with warnings on allowlisted advisories', () => {
+    const result = runGate(
+      audit({ braces: { severity: 'high', via: [ADVISORY] } }),
+      ALLOWLIST,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('fails with errors on unlisted advisories', () => {
+    const result = runGate(
+      audit({ braces: { severity: 'high', via: [ADVISORY] } }),
+      {},
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.warnings).toEqual([]);
   });
 });
 
