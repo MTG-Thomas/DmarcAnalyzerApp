@@ -1,0 +1,8 @@
+{
+  "ghsa-vfj7-8cjw-p6xm": {
+    "package": "braces",
+    "reason": "Stack-exhaustion DoS through deeply nested glob patterns. Reachable only through tailwindcss 3 build tooling (chokidar/micromatch/fast-glob). The shipped image contains only the built CSS in wwwroot, never node_modules, so there is no production attack surface. braces 3.0.3 is the newest 3.x release, so the only remediation is the breaking Tailwind 4 migration.",
+    "trackingIssue": "https://github.com/MTG-Thomas/DmarcAnalyzerApp/issues/60",
+    "scope": "devDependency build-time use only; remove this entry when the Tailwind 4 migration lands"
+  }
+}
