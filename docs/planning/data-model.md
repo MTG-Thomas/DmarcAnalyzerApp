@@ -474,6 +474,36 @@ unprotected); only a definitive `missing` clears them. Excluded from the
 backup config artifact and history streams — it is a cache the pass rebuilds
 within one interval.
 
+### `spf_drift_state`
+The current SPF drift posture of a domain, one row per domain, maintained by
+the worker's drift pass (and the staff recheck endpoint). Current state only —
+no history table; change *notification* is `alert_event`'s job, via the three
+`spf_*` rule types that read these columns.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `DomainId` | FK → `domain`, **cascade**, unique — the 1:1 |
+| `SpfRecordStatus` | max 16 — `found` \| `missing` \| `lookup_failed` \| `invalid` (2+ v=spf1 records: receivers permerror, nothing further checkable) |
+| `RawRecord` | max 4096 — the SPF TXT as published, when exactly one was found |
+| `DependencySnapshotJson`, `DependencyHash` | every include/redirect target with the record it published at check time (null when that target's lookup failed), plus the SHA-256 change-detection hash over the normalized snapshot |
+| `PreviousDependencySnapshotJson`, `PreviousDependencyHash` | the snapshot/hash before the last observed move — what the reviewable diff renders |
+| `DependencyChangedAtUtc` | when the hash last moved (both sides non-null); the alert window |
+| `CandidateStatus`, `CandidateText`, `CandidateHash` | `ready`/`refused` from the last generation, the text, and its hash; null when no record was found |
+| `PreviousCandidateStatus`, `CandidateChangedAtUtc` | the status before the last safety flip; the safety alert window |
+| `PublishedLookups`, `CandidateLookups`, `CandidateLength`, `PublishedOverBudget` | the honest "before" numbers (recursive RFC lookups, candidate cost/size, 10-lookup budget verdict) |
+| `PreviousPublishedLookups`, `PreviousCandidateLookups`, `PreviousCandidateLength`, `PreviousPublishedOverBudget`, `PreviousCandidateText`, `PreviousCandidateHash` | previous values, set when the hash moves, so the drift finding can say what changed |
+| `IssuesJson` | JSON string array of findings from the last check, ready to render |
+| `LastSuccessAtUtc`, `ConsecutiveFailures` | never-cleared last success + failures since — the freshness signal (unknown while failures stack up) |
+| `LastCheckedAtUtc` | indexed — the pass picks least-recently-checked first; always advances |
+| `LastChangedAtUtc` | last material change, for "last verified" copy |
+
+Same doctrine as `mta_sts_state`: a failed lookup keeps the last known values
+(a SERVFAIL must not retire a candidate or read as "no SPF"); only a
+definitive `missing` clears them. Excluded from the backup config artifact
+(counted in the manifest's `excluded` map, not carried) — it is a cache the
+pass rebuilds within one interval.
+
 ### `mta_sts_policy`
 A hosted MTA-STS policy: what this instance serves at
 `https://mta-sts.{domain}/.well-known/mta-sts.txt` for a domain whose mta-sts

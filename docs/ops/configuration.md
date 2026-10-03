@@ -251,6 +251,22 @@ publish one get the HTTPS fetch and MX lookup on top.
 | `MtaSts__PolicyHost` | *(empty)* | The hostname client CNAMEs point at for hosted policies — shown as the CNAME target in the console's publish instructions. Empty shows a configure-me hint instead. See [mta-sts-hosting.md](./mta-sts-hosting.md). |
 | `MtaSts__ServeCacheSeconds` | `60` | In-memory TTL and `Cache-Control: max-age` for served policy bodies; also how long a dedicated `mta-sts` container may serve a superseded body after a console edit. |
 
+## SPF drift checks (`SpfDrift`)
+
+The worker re-checks each active domain's SPF posture: the live record, every
+dependency target's published record, and the flattening candidate they yield.
+A move in any of them is recorded with its previous values, so the console can
+render a reviewable diff and the alert pass can raise drift findings. A failed
+lookup keeps the last known values; only a definitive absence clears them.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SpfDrift__Enabled` | `true` | Run the drift pass and keep per-domain SPF drift state fresh. |
+| `SpfDrift__CheckIntervalHours` | `12` | Gap between passes. Dependencies move slowly, and each check walks DNS widely (recursive analysis plus candidate generation), so this costs far more per domain than the MTA-STS pass. |
+| `SpfDrift__MaxConcurrentChecks` | `4` | Domains checked concurrently during a pass. |
+| `SpfDrift__PerDomainTimeoutSeconds` | `90` | Wall clock per domain. Analysis (20s cap) plus generation (25s cap) run back to back, so this must clear 45s with margin; a domain that exceeds it reads as a lookup failure with last-known-good kept. |
+| `SpfDrift__StartJitterSeconds` | `5` | Each check waits a random 0–N seconds before starting, so a pass over hundreds of domains does not burst the resolver the moment it begins. |
+
 ## Single sign-on (`Auth:Oidc`)
 
 Off by default; local accounts work with no identity provider. See
