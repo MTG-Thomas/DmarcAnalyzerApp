@@ -3,6 +3,12 @@ using AuthenticationHeaderValue = System.Net.Http.Headers.AuthenticationHeaderVa
 
 namespace DmarcAnalyzer.Api.Middleware;
 
+/// <summary>
+/// The cookie front door for /api/v1/*: resolves the dmarc_session cookie to a
+/// user, populates <see cref="CurrentUserContext"/>, and 401s everything else.
+/// Paths outside /api/v1/ (health, MTA-STS, the SPA) pass through untouched,
+/// as do the listed public auth endpoints and machine-authenticated requests.
+/// </summary>
 public sealed class SessionAuthMiddleware(RequestDelegate next)
 {
     private const string CookieName = "dmarc_session";
@@ -24,6 +30,7 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
     // external-temp scheme, not an app session.
     private const string OidcPathPrefix = "/api/v1/auth/oidc/";
 
+    /// <summary>Runs the gate for one request.</summary>
     public async Task InvokeAsync(
         HttpContext context,
         IAuthService authService,

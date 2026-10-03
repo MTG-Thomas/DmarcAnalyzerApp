@@ -112,10 +112,11 @@ public sealed class MailboxHealthQueryServiceTests
         var service = new MailboxHealthQueryService(db);
         var result = await service.ListAsync(null, CancellationToken.None);
 
-        Assert.Single(result);
-        var item = result[0];
-        Assert.Equal(mailbox.Id, item.ReportSourceId);
+        Assert.Equal(2, result.Count);
+        var item = Assert.Single(result, r => r.ReportSourceId == mailbox.Id);
         Assert.Equal("success", item.LastRunStatus);
+        var legacyPop3 = Assert.Single(result, r => r.Name == "Legacy POP3 source");
+        Assert.Null(legacyPop3.LastRunStatus);
         Assert.Equal(25, item.LastRunMessagesScanned);
         Assert.Equal(20, item.LastRunReportsInserted);
         Assert.Equal(5, item.LastRunReportsSkippedAsDuplicate);

@@ -23,6 +23,11 @@ const source: ReportSource = {
   isActive: true,
   deleteAfterRetention: false,
   oldestMessageAtUtc: null,
+  s3Bucket: null,
+  s3Prefix: null,
+  s3Region: null,
+  s3Endpoint: null,
+  s3ForcePathStyle: false,
 }
 
 const activeCredential: ApiSourceCredential = {

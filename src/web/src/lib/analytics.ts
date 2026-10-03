@@ -211,6 +211,25 @@ export type DomainSourceAnalytics = {
   lastSeenUtc: string
 }
 
+/**
+ * Whether a source row can be addressed by IP — which is what makes it expandable, linkable
+ * and resolvable to a hostname.
+ *
+ * A reporter can send a record that states a message count but no source IP, and the
+ * aggregation groups those into a source whose `sourceIp` is empty. It is real mail and has
+ * to stay in the table, but nothing keyed on the IP works for it: source-detail requires an
+ * `ip` parameter and answers 400 without one, so before this guard expanding the row showed
+ * an error banner instead of a panel (#190). Records that report no IP *and* no messages —
+ * the wp.pl/o2.pl heartbeats that issue was about — are dropped at ingestion instead, so
+ * this path is for the ones that carry real volume.
+ */
+export function isAttributableSource(sourceIp: string): boolean {
+  return sourceIp.trim().length > 0
+}
+
+/** What to show in place of the missing IP. Reads as the reporter's omission, not ours. */
+export const UNATTRIBUTED_SOURCE_LABEL = 'No source IP reported'
+
 // --- Source detail (GET /api/v1/analytics/domains/{domainId}/source-detail) ---
 
 /** Policy-evaluated DKIM x SPF combo; a message is DMARC-compliant when either passes. */
@@ -487,6 +506,22 @@ export type TlsRptMxHostStat = {
   resultTypes: string[]
 }
 
+/**
+ * Outcome of the _smtp._tls TXT lookup. 'invalid' mirrors MTA-STS: RFC 8460 §3
+ * discards records that don't begin with v=TLSRPTv1, and if what's left isn't
+ * exactly one usable record, reporters treat the domain as not implementing
+ * TLS-RPT — which must not read as found. Never 'inherited': no tree walk.
+ */
+export type TlsRptRecordStatus = 'found' | 'missing' | 'lookup_failed' | 'invalid'
+
+/** The live _smtp._tls record. Rua holds the usable destinations; the rest are issues. */
+export type TlsRptRecord = {
+  status: TlsRptRecordStatus
+  raw: string | null
+  rua: string[]
+  issues: string[]
+}
+
 /** Windows anchor to the newest TLS data the caller can see — TLS reporting usually lags DMARC. */
 export type TlsRptSummary = {
   window: AnalyticsWindow
@@ -500,6 +535,8 @@ export type TlsRptSummary = {
   failuresByCategory: TlsRptCategoryStat[]
   failuresByType: TlsRptFailureTypeStat[]
   byReceivingMx: TlsRptMxHostStat[]
+  /** Zero sessions reads differently depending on this — asked vs answered. */
+  record: TlsRptRecord
 }
 
 // --- MTA-STS promotion gate (embedded in the mta-sts GET) ---

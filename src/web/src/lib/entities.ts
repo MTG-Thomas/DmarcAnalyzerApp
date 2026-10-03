@@ -49,8 +49,8 @@ export type Domain = {
 export type ReportSource = {
   id: string
   name: string
-  /** POP3 is retained only so legacy rows can be displayed and moved to IMAP or API. */
-  protocol: 'imap' | 'pop3' | 'api'
+  /** 'imap', 'pop3' and 's3' are polled; 'api' is pushed to. Mailbox fields are null on 'api' and 's3' sources. */
+  protocol: 'imap' | 'pop3' | 's3' | 'api'
   host: string | null
   port: number | null
   useTls: boolean | null
@@ -69,6 +69,12 @@ export type ReportSource = {
    * far back a replay could actually reach, and where the last deletion pass cut.
    */
   oldestMessageAtUtc: string | null
+  /** Set only on an 's3' source. Null on every other protocol. */
+  s3Bucket: string | null
+  s3Prefix: string | null
+  s3Region: string | null
+  s3Endpoint: string | null
+  s3ForcePathStyle: boolean
 }
 
 export type ApiSourceCredential = {
@@ -108,8 +114,13 @@ export type MailboxHealth = {
   name: string
   isActive: boolean
   lastSuccessSyncAtUtc: string | null
+  /** IMAP checkpoint. Null on a POP3 source, which checkpoints on a UIDL instead. */
   lastProcessedUid: number | null
   lastProcessedUidValidity: number | null
+  /** POP3 checkpoint: the UIDL of the last message handled. Null on any other protocol. */
+  lastProcessedUidl: string | null
+  /** S3 checkpoint: the key of the last object handled. Null on any other protocol. */
+  lastProcessedObjectKey: string | null
   lastRunStatus: SyncRunStatus | null
   lastRunStartedAtUtc: string | null
   lastRunFinishedAtUtc: string | null

@@ -40,6 +40,7 @@ public sealed class BackupImportService(
     IConfiguration configuration,
     ILogger<BackupImportService> logger) : IBackupImportService
 {
+    /// <inheritdoc />
     public Task<ServiceResult<BackupImportResult>> PreviewAsync(
         BackupArtifact artifact,
         string mode,
@@ -47,6 +48,7 @@ public sealed class BackupImportService(
         CancellationToken ct)
         => RunAsync(artifact, mode, allowKeyFingerprintMismatch, dryRun: true, ct);
 
+    /// <inheritdoc />
     public Task<ServiceResult<BackupImportResult>> ImportAsync(
         BackupArtifact artifact,
         string mode,

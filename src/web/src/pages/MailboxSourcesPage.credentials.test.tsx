@@ -31,6 +31,11 @@ const apiSource: ReportSource = {
   isActive: true,
   deleteAfterRetention: false,
   oldestMessageAtUtc: null,
+  s3Bucket: null,
+  s3Prefix: null,
+  s3Region: null,
+  s3Endpoint: null,
+  s3ForcePathStyle: false,
 }
 
 const mailboxSource: ReportSource = {
@@ -64,6 +69,8 @@ const mailboxHealth: MailboxHealth = {
   lastSuccessSyncAtUtc: '2026-08-10T12:00:00Z',
   lastProcessedUid: 42,
   lastProcessedUidValidity: 7,
+  lastProcessedUidl: null,
+  lastProcessedObjectKey: null,
   lastRunStatus: 'failed',
   lastRunStartedAtUtc: '2026-08-11T12:00:00Z',
   lastRunFinishedAtUtc: '2026-08-11T12:01:00Z',

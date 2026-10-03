@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Domains;
 
+/// <summary>The shared create-or-get for report domains — see <see cref="DomainIngestResolver"/>.</summary>
 public interface IDomainIngestResolver
 {
     /// <summary>

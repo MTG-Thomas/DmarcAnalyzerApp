@@ -387,6 +387,10 @@ jobs:
     needs: [test, postgres-integration, postgres-18-migration-smoke, changes]
     if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
+    # A full two-platform build is 8–15 minutes. Without a cap, a hang in the
+    # emulated arm64 stages runs to the 6-hour default before it fails — which is
+    # what happened twice on 2026-09-23 — and the failure is invisible for the
+    # whole afternoon. Fail fast; the retry is one click.
     timeout-minutes: 45
     permissions:
       attestations: write
@@ -624,35 +628,6 @@ jobs:
             --arg run_id "$GITHUB_RUN_ID" \
             '{event_type:"dmarc-analyzer-image-published",client_payload:{repository:$repository,source_sha:$source_sha,image_digest:$image_digest,run_id:$run_id}}' \
             | gh api --method POST repos/MTG-Thomas/bifrost-infra/dispatches --input -
-
-      # GHCR takes its description from the Dockerfile's OCI labels. Docker Hub
-      # does not — it needs an API call, so the page sat empty through 2,177
-      # pulls. Synced on a release rather than by hand, for the same reason as the
-      # Artifact Hub metadata: a manual step nobody owns does not get done.
-      #
-      # continue-on-error because this is a listing nicety and the release is not.
-      # On v0.2.2 it returned "Forbidden" and took a green release build red with
-      # it, after the image and chart had already published correctly — a cosmetic
-      # step must never be able to do that. Forbidden means DOCKERHUB_TOKEN cannot
-      # edit repository metadata: registry push needs only Read/Write, but this
-      # endpoint wants a token with broader account access. Fix the token, not this.
-      - name: Sync the Docker Hub description
-        if: github.ref_type == 'tag' && steps.dockerhub.outputs.enabled == 'true'
-        continue-on-error: true
-        id: dockerhub_description
-        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME || 'dmarcanalyzernet' }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKERHUB_IMAGE }}
-          short-description: "Open-source, self-hosted DMARC monitoring for agencies — unlimited domains, no per-domain pricing"
-          readme-filepath: ./deploy/dockerhub-readme.md
-
-      - name: Note an unsynced Docker Hub description
-        if: steps.dockerhub_description.outcome == 'failure'
-        run: |
-          echo "::warning::Docker Hub description not updated (${{ steps.dockerhub_description.outcome }})."
-          echo "::warning::DOCKERHUB_TOKEN likely lacks permission to edit repository metadata. The release itself is unaffected."
 
   # Publishing is intentionally separate from validation. A release chart must
   # never become visible before its referenced image, smoke test, provenance and

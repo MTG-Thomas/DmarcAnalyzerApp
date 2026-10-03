@@ -116,7 +116,7 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published` |
 | GET | `/analytics/domains/{domainId}/mta-sts` | The domain's persisted MTA-STS state (record, policy file, MX coverage) — database only, no live lookups |
 | POST | `/analytics/domains/{domainId}/mta-sts/recheck` | **staff** — runs the MTA-STS check live (DNS + HTTPS) and persists it; returns the updated state |
-| GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX. Windows anchor to the newest **TLS** data the caller can see |
+| GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX, plus `record` — the live `_smtp._tls` TXT lookup (`found`/`missing`/`lookup_failed`/`invalid`, RFC 8460 §3), without which zero sessions is unreadable. Windows anchor to the newest **TLS** data the caller can see. Touches DNS, so unlike `mta-sts` it is not a pure database read |
 | GET | `/analytics/threats` | Sources with fully unauthenticated volume across visible domains. Accepts `limit` (default 100, max 500) |
 | GET | `/analytics/hostnames` | Best-effort reverse DNS. Requires `ips` (comma-separated, max 100) |
 
@@ -324,7 +324,22 @@ List report sources.
 
 ### POST `/report-sources`
 
-Create source (IMAP or POP3).
+Create source. `protocol` is `imap`, `pop3` or `s3` (all polled by the worker) or `api`
+(pushed to; takes no `host`, `username` or `password`).
+
+Each protocol takes its own field set and **refuses the others**, rather than storing
+settings nothing will ever read:
+
+| | `imap` / `pop3` | `s3` | `api` |
+|---|---|---|---|
+| Required | `host`, `port`, `username`, `password` | `s3Bucket` | — |
+| Optional | `useTls` | `s3Prefix`, `s3Region`, `s3Endpoint`, `s3ForcePathStyle`, `username` + `password` | — |
+| Refused | `s3*` | `host`, `port` | `host`, `port`, `username`, `password`, `s3*` |
+
+On an `s3` source `username` is the access key id and `password` the secret access key.
+Send **both or neither** — neither means the ambient credential chain (an instance role or
+IRSA), and half a credential is refused because it looks configured and authenticates as
+nobody.
 
 Request:
 
@@ -348,6 +363,14 @@ Notes:
 - One source may serve multiple clients through domain routing.
 - `protocol: api` omits all mailbox connection fields and may receive
   source-scoped credentials through the operations below.
+- Default ports are 993 for `imap` and 995 for `pop3` over TLS; `useTls=false` falls back
+  to STARTTLS where the server offers it.
+- A `pop3` mailbox must support UIDL. Without it there is no durable checkpoint, so the
+  sync refuses rather than re-reading the whole mailbox on every pass; the refusal lands
+  on the source's `mailbox-health` row.
+- An `s3` source polls the whole prefix on every pass, so set `s3Prefix` on a bucket that
+  holds anything besides reports. Objects may be bare report files or whole RFC822
+  messages; each object is classified on its own content.
 
 ### API source credentials
 
@@ -464,7 +487,12 @@ Fields include:
   extracted report payload, TLS included; TLS parse failures fold into the one
   `parseFailures` counter, with the log line naming the format
 - last success timestamp
-- checkpoint values (`lastProcessedUid`, `lastProcessedUidValidity`)
+- checkpoint values: `lastProcessedUid` + `lastProcessedUidValidity` on an IMAP source,
+  `lastProcessedUidl` on a POP3 one, `lastProcessedObjectKey` on an S3 one. A source has
+  exactly one of the three — they are an ordered integer, an opaque string and an object
+  key, so the columns are not interchangeable
+- polled sources only. A pushed (`api`) source has no mailbox, no sync run and no
+  checkpoint, so it is excluded rather than listed as permanently never-synced
 
 ### Retention preview/purge response growth
 

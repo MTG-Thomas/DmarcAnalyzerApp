@@ -6,11 +6,20 @@ using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Workers;
 
+/// <summary>
+/// The worker loop: every interval it syncs each active polled source in turn,
+/// then runs the periodic passes (DNS refresh, MTA-STS checks, alerts, digest,
+/// database retention, mailbox retention, backup offload) when they come due.
+/// There is no job queue and no claim path — one worker per database, enforced
+/// by <see cref="WorkerSingleInstanceLock"/> while
+/// <c>Worker:EnforceSingleInstance</c> is on (the default).
+/// </summary>
 public sealed class QueueWorkerService(
     IServiceScopeFactory scopeFactory,
     WorkerSingleInstanceLock workerLock,
@@ -23,6 +32,7 @@ public sealed class QueueWorkerService(
 
     private const int MinDelaySeconds = 15;
 
+    /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Wait in the background, not host startup: a rolling replacement must
@@ -363,13 +373,13 @@ public sealed class QueueWorkerService(
 
         var activeReportSources = await db.ReportSources
             .AsNoTracking()
-            .Where(x => x.IsActive && x.Protocol == "imap")
+            .Where(x => x.IsActive && ReportSourceProtocols.Polled.Contains(x.Protocol))
             .Select(x => x.Id)
             .ToListAsync(ct);
 
         if (activeReportSources.Count == 0)
         {
-            logger.LogDebug("No active report sources with protocol=imap found for scheduled pass");
+            logger.LogDebug("No active polled report sources found for scheduled pass");
             return;
         }
 

@@ -42,8 +42,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     deletion** so the system has one retention window instead of two — cut on the widest
     window the source serves, suspended entirely for any source serving a client under
     legal hold, with a grace margin, a preview, and an audit row.
-  - Not built: replaying reports back from the bucket archive. Until it exists the
-    archive is evidence, not a restore path.
+  - Replaying reports back from the bucket archive is possible, but by hand and not as a
+    restore feature: point an `s3` report source at the archive prefix and the `.eml.gz`
+    objects are re-ingested like any other mail. What does not exist is a supervised
+    restore — no scoping to one client, domain or window, and no preview of what a run
+    would ingest; it is the live ingestion path, with the live routing and deduplication.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
 - A separate real-PostgreSQL integration project complements the fast EF
   InMemory suite. Each xUnit collection owns a randomly named disposable
@@ -75,12 +78,16 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `client`
   - `domain`
   - `report_source`
+  - `api_credential`
+  - `report_ingest_receipt`
 - API vertical slice endpoints:
   - clients: list/get/create/patch. `slug` is immutable after creation. Every
     install is bootstrapped with a `default` client, because a domain and a
     report source both require one
   - domains: list/get/create/patch
   - report sources: list/create/patch/sync
+  - machine credentials: list/issue/revoke (admin only)
+  - report ingestion: `POST /api/v1/reports`, machine credential only
   - mailbox health: list
   - mailbox sync runs: list
   - admin migrate endpoint
@@ -109,6 +116,82 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   exact report/record/auth-result/ledger/source/client graph. Additional direct
   cases prove concurrent replay and cross-source provenance preservation.
 - Sync operational history persisted in `mailbox_sync_run`.
+- **Polled ingestion over IMAP, POP3 and S3.** All three run one pass — the drain budget,
+  batched checkpoints, archive-before-parse, the run rows, the partial-versus-failed
+  distinction and the retention deletion are shared — behind `IPolledSourceTransport`, with
+  each transport holding only what its protocol genuinely does differently. Adding a
+  protocol is a transport and a constant, not another branch in the sync service.
+  - **S3 is a report source, not a mailbox.** A bucket and a prefix instead of a host and a
+    port, per-source credentials (or the ambient chain), and objects that may be bare
+    report files *or* whole RFC822 messages — classified per object, so a bucket filled by
+    an SES delivery rule and one filled by a provider both work, as does this
+    application's own `.eml.gz` archive prefix, which makes a bucket replayable.
+  - **The S3 checkpoint is a (last-modified, key) pair**, not a key. S3's own `StartAfter`
+    resumes on key order, which is the obvious implementation and silently wrong: nothing
+    makes a key sort in arrival order, so a bucket with hashed or random key prefixes would
+    have every new object that sorted below the checkpoint skipped for ever. The cost of
+    doing it correctly is listing the prefix each pass, which the prefix is what bounds.
+  - **POP3 checkpoints on a UIDL** (`report_source.LastProcessedUidl`), because it has no
+    UID space and no UIDVALIDITY: the next pass finds that string in the listing and takes
+    what follows. A checkpoint that is no longer there — the message was deleted by hand,
+    or by another client on the same mailbox — leaves no position to recover, so the pass
+    re-reads everything and logs that it is doing so; deduplication makes that expensive
+    rather than wrong.
+  - **A POP3 server without UIDL is refused** rather than run. No durable checkpoint is
+    possible, so every pass would re-read the whole mailbox for ever; the refusal is on the
+    source's `mailbox-health` row, which is where an operator will see it.
+  - **Retention deletion works on both**, and costs more on POP3: with no server-side date
+    search the pass reads every message's headers, and with no expunge the deletion only
+    takes effect when the session ends with `QUIT`.
+  - Verified against a real POP3 server (GreenMail) and a real database, not only in
+    unit tests — `Pop3MailboxSyncTests` and `Pop3MailboxRetentionTests`. That is
+    deliberate: the previous attempt at POP3 validated the protocol value while nothing
+    read it, so a source could be created and would silently never ingest a byte. The gap
+    was between the pieces, where no unit test was looking.
+- **Pushed ingestion** (ADR 0010). A report source carries a `protocol` that says who
+  reads it: `imap`, `pop3` and `s3` are polled by the worker, `api` is written to by an
+  external system posting raw report bytes to `POST /api/v1/reports`. All of them land
+  through the same extractor, the same parsers and the same ingestors, so the paths
+  cannot drift on deduplication.
+  - **Machine credentials** are bearer tokens scoped to one report source, and the
+    source decides which client the data lands under — there is no source id in the
+    path to disagree with the credential. Issued and revoked from the console by an
+    admin; the token is shown once and stored only as a SHA-256 hash. Optional expiry.
+  - **Transport idempotency**: a SHA-256 of the request body is recorded per source in
+    `report_ingest_receipt`, so a retry after a lost response is answered `replay`
+    rather than ingested a second time.
+  - **Per-credential rate limiting** on the endpoint
+    (`Worker:ReportIngestRateLimitPermits` per `Worker:ReportIngestRateLimitWindowSeconds`),
+    and a request-size ceiling before decompression
+    (`Worker:MaxPushedReportRequestBytes`) on top of the expansion limits both paths
+    share.
+  - Optional `X-Report-Provenance`: a JSON object carrying an integer `v`, recorded as
+    `jsonb` beside the receipt so "where did this come from" is a SQL question.
+  - **`allowForeignDomains`** per source. Off refuses a report for a domain already
+    owned by a *different* client, before anything is written. It is not a domain
+    allow-list: a domain nobody owns yet is created under this source's own client and
+    is therefore never foreign. Existing sources default to on, preserving today's
+    routing.
+  - `pop3` is a polled protocol again, and this time something reads it. It validated
+    for a long time while nothing acted on it — the worker polled `imap` only, so a POP3
+    source could be created and would silently never ingest — was removed on that basis,
+    and is back alongside `Pop3MailboxTransport`. Rows predating the removal start syncing
+    on the next pass.
+  - Not built: any view of when a pushed source last received something. `mailbox-health`
+    deliberately excludes `api` sources, because a pushed source has no mailbox, no sync
+    run and no checkpoint, so it would sit in that list permanently "never synced".
+- **Bounded decompression** on both ingestion paths. A `rua=` address is published in
+  DNS, so the address of this decompressor is advertised to strangers by design, and
+  there is exactly one worker per database — exhausting it stops ingestion for every
+  client at once. Three absolute caps, each named in the message when it trips:
+  `Worker:MaxReportEntryBytes` per decompressed payload,
+  `Worker:MaxReportAttachmentBytes` across everything one attachment expands to, and
+  `Worker:MaxReportArchiveEntries` on the walk itself. Defaults sit far above any real
+  reporting pipeline.
+- A **truncated compressed payload** is refused rather than ingested. Half a gzip
+  decompresses without error, and the report built from it carried the real report id
+  and window with zero records — which then permanently shadowed the complete report
+  through dedup. Reachable from the mailbox path, not only the endpoint.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing
   - one `IDmarcReportIngestor` owns DMARC routing, deduplication, transaction,
@@ -124,7 +207,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - design tokens as CSS vars + Tailwind theme; self-hosted fonts (Space Grotesk / Public Sans / JetBrains Mono) via Fontsource, no CDN
   - System / Light / Dark selection via a native sidebar select; the system setting follows `prefers-color-scheme`, explicit choices persist locally, and the dark palette extends the upstream brand's ink/mint treatment through the existing semantic tokens
   - primitives ported from the design handoff (Button/Badge/Card/Input/Select/Dialog/Table/Icon/StatCard/PolicyBadge/ComplianceBar/DaysSelector/TrendChart)
-  - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Mailbox Sources) + Login
+  - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Report sources) + Login
   - Domains/Detail surface published policy (PolicyBadge p=…) and enforcement status (Enforced/Ramping/Spoofing/Monitoring)
 - Responsive console (single `lg` breakpoint at 1024px; desktop layout unchanged):
   - below `lg` the sidebar is an off-canvas drawer behind a top bar — backdrop, Escape, body scroll lock, focus moved in on open and returned to the trigger on close, and `invisible` while closed so the hidden menu is not in the tab order
@@ -341,8 +424,15 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     sessions, success rate, failure breakdown by category and result type,
     failures per receiving MX — anchored to the newest **TLS** data the caller
     can see (TLS reporting lags DMARC; anchoring to DMARC's anchor would blank
-    the panel), rendered in the Transport security card with the page's window
-    selector; the no-reporter case renders quietly, it is the norm
+    the panel), rendered in its **own** TLS reporting card with the page's
+    window selector; the no-reporter case renders quietly, it is the norm
+  - the same response carries `record`, a live `_smtp._tls` TXT lookup (RFC
+    8460 §3, same not-exactly-one rule as MTA-STS). Two things needed it: the
+    card had no way to show the record a client must publish, and zero sessions
+    was being explained as reporter scarcity when for a domain without the
+    record it is structural — nobody was ever asked. Reported in #195, which
+    also moved the panel out of the MTA-STS card: TLS-RPT and MTA-STS are
+    separate mechanisms and nesting one under the other implied otherwise
   - the **testing→enforce gate**: a pure evaluator combining the monitoring
     checks (TXT, fetch, syntax, MX coverage), the hosted policy's
     time-in-testing clock (`ModeChangedAtUtc`), and the TLS-RPT evidence — no
@@ -459,7 +549,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - the parser's `ValidationMessages` are still discarded by `MailboxSyncService`,
     so these repairs leave no trace an operator can find. Backlog item.
 
-- **DmarcRua is pinned at 2.0.1, and the alignment tags are read around it.** The
+- **The 2.0.0 → 2.0.1 upgrade, and the alignment workaround it forced.** The
   library publishes no releases or changelog, so the upgrade was reviewed by diffing
   the commits embedded in the two nuspecs (`5d30703` → `7a59061`). It is worth taking:
   parsing became namespace-agnostic, a `trusted_forwarded` → `trusted_forwarder`
@@ -473,14 +563,15 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   of the 3241 real reports vendored in 2.0.1's own test resources, Mail.Ru and
   Fastmail among them, and it would have failed ingestion for every report from
   those reporters where 2.0.0 quietly returned null.
-  - `DmarcRuaReportParser` therefore reads `AdkimRaw`/`AspfRaw` and maps them
-    itself, which preserves 2.0.0's behaviour and does not wait on an upstream fix.
+  - `DmarcRuaReportParser` therefore read `AdkimRaw`/`AspfRaw` and mapped them
+    itself, which preserved 2.0.0's behaviour without waiting on an upstream fix.
     Absent means `relaxed`, the fixed RFC 7489 §6.3 default for both tags. Reported
-    upstream as [danielsen/DmarcRua#11](https://github.com/danielsen/DmarcRua/issues/11).
-    Note the library merges contributions by reimplementing them in its own commits
-    rather than by merging pull requests — every PR since 2022 is closed unmerged,
-    including one of ours — so treat a fix as arriving whenever it arrives, and keep
-    the workaround until a release actually carries one.
+    upstream as [danielsen/DmarcRua#11](https://github.com/danielsen/DmarcRua/issues/11)
+    and fixed in 2.1.0, at which point the workaround was retired — see below. Note the
+    library merges contributions by reimplementing them in its own commits rather than
+    by merging pull requests — every PR since 2022 is closed unmerged, including one of
+    ours — so treat a fix as arriving whenever it arrives, and keep a workaround until a
+    release actually carries one.
   - the upgrade was verified by running the parser over all 3242 reports in that
     corpus on both versions: no regressions, identical output on every report both
     parse, and one report gained — a `trusted_forwarder` report that 2.0.0 discarded
@@ -505,6 +596,48 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - the namespace-stripping pass is **not** redundant on 2.0.1, though it looks it.
     See the rejected backlog item: removing it turns one explanatory warning into 31
     `Could not find schema information` warnings per namespaced report.
+
+- **DmarcRua is pinned at 2.1.0.** A single upstream commit (`7a59061` → `a16a9ef`,
+  authored 2026-08-15, published 2026-08-21), and it closed both issues this project
+  filed. Reviewed the same way as the last one, by diffing the commits embedded in
+  the nuspecs — the package's `releaseNotes` field says "Initial release", which is
+  boilerplate rather than a description. Still `netstandard2.0`, still no
+  dependencies. The bump is source-compatible: the API project builds unchanged and
+  all 61 `DmarcRuaReportParser` tests pass against it untouched.
+  - **#11 is fixed.** `CleanOutStringSpecials` now null-guards, so an omitted
+    `<adkim>`/`<aspf>` returns null from `.Adkim`/`.Aspf` instead of throwing.
+    Verified against the published package, not inferred from the diff. Both conditions
+    the old `MapAlignment` comment set out therefore hold — an absent tag returns null
+    rather than throwing, and the library still does not decide what absent *means* — so
+    the workaround was retired in a follow-up and `MapAlignment` now takes the
+    `AlignmentType?` directly. Relaxed stays this project's reading of null, which
+    DmarcRua returns for absent, empty and unrecognised alike. The theory that covers
+    those three cases is the one guarding it: every other parser test supplies both
+    tags, which is how 2.0.1 went green here while production would have broken.
+  - **#12 is half-fixed, and the missing half matters.**
+    `PolicyEvaluatedType.Disposition` is now an `ActionDispositionType`, so RFC 9990's
+    `pass` deserializes and reads back as `pass`. But `rua.xsd` still types that
+    element as `DispositionType`, so schema validation rejects the value: `HasErrors`
+    true, `ValidReport` false, and one `The value 'pass' is invalid according to its
+    datatype 'DispositionType'` error per report. **Keep the DMARCbis disposition
+    machinery** — the by-index capture and the `pass` → `none` transport rewrite —
+    until the schema catches up, because retiring it now would trade a working value
+    for a false error on every conformant DMARCbis report, and that lands directly on
+    the open backlog item to surface validation messages to operators. Should it ever
+    be retired, add `pass` to the `EnumRepairs` allowed set for
+    `policy_evaluated/disposition` *first*: it is not in that set, so dropping the
+    rewrite on its own would have our own repair pass silently substitute `none`.
+  - the namespace-stripping pass is still required. Re-measured on 2.1.0 rather than
+    carried over: 26 `Could not find schema information` warnings on a one-record
+    namespaced report with it removed.
+  - `DMARCResultType` still aliases `None = Pass`, so the deliberately narrowed
+    `EnumRepairs` sets stay exactly as they are.
+  - the rest is unused here: a new `TryReadAggregateReport` that reads without
+    throwing, `ReadAggregateReport` now clearing its validation state so an instance
+    is reusable, and the extension methods rewritten as C# 14 extension members with
+    null-hardening. `NamespaceIgnorantXmlReader` also moved out of the global
+    namespace into `DmarcRua`, which dates the closing aside on the rejected
+    namespace-stripping item in the backlog.
 
 ## Planned Next
 

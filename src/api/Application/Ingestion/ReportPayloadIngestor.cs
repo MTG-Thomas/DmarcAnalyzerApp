@@ -47,6 +47,7 @@ public sealed class ReportPayloadIngestor(
     ITlsRptReportParser tlsParser,
     ITlsReportIngestor tlsIngestor) : IReportPayloadIngestor
 {
+    /// <inheritdoc />
     public async Task<ReportPayloadIngestResult> IngestAsync(
         ReportSourceContext source,
         Stream payload,

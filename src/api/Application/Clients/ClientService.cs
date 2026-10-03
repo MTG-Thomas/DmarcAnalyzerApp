@@ -7,8 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Clients;
 
+/// <summary>EF-backed <see cref="IClientService"/>.</summary>
 public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IClientService
 {
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ClientDto>> ListAsync(CancellationToken ct)
     {
         var query = db.Clients.AsNoTracking();
@@ -26,6 +28,7 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
         return clients.Select(ToDto).ToList();
     }
 
+    /// <inheritdoc />
     public async Task<ClientDto?> GetAsync(Guid id, CancellationToken ct)
     {
         if (!currentUser.CanAccessClient(id))
@@ -41,6 +44,7 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
         return client is null ? null : ToDto(client);
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<ClientDto>> CreateAsync(CreateClientRequest request, CancellationToken ct)
     {
         if (currentUser.IsService && request.RetentionMonths != 27)
@@ -79,6 +83,7 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
         return ServiceResult<ClientDto>.Success(ToDto(client));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<ClientDto>> UpdateAsync(Guid id, UpdateClientRequest request, CancellationToken ct)
     {
         if (currentUser.IsService && (request.RetentionMonths.HasValue || request.LegalHold.HasValue))

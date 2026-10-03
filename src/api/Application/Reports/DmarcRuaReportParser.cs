@@ -6,6 +6,11 @@ using System.Xml.Linq;
 
 namespace DmarcAnalyzer.Api.Application.Reports;
 
+/// <summary>
+/// The RUA parser: DmarcRua for the classic RFC 7489 namespace, plus native
+/// handling of the DMARCbis (dmarc-2.0) namespace and repair of the
+/// out-of-vocabulary values real reporters send.
+/// </summary>
 public sealed class DmarcRuaReportParser : IDmarcReportParser
 {
     private const string DmarcBisNamespace = "urn:ietf:params:xml:ns:dmarc-2.0";
@@ -13,6 +18,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     private static readonly string[] DmarcBisActionDispositions =
         ["none", "pass", "quarantine", "reject"];
 
+    /// <inheritdoc />
     public DmarcReportParseResult Parse(Stream xmlStream)
     {
         ArgumentNullException.ThrowIfNull(xmlStream);
@@ -40,23 +46,16 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         var policyPublished = feedback.PolicyPublished
             ?? throw new InvalidOperationException("DMARC report is missing policy_published.");
 
-        var validationMessages = aggregateReport.ValidationEvents
-            .Select(x =>
-            {
-                var severity = x.Severity == XmlSeverityType.Error ? "error" : "warning";
-                return $"{severity}: {x.Message}";
-            })
-            .Concat(normalizationMessages)
-            .Concat(DescribeDmarcBisTags(policyPublished))
-            .ToArray();
-
-        // Captured RFC 9990 dispositions are positional. If deserialization dropped a
-        // record, using them would assign one record's disposition to another.
+        // The captured RFC 9990 dispositions are keyed by position among the document's own
+        // <record> elements, so they are only safe to use while the deserializer produced
+        // exactly that many records. Nothing observed makes the two disagree, but if they ever
+        // did, an index would carry one record's disposition onto another — storing a value the
+        // reporter never sent for that source, which is worse than falling back to the v1 enum.
         var actionDispositions = normalized.DmarcBisDispositions.Count == (feedback.Record?.Length ?? 0)
             ? normalized.DmarcBisDispositions
             : Array.Empty<string?>();
 
-        var records = feedback.Record?
+        var deserializedRecords = feedback.Record?
             .Select((record, index) =>
             {
                 var dkimAuth = record.AuthResults?.Dkim?
@@ -78,7 +77,12 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                     ?? Array.Empty<DmarcReportRecordSpfAuthParseResult>();
 
                 return new DmarcReportRecordParseResult(
-                    record.Row?.SourceIp ?? string.Empty,
+                    // Trimmed: a reporter that pretty-prints the element sends the IP with the
+                    // surrounding newline and indentation inside it, and every lookup that
+                    // matches on this column — source-detail, the DKIM/SPF auth joins — compares
+                    // it against a trimmed query value, so the untrimmed form is a source no
+                    // caller can ever address.
+                    (record.Row?.SourceIp ?? string.Empty).Trim(),
                     record.Row?.Count ?? 0,
                     actionDispositions.ElementAtOrDefault(index)
                         ?? record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant()
@@ -94,6 +98,24 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             .ToArray()
             ?? Array.Empty<DmarcReportRecordParseResult>();
 
+        var records = deserializedRecords.Where(x => !IsEmptyRecord(x)).ToArray();
+        var emptyRecords = deserializedRecords.Length - records.Length;
+        if (emptyRecords > 0)
+        {
+            normalizationMessages.Add(
+                $"warning: dropped {emptyRecords} record(s) reporting no source IP and no messages");
+        }
+
+        var validationMessages = aggregateReport.ValidationEvents
+            .Select(x =>
+            {
+                var severity = x.Severity == XmlSeverityType.Error ? "error" : "warning";
+                return $"{severity}: {x.Message}";
+            })
+            .Concat(normalizationMessages)
+            .Concat(DescribeDmarcBisTags(policyPublished))
+            .ToArray();
+
         return new DmarcReportParseResult(
             metadata.OrgName ?? string.Empty,
             metadata.ReportId ?? string.Empty,
@@ -108,9 +130,44 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             MapDisposition(policyPublished.P),
             hasSubdomainPolicy ? MapDisposition(policyPublished.Sp) : null,
             ParsePercent(policyPublished.Percent),
-            MapAlignment(policyPublished.AdkimRaw),
-            MapAlignment(policyPublished.AspfRaw));
+            MapAlignment(policyPublished.Adkim),
+            MapAlignment(policyPublished.Aspf));
     }
+
+    /// <summary>
+    /// A record that reports no sender and no mail: no source IP, and a count of zero.
+    /// <para>
+    /// Observed in #190 from wp.pl and o2.pl — the same operator, which is why the blank row
+    /// there claimed two reporters. Both send a whole report whose single record is empty
+    /// throughout: <c>&lt;source_ip&gt;&lt;/source_ip&gt;&lt;count&gt;0&lt;/count&gt;</c>,
+    /// empty policy_evaluated, empty identifiers, empty auth_results. It is not corruption
+    /// and nothing failed to parse — it is a "nothing to report" heartbeat for the window,
+    /// and this is where it stops. The same end state arrives when the deserializer cannot
+    /// fill a <c>&lt;row&gt;</c> at all (absent, miscased, or namespaced on its own), because
+    /// every field the row carries then falls to its default; both are dropped here.
+    /// </para>
+    /// <para>
+    /// Stored, such a record becomes a sending source of its own: the analytics aggregation
+    /// groups by SourceIp, so an empty one appears in the table as a blank row with zeroes
+    /// across it, inflates the domain's source count, and — since source-detail needs an IP
+    /// to query by — answers 400 when an operator expands it, which is what #190 reported.
+    /// </para>
+    /// <para>
+    /// The condition is deliberately both halves, not just the blank IP. A record with a
+    /// blank IP and a real count is mail that genuinely arrived and was reported; dropping it
+    /// would under-count the domain's volume and the compliance denominator, which is worse
+    /// than showing it unattributed. Only a record that reports neither sender nor mail can
+    /// be dropped without losing something.
+    /// </para>
+    /// <para>
+    /// The report itself is still ingested — a reporter that saw nothing did still report,
+    /// and the domain is still receiving reports from it. RecordCount keeps the reporter's own
+    /// record total, so a report this fired on stays discoverable afterwards: it has more
+    /// records than rows in dmarc_report_record.
+    /// </para>
+    /// </summary>
+    private static bool IsEmptyRecord(DmarcReportRecordParseResult record)
+        => record.SourceIp.Length == 0 && record.MessageCount <= 0;
 
     private static string MapDisposition(DispositionType disposition) => disposition switch
     {
@@ -120,47 +177,27 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     };
 
     /// <summary>
-    /// adkim/aspf, read from DmarcRua's raw strings rather than its <c>Adkim</c>/<c>Aspf</c>.
+    /// adkim/aspf, defaulting to relaxed when the reporter does not usably state one.
     /// <para>
-    /// 2.0.1 replaced those two settable <c>AlignmentType?</c> properties with get-only ones
-    /// computed from new <c>AdkimRaw</c>/<c>AspfRaw</c> strings, and the helper behind them
-    /// calls <c>Regex.Replace</c> on the raw value with no null check. Both tags are
-    /// <c>minOccurs="0"</c> in DmarcRua's own schema, so a reporter that just omits them
-    /// leaves the raw string null and merely *reading* the property throws
-    /// ArgumentNullException — after deserialization has already succeeded, so it surfaces
-    /// here rather than as a parse error. That is 1.5% of the 3241 real reports vendored in
-    /// 2.0.1's own test resources, Mail.Ru and Fastmail among them; every report from such a
-    /// reporter would fail ingestion outright, where 2.0.0 returned null and fell to the
-    /// default below.
+    /// Absent means "relaxed" here, and that is this method's decision rather than the
+    /// library's: unlike sp, adkim and aspf have fixed RFC 7489 §6.3 defaults, so collapsing
+    /// an absent tag to its default is correct and needs no HasSubdomainPolicyTag-style
+    /// presence sniff. DmarcRua returns null for absent, empty and unrecognised alike, and
+    /// all three land on relaxed — an unparseable alignment is not a reason to claim the
+    /// stricter policy.
     /// </para>
     /// <para>
-    /// Reading the raw string keeps 2.0.0's behaviour and does not wait on an upstream fix.
-    /// Absent means "relaxed": unlike sp, adkim and aspf have fixed RFC 7489 §6.3 defaults,
-    /// so collapsing an absent tag to its default is correct and needs no
-    /// HasSubdomainPolicyTag-style presence sniff. Do not simplify this back to
-    /// <c>.Adkim</c>/<c>.Aspf</c>.
-    /// </para>
-    /// <para>
-    /// Reported upstream as danielsen/DmarcRua#11. If a later release fixes it, this can
-    /// go back to the properties — but check first that an absent tag returns null rather
-    /// than throwing, and that the library has not changed what absent *means*: "relaxed"
-    /// is this method's decision to make, not the library's.
-    /// </para>
-    /// <para>
-    /// Trimming, lowercasing and dropping non-alphanumerics mirrors what 2.0.1 does to these
-    /// values — that much of its change is a real improvement, so '&#160;S&#160;' still reads
-    /// as strict instead of silently becoming relaxed.
+    /// This read the raw <c>AdkimRaw</c>/<c>AspfRaw</c> strings between 2.0.1 and 2.1.0,
+    /// because 2.0.1's computed properties called <c>Regex.Replace</c> on a value that can be
+    /// null and threw ArgumentNullException on merely *reading* an absent tag — after
+    /// deserialization had already succeeded, so it surfaced here rather than as a parse
+    /// error. 2.1.0 null-guards the helper (danielsen/DmarcRua#11), so the properties are
+    /// safe again and carry the library's own trimming and case folding, which is why
+    /// '&#160;S&#160;' still reads as strict.
     /// </para>
     /// </summary>
-    private static string MapAlignment(string? alignment)
-    {
-        var cleaned = (alignment ?? string.Empty)
-            .ToLowerInvariant()
-            .Where(char.IsAsciiLetterOrDigit)
-            .ToArray();
-
-        return cleaned is ['s'] ? "strict" : "relaxed";
-    }
+    private static string MapAlignment(AlignmentType? alignment)
+        => alignment == AlignmentType.Strict ? "strict" : "relaxed";
 
     /// <summary>
     /// Read-through only, per the DMARCbis (RFC 9989/9990/9991) impact report: np,

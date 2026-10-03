@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Security;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Backup;
 
+/// <summary>The scheduled S3 offload — see <see cref="BackupOffloadService"/>.</summary>
 public interface IBackupOffloadService
 {
     /// <summary>
@@ -17,6 +19,7 @@ public interface IBackupOffloadService
     /// </summary>
     Task<BackupOffloadResult> RunAsync(CancellationToken ct);
 
+    /// <summary>What the console's backup card shows: configuration, watermarks, last errors.</summary>
     Task<BackupStatusDto> GetStatusAsync(CancellationToken ct);
 }
 
@@ -42,6 +45,7 @@ public sealed class BackupOffloadService(
 
     private readonly BackupOptions _options = options.Value;
 
+    /// <inheritdoc />
     public async Task<BackupOffloadResult> RunAsync(CancellationToken ct)
     {
         if (!storage.IsConfigured)
@@ -146,7 +150,7 @@ public sealed class BackupOffloadService(
             // latest.json is what fails.
             await storage.CopyAsync(
                 stagingKey,
-                $"{prefix}/config/{artifact.Manifest.ExportedAtUtc:yyyy-MM-dd}.json",
+                string.Create(CultureInfo.InvariantCulture, $"{prefix}/config/{artifact.Manifest.ExportedAtUtc:yyyy-MM-dd}.json"),
                 ct);
         }
 
@@ -219,7 +223,9 @@ public sealed class BackupOffloadService(
         }
 
         var now = DateTime.UtcNow;
-        var key = $"{prefix}/history/{stream.Name}/{now:yyyy}/{now:MM}/{now:yyyy-MM-ddTHHmm}.jsonl";
+        var key = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{prefix}/history/{stream.Name}/{now:yyyy}/{now:MM}/{now:yyyy-MM-ddTHHmm}.jsonl");
 
         await storage.PutAsync(key, Encoding.UTF8.GetBytes(builder.ToString()), "application/x-ndjson", ct);
 
@@ -242,6 +248,7 @@ public sealed class BackupOffloadService(
         WriteIndented = false,
     };
 
+    /// <inheritdoc />
     public async Task<BackupStatusDto> GetStatusAsync(CancellationToken ct)
     {
         var states = await db.BackupStreamStates.AsNoTracking().OrderBy(x => x.Stream).ToListAsync(ct);
