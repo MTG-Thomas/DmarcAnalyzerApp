@@ -27,7 +27,8 @@ public interface IDnsAddressResolver
 public sealed class DnsAddressResolver(
     IMemoryCache cache,
     ILogger<DnsAddressResolver> logger,
-    IAuthoritativeDnsClientLocator authoritativeLocator) : IDnsAddressResolver
+    IAuthoritativeDnsClientLocator authoritativeLocator,
+    IDnsQuery? queryClient = null) : IDnsAddressResolver
 {
     private static readonly TimeSpan SuccessTtl = TimeSpan.FromMinutes(5);
     private static readonly LookupClient Client = new(new LookupClientOptions
@@ -36,6 +37,10 @@ public sealed class DnsAddressResolver(
         Retries = 1,
         UseCache = false, // IMemoryCache above is the cache; keep layers single-purpose
     });
+
+    // Injectable only so tests can substitute canned answers — production
+    // always takes the default. LookupClient itself has no testing seam.
+    private readonly IDnsQuery _query = queryClient ?? Client;
 
     /// <inheritdoc />
     public async Task<DnsAddresses?> ResolveAsync(string domain, CancellationToken ct, bool bypassCache = false)
@@ -61,8 +66,8 @@ public sealed class DnsAddressResolver(
 
         try
         {
-            var v4Response = await Client.QueryAsync(domain, QueryType.A, cancellationToken: ct);
-            var v6Response = await Client.QueryAsync(domain, QueryType.AAAA, cancellationToken: ct);
+            var v4Response = await _query.QueryAsync(domain, QueryType.A, cancellationToken: ct);
+            var v6Response = await _query.QueryAsync(domain, QueryType.AAAA, cancellationToken: ct);
 
             // Same contract as the TXT resolver: SERVFAIL/REFUSED reads as
             // "couldn't check" (null), NXDOMAIN is a definitive empty answer.

@@ -528,7 +528,7 @@ export function SpfCandidateView({ candidate }: { candidate: SpfCandidate }) {
  * On-demand flattening candidate. Separate fetch from the inspection card:
  * expansion fans wider (MX×A per host) than discovery, so it only runs when asked.
  */
-function SpfCandidatePanel({ domainId }: { domainId: string }) {
+export function SpfCandidatePanel({ domainId }: { domainId: string }) {
   const [candidate, setCandidate] = useState<SpfCandidate | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -581,7 +581,7 @@ function SpfCandidatePanel({ domainId }: { domainId: string }) {
  * separately from the analytics payload because the server does real DNS
  * lookups — a slow resolver must never block the drill-down render.
  */
-function RecordInspectionCard({ domainId }: { domainId: string }) {
+export function RecordInspectionCard({ domainId }: { domainId: string }) {
   const [inspection, setInspection] = useState<RecordInspection | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)

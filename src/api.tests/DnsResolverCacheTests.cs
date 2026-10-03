@@ -13,8 +13,8 @@ namespace DmarcAnalyzer.Api.Tests;
 /// </summary>
 public sealed class NullAuthoritativeDnsClientLocator : IAuthoritativeDnsClientLocator
 {
-    public Task<LookupClient?> LocateAsync(string name, CancellationToken ct) =>
-        Task.FromResult<LookupClient?>(null);
+    public Task<IDnsQuery?> LocateAsync(string name, CancellationToken ct) =>
+        Task.FromResult<IDnsQuery?>(null);
 }
 
 /// <summary>

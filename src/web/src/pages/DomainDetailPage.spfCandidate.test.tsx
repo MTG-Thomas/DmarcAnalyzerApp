@@ -1,8 +1,19 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { SpfCandidate } from '@/lib/analytics'
-import { SpfCandidateView } from '@/pages/DomainDetailPage'
+import type { RecordInspection, SpfCandidate } from '@/lib/analytics'
+
+vi.mock('@/lib/api', () => ({
+  fetchJson: vi.fn(),
+  ApiError: class extends Error {},
+}))
+
+import { fetchJson } from '@/lib/api'
+import {
+  RecordInspectionCard,
+  SpfCandidatePanel,
+  SpfCandidateView,
+} from '@/pages/DomainDetailPage'
 
 const ready: SpfCandidate = {
   status: 'ready',
@@ -68,5 +79,115 @@ describe('SpfCandidateView', () => {
 
     expect(screen.getByText('Nothing could be expanded.')).toBeInTheDocument()
     expect(screen.queryByText(/lookups/)).not.toBeInTheDocument()
+  })
+})
+
+const domainId = '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+
+describe('SpfCandidatePanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('fetches nothing until asked, then renders the candidate', async () => {
+    vi.mocked(fetchJson).mockResolvedValue(ready)
+    render(<SpfCandidatePanel domainId={domainId} />)
+
+    expect(vi.mocked(fetchJson)).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Generate candidate' }))
+
+    expect(
+      await screen.findByText('v=spf1 ip4:198.51.100.7 include:_spf.google.com -all'),
+    ).toBeInTheDocument()
+    expect(vi.mocked(fetchJson)).toHaveBeenCalledWith(
+      `/api/v1/analytics/domains/${domainId}/spf-candidate`,
+    )
+    expect(screen.getByRole('button', { name: 'Regenerate candidate' })).toBeInTheDocument()
+  })
+
+  it('shows the failure instead of a stale candidate', async () => {
+    vi.mocked(fetchJson).mockRejectedValue(new Error('DNS timed out'))
+    render(<SpfCandidatePanel domainId={domainId} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate candidate' }))
+
+    expect(await screen.findByText('DNS timed out')).toBeInTheDocument()
+    expect(screen.queryByText(/lookups/)).not.toBeInTheDocument()
+  })
+
+  it('shows a busy indicator while expanding', async () => {
+    let resolve!: (value: SpfCandidate) => void
+    vi.mocked(fetchJson).mockReturnValue(
+      new Promise<SpfCandidate>((res) => {
+        resolve = res
+      }),
+    )
+    render(<SpfCandidatePanel domainId={domainId} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate candidate' }))
+    expect(await screen.findByText(/Expanding includes/)).toBeInTheDocument()
+
+    resolve(ready)
+    expect(await screen.findByText(/2→1 lookups/)).toBeInTheDocument()
+  })
+})
+
+describe('RecordInspectionCard candidate mount', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const inspection: RecordInspection = {
+    domainId,
+    name: 'acme.example',
+    dmarc: {
+      status: 'found',
+      raw: 'v=DMARC1; p=reject',
+      policy: 'reject',
+      subdomainPolicy: null,
+      pct: 100,
+      rua: null,
+      ruf: null,
+      dkimAlignment: null,
+      spfAlignment: null,
+      issues: [],
+      testing: null,
+      publicSuffixDomain: null,
+      nonExistentSubdomainPolicy: null,
+    },
+    spf: {
+      status: 'found',
+      raw: 'v=spf1 -all',
+      recordCount: 1,
+      lookupMechanisms: 0,
+      allQualifier: '-',
+      issues: [],
+      recursiveLookups: 0,
+      voidLookups: 0,
+      overBudget: false,
+      estimatedResponseBytes: null,
+      dependencyTree: null,
+    },
+    observed: null,
+    comparison: [],
+    externalDestinations: [],
+  }
+
+  it('mounts the candidate panel when SPF is found', async () => {
+    vi.mocked(fetchJson).mockResolvedValue(inspection)
+    render(<RecordInspectionCard domainId={domainId} />)
+
+    expect(await screen.findByText('Flattening candidate')).toBeInTheDocument()
+  })
+
+  it('omits the panel when SPF is missing', async () => {
+    vi.mocked(fetchJson).mockResolvedValue({
+      ...inspection,
+      spf: { ...inspection.spf, status: 'missing', raw: null },
+    })
+    render(<RecordInspectionCard domainId={domainId} />)
+
+    expect(await screen.findByText('SPF (live DNS)')).toBeInTheDocument()
+    expect(screen.queryByText('Flattening candidate')).not.toBeInTheDocument()
   })
 })
