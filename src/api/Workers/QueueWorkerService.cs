@@ -2,6 +2,7 @@ using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Maintenance;
 using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
@@ -126,8 +127,6 @@ public sealed class QueueWorkerService(
         return TimeSpan.FromSeconds(Math.Min(backoffSeconds, normalSeconds));
     }
 
-    private DateTime? _lastAlertRunUtc;
-
     /// <summary>
     /// Evaluates alert rules on their own cadence (<c>Alerts:IntervalMinutes</c>).
     /// Separate from the sync interval because reports arrive daily — evaluating
@@ -146,7 +145,9 @@ public sealed class QueueWorkerService(
         }
 
         var interval = TimeSpan.FromMinutes(Math.Max(5, alertOptions.IntervalMinutes));
-        if (_lastAlertRunUtc is { } last && DateTime.UtcNow - last < interval)
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.Alert, interval, ct))
         {
             return;
         }
@@ -155,10 +156,8 @@ public sealed class QueueWorkerService(
         await alerts.EvaluateAsync(ct);
 
         // Only on success, so a failure retries next pass.
-        _lastAlertRunUtc = DateTime.UtcNow;
+        await tasks.RecordRunAsync(ScheduledTaskKeys.Alert, success: true, ct);
     }
-
-    private DateTime? _lastDnsRefreshUtc;
 
     /// <summary>
     /// Keeps each domain's cached DMARC policy fresh so list views can render the real
@@ -179,7 +178,9 @@ public sealed class QueueWorkerService(
         }
 
         var interval = TimeSpan.FromHours(Math.Max(1, dnsOptions.RefreshIntervalHours));
-        if (_lastDnsRefreshUtc is { } last && DateTime.UtcNow - last < interval)
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.DnsRefresh, interval, ct))
         {
             return;
         }
@@ -188,10 +189,8 @@ public sealed class QueueWorkerService(
         await cache.RefreshAllAsync(ct);
 
         // Only on success, so a failure retries next pass.
-        _lastDnsRefreshUtc = DateTime.UtcNow;
+        await tasks.RecordRunAsync(ScheduledTaskKeys.DnsRefresh, success: true, ct);
     }
-
-    private DateTime? _lastDigestCheckUtc;
 
     /// <summary>
     /// Checks a few times a day whether the monthly digest is due. The real
@@ -208,24 +207,24 @@ public sealed class QueueWorkerService(
         }
 
         var interval = TimeSpan.FromHours(Math.Max(1, options.CheckIntervalHours));
-        if (_lastDigestCheckUtc is { } last && DateTime.UtcNow - last < interval)
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.Digest, interval, ct))
         {
             return;
         }
 
         var digest = scope.ServiceProvider.GetRequiredService<IDigestService>();
         await digest.SendDueAsync(ct);
-        _lastDigestCheckUtc = DateTime.UtcNow;
+        await tasks.RecordRunAsync(ScheduledTaskKeys.Digest, success: true, ct);
     }
-
-    private DateTime? _lastRetentionRunUtc;
 
     /// <summary>
     /// Enforces per-client retention. Runs on its own slow cadence
     /// (<c>Worker:RetentionIntervalHours</c>, daily by default) rather than every
     /// sync pass — retention is measured in months, so there is nothing to gain
-    /// from checking hourly. The timestamp is in-memory, so a restart simply runs
-    /// it once more; purging is idempotent.
+    /// from checking hourly. The cadence is durable, so a restart does not run
+    /// it again until the interval has elapsed; purging is idempotent anyway.
     /// </summary>
     private async Task RunRetentionPassIfDueAsync(CancellationToken ct)
     {
@@ -235,21 +234,21 @@ public sealed class QueueWorkerService(
         }
 
         var interval = TimeSpan.FromHours(Math.Max(1, _options.RetentionIntervalHours));
-        if (_lastRetentionRunUtc is { } last && DateTime.UtcNow - last < interval)
+        using var scope = scopeFactory.CreateScope();
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.Retention, interval, ct))
         {
             return;
         }
 
-        using var scope = scopeFactory.CreateScope();
         var retention = scope.ServiceProvider.GetRequiredService<IRetentionPurgeService>();
         await retention.PurgeAsync(dryRun: false, _options.RetentionBatchSize, ct);
 
         // Only mark it done on success, so a failure retries on the next pass
         // instead of waiting out the whole interval.
-        _lastRetentionRunUtc = DateTime.UtcNow;
+        await tasks.RecordRunAsync(ScheduledTaskKeys.Retention, success: true, ct);
     }
-
-    private DateTime? _lastMtaStsRunUtc;
 
     /// <summary>
     /// Keeps each domain's MTA-STS state fresh: the `_mta-sts` TXT record, the
@@ -276,7 +275,9 @@ public sealed class QueueWorkerService(
         }
 
         var interval = TimeSpan.FromHours(Math.Max(1, mtaStsOptions.CheckIntervalHours));
-        if (_lastMtaStsRunUtc is { } last && DateTime.UtcNow - last < interval)
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.MtaSts, interval, ct))
         {
             return;
         }
@@ -285,7 +286,7 @@ public sealed class QueueWorkerService(
         {
             var cache = scope.ServiceProvider.GetRequiredService<IMtaStsStateCache>();
             await cache.RefreshAllAsync(ct);
-            _lastMtaStsRunUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.MtaSts, success: true, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -294,11 +295,9 @@ public sealed class QueueWorkerService(
         catch (Exception ex)
         {
             logger.LogError(ex, "MTA-STS check pass failed; ingestion is unaffected");
-            _lastMtaStsRunUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.MtaSts, success: false, ct);
         }
     }
-
-    private DateTime? _lastSpfDriftRunUtc;
 
     /// <summary>
     /// Keeps each domain's SPF drift state fresh: the live record, the
@@ -325,7 +324,9 @@ public sealed class QueueWorkerService(
         }
 
         var interval = TimeSpan.FromHours(Math.Max(1, driftOptions.CheckIntervalHours));
-        if (_lastSpfDriftRunUtc is { } last && DateTime.UtcNow - last < interval)
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.SpfDrift, interval, ct))
         {
             return;
         }
@@ -334,7 +335,7 @@ public sealed class QueueWorkerService(
         {
             var cache = scope.ServiceProvider.GetRequiredService<ISpfDriftStateCache>();
             await cache.RefreshAllAsync(ct);
-            _lastSpfDriftRunUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.SpfDrift, success: true, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -343,11 +344,9 @@ public sealed class QueueWorkerService(
         catch (Exception ex)
         {
             logger.LogError(ex, "SPF drift check pass failed; ingestion is unaffected");
-            _lastSpfDriftRunUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.SpfDrift, success: false, ct);
         }
     }
-
-    private DateTime? _lastBackupOffloadUtc;
 
     /// <summary>
     /// Ships the configuration snapshot and any new history rows to object storage.
@@ -369,14 +368,16 @@ public sealed class QueueWorkerService(
     private async Task RunBackupOffloadPassIfDueAsync(CancellationToken ct)
     {
         var interval = TimeSpan.FromMinutes(Math.Max(1, _backupOptions.IntervalMinutes));
-        if (_lastBackupOffloadUtc is { } last && DateTime.UtcNow - last < interval)
+        using var scope = scopeFactory.CreateScope();
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.BackupOffload, interval, ct))
         {
             return;
         }
 
         try
         {
-            using var scope = scopeFactory.CreateScope();
             var offload = scope.ServiceProvider.GetRequiredService<IBackupOffloadService>();
             var result = await offload.RunAsync(ct);
 
@@ -384,7 +385,7 @@ public sealed class QueueWorkerService(
             // clock, or enabling offload later would wait out a whole interval.
             if (result.Ran)
             {
-                _lastBackupOffloadUtc = DateTime.UtcNow;
+                await tasks.RecordRunAsync(ScheduledTaskKeys.BackupOffload, success: true, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -394,11 +395,9 @@ public sealed class QueueWorkerService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Backup offload pass failed; ingestion is unaffected");
-            _lastBackupOffloadUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.BackupOffload, success: false, ct);
         }
     }
-
-    private DateTime? _lastMailboxRetentionUtc;
 
     /// <summary>
     /// Deletes report mail that has aged past the retention window, so the mailbox stops
@@ -413,18 +412,20 @@ public sealed class QueueWorkerService(
     private async Task RunMailboxRetentionPassIfDueAsync(CancellationToken ct)
     {
         var interval = TimeSpan.FromHours(Math.Max(1, _options.MailboxRetentionIntervalHours));
-        if (_lastMailboxRetentionUtc is { } last && DateTime.UtcNow - last < interval)
+        using var scope = scopeFactory.CreateScope();
+        var tasks = new ScheduledTaskService(
+            scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>());
+        if (!await tasks.IsDueAsync(ScheduledTaskKeys.MailboxRetention, interval, ct))
         {
             return;
         }
 
         try
         {
-            using var scope = scopeFactory.CreateScope();
             var retention = scope.ServiceProvider.GetRequiredService<IMailboxRetentionService>();
             await retention.RunAsync(dryRun: false, ct);
 
-            _lastMailboxRetentionUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.MailboxRetention, success: true, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -433,7 +434,7 @@ public sealed class QueueWorkerService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Mailbox retention pass failed; ingestion is unaffected");
-            _lastMailboxRetentionUtc = DateTime.UtcNow;
+            await tasks.RecordRunAsync(ScheduledTaskKeys.MailboxRetention, success: false, ct);
         }
     }
 
