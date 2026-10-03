@@ -232,7 +232,7 @@ public sealed class SyncRequestServiceTests
 
         var finished = await service.GetAsync(claim.RequestId, default);
         Assert.Equal(SyncRequestStatus.Completed, finished.Value!.Status);
-        Assert.Equal("""{"reportsInserted":3}""", finished.Value.Summary);
+        Assert.Equal(3, finished.Value.Summary!.Value.GetProperty("reportsInserted").GetInt32());
         Assert.NotNull(finished.Value.FinishedAtUtc);
 
         // Terminal rows stay terminal: a retried finish is a no-op, not an error.
@@ -256,7 +256,10 @@ public sealed class SyncRequestServiceTests
         var details = (await service.GetAsync(enqueued.Value.RequestId, default)).Value!;
         Assert.Equal(SyncRequestStatus.Failed, details.Status);
         Assert.Equal(2000, details.Error!.Length);
-        Assert.Equal(8000, details.Summary!.Length);
+        // Truncation is a storage concern: the raw column holds 8000 chars while
+        // the (unparseable) payload reads back as no summary rather than failing.
+        Assert.Equal(8000, (await db.SyncRequests.SingleAsync()).ResultJson!.Length);
+        Assert.Null(details.Summary);
         Assert.NotNull(details.FinishedAtUtc);
     }
 
@@ -273,7 +276,7 @@ public sealed class SyncRequestServiceTests
 
         var details = (await service.GetAsync(enqueued.Value.RequestId, default)).Value!;
         Assert.Equal(SyncRequestStatus.Partial, details.Status);
-        Assert.Equal("""{"resumed":true}""", details.Summary);
+        Assert.True(details.Summary!.Value.GetProperty("resumed").GetBoolean());
     }
 
     [Fact]
@@ -339,6 +342,83 @@ public sealed class SyncRequestServiceTests
         db.AddRange(client, source);
         await db.SaveChangesAsync();
         return source.Id;
+    }
+
+    [Fact]
+    public async Task RequeueStale_ReturnsAbandonedRunningToQueued()
+    {
+        await using var db = NewDb();
+        var sourceId = await SeedMailboxSourceAsync(db);
+        db.SyncRequests.Add(new SyncRequest
+        {
+            ReportSourceId = sourceId,
+            Status = SyncRequestStatus.Running,
+            StartedAtUtc = DateTime.UtcNow.AddHours(-2),
+            Attempts = 1,
+        });
+        await db.SaveChangesAsync();
+
+        var moved = await NewService(db, TestCurrentUserContext.Admin())
+            .RequeueStaleAsync(TimeSpan.FromMinutes(30), default);
+
+        Assert.Equal(1, moved);
+        var row = await db.SyncRequests.SingleAsync();
+        Assert.Equal(SyncRequestStatus.Queued, row.Status);
+        Assert.Null(row.StartedAtUtc);
+        Assert.Equal(1, row.Attempts);
+    }
+
+    [Fact]
+    public async Task RequeueStale_AbandonsRepeatedlyInterruptedRows()
+    {
+        await using var db = NewDb();
+        var sourceId = await SeedMailboxSourceAsync(db);
+        db.SyncRequests.Add(new SyncRequest
+        {
+            ReportSourceId = sourceId,
+            Status = SyncRequestStatus.Running,
+            StartedAtUtc = DateTime.UtcNow.AddHours(-2),
+            Attempts = SyncRequestService.MaxInterruptedAttempts,
+        });
+        await db.SaveChangesAsync();
+
+        var moved = await NewService(db, TestCurrentUserContext.Admin())
+            .RequeueStaleAsync(TimeSpan.FromMinutes(30), default);
+
+        Assert.Equal(1, moved);
+        var row = await db.SyncRequests.SingleAsync();
+        Assert.Equal(SyncRequestStatus.Failed, row.Status);
+        Assert.Contains("abandoned", row.LastError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RequeueStale_LeavesFreshRunningAndTerminalRowsAlone()
+    {
+        await using var db = NewDb();
+        var sourceId = await SeedMailboxSourceAsync(db);
+        db.SyncRequests.AddRange(
+            new SyncRequest
+            {
+                ReportSourceId = sourceId,
+                Status = SyncRequestStatus.Running,
+                StartedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+                Attempts = 1,
+            },
+            new SyncRequest
+            {
+                ReportSourceId = Guid.NewGuid(),
+                Status = SyncRequestStatus.Completed,
+                StartedAtUtc = DateTime.UtcNow.AddHours(-2),
+                FinishedAtUtc = DateTime.UtcNow.AddHours(-1),
+                Attempts = 1,
+            });
+        await db.SaveChangesAsync();
+
+        var moved = await NewService(db, TestCurrentUserContext.Admin())
+            .RequeueStaleAsync(TimeSpan.FromMinutes(30), default);
+
+        Assert.Equal(0, moved);
+        Assert.Equal(2, await db.SyncRequests.CountAsync());
     }
 
     private static Client NewClient() => new()

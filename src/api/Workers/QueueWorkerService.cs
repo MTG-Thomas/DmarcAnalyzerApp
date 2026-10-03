@@ -6,6 +6,7 @@ using DmarcAnalyzer.Api.Application.Maintenance;
 using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
+using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -15,11 +16,11 @@ using Microsoft.Extensions.Options;
 namespace DmarcAnalyzer.Api.Workers;
 
 /// <summary>
-/// The worker loop: every interval it syncs each active polled source in turn,
-/// then runs the periodic passes (DNS refresh, MTA-STS checks, alerts, digest,
-/// database retention, mailbox retention, backup offload) when they come due.
-/// There is no job queue and no claim path — one worker per database, enforced
-/// by <see cref="WorkerSingleInstanceLock"/> while
+/// The worker loop: every interval it drains durable manual sync requests,
+/// syncs each active polled source in turn, then runs the periodic passes
+/// (DNS refresh, MTA-STS checks, alerts, digest, database retention, mailbox
+/// retention, backup offload) when they come due. One worker per database,
+/// enforced by <see cref="WorkerSingleInstanceLock"/> while
 /// <c>Worker:EnforceSingleInstance</c> is on (the default).
 /// </summary>
 public sealed class QueueWorkerService(
@@ -83,6 +84,7 @@ public sealed class QueueWorkerService(
     public IReadOnlyList<WorkerPass> GetPasses() =>
     [
         new("stale-sync-close", CloseStaleRunningSyncsAsync),
+        new("sync-request-drain", RunSyncRequestDrainPassAsync),
         new("scheduled-sync", RunScheduledSyncPassAsync),
         new("alerts", RunAlertPassIfDueAsync),
         new("digest", RunDigestPassIfDueAsync),
@@ -536,6 +538,104 @@ public sealed class QueueWorkerService(
             staleRuns.Count,
             staleRunTimeoutMinutes);
     }
+
+    /// <summary>
+    /// Drains durable manual sync requests: claims each queued row, runs one
+    /// sync, writes the outcome back. Always due — queued work is explicit
+    /// demand, and an empty queue costs one indexed read. Manual requests run
+    /// before the scheduled pass so an operator's explicit demand wins.
+    /// <para>
+    /// Single attempt per request per pass, no retry: transient trouble is
+    /// retried by the scheduled pass over the same backlog (and the operator
+    /// can always re-enqueue), while backoff sleeps would blow the once-mode
+    /// bound. Cancellation marks the in-flight request partial — checkpoints
+    /// survive — and propagates.
+    /// </para>
+    /// </summary>
+    private async Task RunSyncRequestDrainPassAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var requests = scope.ServiceProvider.GetRequiredService<ISyncRequestService>();
+
+        var recovered = await requests.RequeueStaleAsync(
+            TimeSpan.FromMinutes(Math.Max(5, _options.StaleRunTimeoutMinutes)), ct);
+        if (recovered > 0)
+        {
+            logger.LogWarning("Recovered {Count} abandoned manual sync requests", recovered);
+        }
+
+        // Bounded per pass: worker-once must terminate, and one chatty source
+        // must not starve the passes after this one.
+        const int maxClaimsPerPass = 25;
+        for (var claimed = 0; claimed < maxClaimsPerPass; claimed++)
+        {
+            var claim = await requests.ClaimNextAsync(ct);
+            if (claim is null)
+            {
+                return;
+            }
+
+            await RunClaimedSyncAsync(requests, claim, ct);
+        }
+
+        logger.LogWarning(
+            "Sync request drain hit its {Max} per-pass cap; the remainder waits for the next pass",
+            maxClaimsPerPass);
+    }
+
+    private async Task RunClaimedSyncAsync(
+        ISyncRequestService requests, SyncRequestClaim claim, CancellationToken ct)
+    {
+        using var syncScope = scopeFactory.CreateScope();
+        var syncService = syncScope.ServiceProvider.GetRequiredService<IMailboxSyncService>();
+        try
+        {
+            var result = await syncService.SyncReportSourceAsync(claim.ReportSourceId, ct);
+            if (!result.IsSuccess)
+            {
+                await requests.FailAsync(claim.RequestId, result.Error ?? "sync failed to start", null, ct);
+                return;
+            }
+
+            var value = result.Value!;
+            if (value.Success)
+            {
+                await requests.CompleteAsync(claim.RequestId, SerializeOutcome(value), ct);
+            }
+            else
+            {
+                await requests.FailAsync(claim.RequestId, value.Error ?? "sync failed", SerializeOutcome(value), ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            await requests.MarkPartialAsync(claim.RequestId, null, CancellationToken.None);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Manual sync crashed for request {RequestId}", claim.RequestId);
+            await requests.FailAsync(claim.RequestId, "sync crashed: " + ex.Message, null, ct);
+        }
+    }
+
+    private static readonly JsonSerializerOptions OutcomeJson = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// The counters the status endpoint renders — the same numbers the
+    /// scheduled pass logs, as camelCase JSON the console iterates.
+    /// </summary>
+    private static string SerializeOutcome(MailboxSyncResult value)
+        => JsonSerializer.Serialize(new
+        {
+            value.MessagesScanned,
+            value.AttachmentsProcessed,
+            value.ReportsInserted,
+            value.ReportsSkippedAsDuplicate,
+            value.TlsReportsInserted,
+            value.TlsReportsSkippedAsDuplicate,
+            value.ParseFailures,
+        }, OutcomeJson);
 
     private async Task<ServiceResult<MailboxSyncResult>> ExecuteWithRetryAsync(Guid reportSourceId, CancellationToken ct)
     {

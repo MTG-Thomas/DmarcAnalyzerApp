@@ -117,6 +117,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddSingleton<IPolledSourceTransportFactory, PolledSourceTransportFactory>();
     workerBuilder.Services.AddSingleton<IPolledSourceTransport, S3ReportSourceTransport>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    workerBuilder.Services.AddScoped<ISyncRequestService, SyncRequestService>();
     workerBuilder.Services.AddHttpContextAccessor();
     workerBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
     workerBuilder.Services.AddScoped<IAuditLog, AuditLog>();
@@ -193,6 +194,7 @@ if (mode == AppMode.WorkerOnce)
     onceBuilder.Services.AddSingleton<IPolledSourceTransportFactory, PolledSourceTransportFactory>();
     onceBuilder.Services.AddSingleton<IPolledSourceTransport, S3ReportSourceTransport>();
     onceBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    onceBuilder.Services.AddScoped<ISyncRequestService, SyncRequestService>();
     onceBuilder.Services.AddHttpContextAccessor();
     onceBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
     onceBuilder.Services.AddScoped<IAuditLog, AuditLog>();
@@ -339,7 +341,7 @@ builder.Services.AddFido2(options =>
     options.Origins = passkeyOptions.Origins.ToHashSet(StringComparer.OrdinalIgnoreCase);
     options.ChallengeSize = 32;
 });
-builder.Services.AddDataProtection();
+builder.Services.AddDurableDataProtection();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPasskeyCeremonyStore, PasskeyCeremonyStore>();
 builder.Services.AddScoped<IPasskeyService, PasskeyService>();
@@ -401,6 +403,7 @@ builder.Services.AddSingleton<IPolledSourceTransport, Pop3MailboxTransport>();
 builder.Services.AddSingleton<IPolledSourceTransportFactory, PolledSourceTransportFactory>();
 builder.Services.AddSingleton<IPolledSourceTransport, S3ReportSourceTransport>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+builder.Services.AddScoped<ISyncRequestService, SyncRequestService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();

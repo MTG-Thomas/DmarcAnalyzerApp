@@ -33,6 +33,7 @@ public sealed class WorkerOncePassListTests
         Assert.Equal(
         [
             "stale-sync-close",
+            "sync-request-drain",
             "scheduled-sync",
             "alerts",
             "digest",

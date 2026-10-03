@@ -42,10 +42,10 @@ public sealed class PasskeyCeremonyStore(
     private readonly object _memoryLock = new();
 
     public void StartRegistration(HttpResponse response, HttpRequest request, Guid userId, CredentialCreateOptions options)
-        => Start(response, userId, options.Challenge);
+        => Start(response, userId, options.Challenge, options.ToJson());
 
     public void StartAuthentication(HttpResponse response, HttpRequest request, AssertionOptions options)
-        => Start(response, null, options.Challenge);
+        => Start(response, null, options.Challenge, options.ToJson());
 
     public PasskeyCeremony? Consume(HttpRequest request, HttpResponse response, PasskeyCeremonyKind expectedKind)
     {
@@ -101,7 +101,7 @@ public sealed class PasskeyCeremonyStore(
         return PurgeExpired(db, timeProvider.GetUtcNow().UtcDateTime, batchSize);
     }
 
-    private void Start(HttpResponse response, Guid? userId, byte[] challenge)
+    private void Start(HttpResponse response, Guid? userId, byte[] challenge, string optionsJson)
     {
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var handle = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
@@ -124,6 +124,7 @@ public sealed class PasskeyCeremonyStore(
                 Handle = handle,
                 UserId = userId,
                 Challenge = challenge,
+                OptionsJson = optionsJson,
                 CreatedAtUtc = now,
                 ExpiresAtUtc = now.Add(Lifetime),
             });
@@ -139,7 +140,7 @@ public sealed class PasskeyCeremonyStore(
             """
             UPDATE passkey_ceremony SET "ConsumedAtUtc" = {0}, "Attempts" = "Attempts" + 1
             WHERE "Handle" = {1} AND "ConsumedAtUtc" IS NULL AND "ExpiresAtUtc" > {2}
-            RETURNING "UserId", "Challenge"
+            RETURNING "UserId", "Challenge", "OptionsJson"
             """, now, handle, now).AsEnumerable().SingleOrDefault();
         if (claimed is null)
         {
@@ -174,7 +175,7 @@ public sealed class PasskeyCeremonyStore(
 
             row.ConsumedAtUtc = now;
             db.SaveChanges();
-            return new ClaimedCeremony { UserId = row.UserId, Challenge = row.Challenge };
+            return new ClaimedCeremony { UserId = row.UserId, Challenge = row.Challenge, OptionsJson = row.OptionsJson };
         }
     }
 
@@ -204,12 +205,40 @@ public sealed class PasskeyCeremonyStore(
         return handles.Count;
     }
 
-    private PasskeyCeremony Rebuild(ClaimedCeremony claimed, PasskeyCeremonyKind kind)
+    private PasskeyCeremony? Rebuild(ClaimedCeremony claimed, PasskeyCeremonyKind kind)
     {
-        // The row stores the challenge, not the options; verification reads a
-        // fixed subset back (fido2-net-lib VerifyAsync: challenge, RP id,
-        // user-verification, allow/exclude posture, pub-key params, and the
-        // user id echoed into the result), so rebuilding from the same
+        // Exact options when the row has them: verification deserializes
+        // bit-for-bit what creation produced, so exclude lists, timeouts, and
+        // extensions all survive. A row that predates the options column falls
+        // back to rebuilding from the challenge plus singleton configuration
+        // below; an unparseable payload fails the ceremony rather than
+        // verifying against guessed options.
+        if (claimed.OptionsJson is not null)
+        {
+            try
+            {
+                return kind == PasskeyCeremonyKind.Registration
+                    ? new PasskeyCeremony(
+                        kind,
+                        claimed.UserId,
+                        CredentialCreateOptions.FromJson(claimed.OptionsJson),
+                        null)
+                    : new PasskeyCeremony(
+                        kind,
+                        null,
+                        null,
+                        AssertionOptions.FromJson(claimed.OptionsJson));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return null;
+            }
+        }
+
+        // Legacy rows (written before options_json shipped): verification
+        // reads a fixed subset back (fido2-net-lib VerifyAsync: challenge, RP
+        // id, user-verification, allow/exclude posture, pub-key params, and
+        // the user id echoed into the result), so rebuilding from the same
         // singleton configuration the options were created with verifies
         // identically. Name and display name never leave the row because they
         // never enter verification; only the user id does.
@@ -264,5 +293,6 @@ public sealed class PasskeyCeremonyStore(
     {
         public Guid? UserId { get; set; }
         public byte[] Challenge { get; set; } = [];
+        public string? OptionsJson { get; set; }
     }
 }

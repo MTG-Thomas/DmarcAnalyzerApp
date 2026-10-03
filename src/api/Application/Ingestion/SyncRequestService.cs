@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
@@ -232,6 +233,60 @@ public sealed class SyncRequestService(
         return true;
     }
 
+    /// <summary>
+    /// Claims after which an always-interrupted request fails instead of
+    /// requeueing: three deaths on the same source means the crash is
+    /// deterministic, not a lost race.
+    /// </summary>
+    public const int MaxInterruptedAttempts = 3;
+
+    /// <inheritdoc />
+    public async Task<int> RequeueStaleAsync(TimeSpan staleAfter, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow - staleAfter;
+        if (!db.Database.IsRelational())
+        {
+            var stale = await db.SyncRequests
+                .Where(x => x.Status == SyncRequestStatus.Running
+                    && (x.StartedAtUtc == null || x.StartedAtUtc < cutoff))
+                .ToListAsync(ct);
+            foreach (var row in stale)
+            {
+                if (row.Attempts >= MaxInterruptedAttempts)
+                {
+                    row.Status = SyncRequestStatus.Failed;
+                    row.FinishedAtUtc = DateTime.UtcNow;
+                    row.LastError = "abandoned after repeated interrupted attempts";
+                }
+                else
+                {
+                    row.Status = SyncRequestStatus.Queued;
+                    row.StartedAtUtc = null;
+                }
+            }
+
+            await db.SaveChangesAsync(ct);
+            return stale.Count;
+        }
+
+        // Poison guard first, so the requeue below only sees retryable rows.
+        var abandoned = await db.SyncRequests
+            .Where(x => x.Status == SyncRequestStatus.Running
+                && (x.StartedAtUtc == null || x.StartedAtUtc < cutoff)
+                && x.Attempts >= MaxInterruptedAttempts)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, SyncRequestStatus.Failed)
+                .SetProperty(x => x.FinishedAtUtc, DateTime.UtcNow)
+                .SetProperty(x => x.LastError, "abandoned after repeated interrupted attempts"), ct);
+        var requeued = await db.SyncRequests
+            .Where(x => x.Status == SyncRequestStatus.Running
+                && (x.StartedAtUtc == null || x.StartedAtUtc < cutoff))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, SyncRequestStatus.Queued)
+                .SetProperty(x => x.StartedAtUtc, (DateTime?)null), ct);
+        return abandoned + requeued;
+    }
+
     private static bool IsTerminal(string status)
         => status is SyncRequestStatus.Completed
             or SyncRequestStatus.Partial
@@ -256,7 +311,30 @@ public sealed class SyncRequestService(
             request.FinishedAtUtc,
             request.Attempts,
             request.LastError,
-            request.ResultJson);
+            ParseSummary(request.ResultJson));
+
+    /// <summary>
+    /// The stored payload rendered as a structured object for the status
+    /// endpoint. Unparseable payloads (older writers, heartbeats) read as
+    /// absent rather than failing the read.
+    /// </summary>
+    private static JsonElement? ParseSummary(string? resultJson)
+    {
+        if (string.IsNullOrWhiteSpace(resultJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(resultJson);
+            return doc.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// The entity promises the writers truncate; this is the writer. The

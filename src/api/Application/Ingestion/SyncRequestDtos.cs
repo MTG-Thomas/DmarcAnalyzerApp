@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 /// <summary>
@@ -56,7 +58,7 @@ public sealed record SyncRequestDetails(
     DateTime? FinishedAtUtc,
     int Attempts,
     string? Error,
-    string? Summary);
+    JsonElement? Summary);
 
 /// <summary>
 /// What a worker claim hands back: enough to sync the source and finish the row.

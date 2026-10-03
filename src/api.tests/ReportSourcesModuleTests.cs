@@ -103,9 +103,10 @@ public sealed class ReportSourcesModuleTests
             $"/api/v1/report-sources/sync-requests/{requestId}")).StatusCode);
 
         var finishedAtUtc = DateTime.UtcNow;
+        using var summaryDoc = JsonDocument.Parse("""{"reportsInserted":3}""");
         syncRequests.GetResult = ServiceResult<SyncRequestDetails>.Success(new SyncRequestDetails(
             requestId, SourceId, SyncRequestStatus.Completed, finishedAtUtc.AddMinutes(-2),
-            finishedAtUtc.AddMinutes(-2), finishedAtUtc, 1, null, """{"reportsInserted":3}"""));
+            finishedAtUtc.AddMinutes(-2), finishedAtUtc, 1, null, summaryDoc.RootElement.Clone()));
         var status = await client.GetAsync($"/api/v1/report-sources/sync-requests/{requestId}");
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
         var statusBody = await status.Content.ReadFromJsonAsync<JsonElement>();
@@ -113,7 +114,7 @@ public sealed class ReportSourcesModuleTests
         Assert.Equal(SourceId.ToString(), statusBody.GetProperty("reportSourceId").GetString());
         Assert.Equal(SyncRequestStatus.Completed, statusBody.GetProperty("status").GetString());
         Assert.Equal(1, statusBody.GetProperty("attempts").GetInt32());
-        Assert.Equal("""{"reportsInserted":3}""", statusBody.GetProperty("summary").GetString());
+        Assert.Equal(3, statusBody.GetProperty("summary").GetProperty("reportsInserted").GetInt32());
     }
 
     private sealed class StubReportSourceService : IReportSourceService
@@ -160,6 +161,9 @@ public sealed class ReportSourcesModuleTests
 
         public Task<bool> HeartbeatAsync(Guid requestId, string? progressJson, CancellationToken ct)
             => Task.FromResult(false);
+
+        public Task<int> RequeueStaleAsync(TimeSpan staleAfter, CancellationToken ct)
+            => Task.FromResult(0);
     }
 
     private sealed class StubAuditLog : IAuditLog

@@ -56,4 +56,14 @@ public interface ISyncRequestService
     /// the row is unknown or not running.
     /// </summary>
     Task<bool> HeartbeatAsync(Guid requestId, string? progressJson, CancellationToken ct);
+
+    /// <summary>
+    /// Returns abandoned <c>running</c> rows to <c>queued</c>: a worker that
+    /// dies mid-sync never finishes its claim, so without this the request
+    /// (and the source's one-live-row slot) wedges forever. Rows interrupted
+    /// <see cref="SyncRequestService.MaxInterruptedAttempts"/> times fail
+    /// instead — something is killing the worker on that source. Returns the
+    /// number of rows moved.
+    /// </summary>
+    Task<int> RequeueStaleAsync(TimeSpan staleAfter, CancellationToken ct);
 }

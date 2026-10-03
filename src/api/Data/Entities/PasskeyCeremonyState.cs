@@ -17,6 +17,16 @@ public sealed class PasskeyCeremonyState
     public string Handle { get; set; } = string.Empty;
     public Guid? UserId { get; set; }
     public byte[] Challenge { get; set; } = [];
+
+    /// <summary>
+    /// The exact options creation produced, as Fido2 JSON: verification
+    /// deserializes bit-for-bit what the browser saw, so a creation-param
+    /// change can never silently diverge from the rebuild path. Null only for
+    /// rows written before this column shipped (they fall back to the
+    /// challenge plus singleton configuration).
+    /// </summary>
+    public string? OptionsJson { get; set; }
+
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAtUtc { get; set; }
     public DateTime? ConsumedAtUtc { get; set; }

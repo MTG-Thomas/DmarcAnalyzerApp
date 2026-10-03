@@ -46,6 +46,20 @@ public sealed class BackupExportService(
         // rebuilds it from live DNS within one interval of a restore, and carrying
         // a stale copy would show drift that no longer exists.
         "spf_drift_state",
+        // Maintenance cadence is run state: a restored install starts every
+        // task due, which is exactly the correct first-run behavior.
+        "scheduled_task_state",
+        // In-flight sync requests belong to the install that took them: a
+        // carried running row would requeue and sync on behalf of a request
+        // nobody made here.
+        "sync_request",
+        // Passkey ceremonies live 5 minutes; carrying them only extends the
+        // replay surface they exist to bound.
+        "passkey_ceremony",
+        // Data Protection keys must not travel with the configuration: a
+        // restored ring would resurrect retired keys, and a fresh install
+        // mints its own on first use.
+        "dp_key",
     ];
 
     /// <inheritdoc />
@@ -223,5 +237,9 @@ public sealed class BackupExportService(
             [ExcludedTables[8]] = await db.ServiceApiCredentials.LongCountAsync(ct),
             [ExcludedTables[9]] = await db.UserPasskeys.LongCountAsync(ct),
             [ExcludedTables[10]] = await db.SpfDriftStates.LongCountAsync(ct),
+            [ExcludedTables[11]] = await db.ScheduledTaskStates.LongCountAsync(ct),
+            [ExcludedTables[12]] = await db.SyncRequests.LongCountAsync(ct),
+            [ExcludedTables[13]] = await db.PasskeyCeremonyStates.LongCountAsync(ct),
+            [ExcludedTables[14]] = await db.DpKeys.LongCountAsync(ct),
         };
 }

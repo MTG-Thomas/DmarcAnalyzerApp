@@ -41,6 +41,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<ScheduledTaskState> ScheduledTaskStates => Set<ScheduledTaskState>();
     public DbSet<SyncRequest> SyncRequests => Set<SyncRequest>();
     public DbSet<PasskeyCeremonyState> PasskeyCeremonyStates => Set<PasskeyCeremonyState>();
+    public DbSet<DpKey> DpKeys => Set<DpKey>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -681,9 +682,12 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasKey(x => x.Handle);
             entity.Property(x => x.Handle).IsRequired();
             entity.Property(x => x.Challenge).IsRequired();
+            entity.Property(x => x.OptionsJson);
             entity.Property(x => x.Attempts).HasDefaultValue(0);
             // The expiry sweep and the stale-row purge both scan on this.
             entity.HasIndex(x => x.ExpiresAtUtc);
         });
+
+        modelBuilder.ApplyDpKeyMapping();
     }
 }

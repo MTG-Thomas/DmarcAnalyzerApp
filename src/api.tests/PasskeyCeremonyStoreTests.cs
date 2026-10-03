@@ -298,6 +298,66 @@ public sealed class PasskeyCeremonyStoreTests
         UserVerification = UserVerificationRequirement.Required,
     });
 
+    [Fact]
+    public void RegistrationCeremonyRoundTripsExactOptions()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var (store, _) = CreateStore(clock);
+        var userId = Guid.NewGuid();
+        var excluded = new byte[] { 9, 8, 7 };
+        var start = Context();
+        var options = RegistrationOptions(userId, Enumerable.Repeat((byte)3, 32).ToArray());
+        options.ExcludeCredentials =
+        [
+            new PublicKeyCredentialDescriptor(
+                PublicKeyCredentialType.PublicKey, excluded, [AuthenticatorTransport.Usb]),
+        ];
+        options.Timeout = 424242UL;
+        store.StartRegistration(start.Response, start.Request, userId, options);
+
+        var completion = Context(CookieOf(start));
+        var ceremony = store.Consume(completion.Request, completion.Response, PasskeyCeremonyKind.Registration);
+
+        // Bit-for-bit what creation produced: a future creation-param change
+        // flows through the stored JSON instead of silently diverging from a
+        // parallel rebuild.
+        Assert.NotNull(ceremony);
+        Assert.Equal(options.ToJson(), ceremony.RegistrationOptions!.ToJson());
+        Assert.Equal(excluded, ceremony.RegistrationOptions.ExcludeCredentials.Single().Id);
+        Assert.Equal((ulong)424242, ceremony.RegistrationOptions.Timeout);
+        Assert.Equal("case@example.test", ceremony.RegistrationOptions.User.Name);
+    }
+
+    [Fact]
+    public void LegacyRowWithoutOptionsJson_FallsBackToChallengeRebuild()
+    {
+        var clock = new MutableTimeProvider(DateTimeOffset.UtcNow);
+        var dataProtection = new EphemeralDataProtectionProvider();
+        var (store, provider) = CreateStore(clock, dataProtection);
+        var challenge = Enumerable.Repeat((byte)5, 32).ToArray();
+        var now = clock.GetUtcNow().UtcDateTime;
+        using (var scope = provider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
+            db.PasskeyCeremonyStates.Add(new PasskeyCeremonyState
+            {
+                Handle = "legacy-handle",
+                Challenge = challenge,
+                OptionsJson = null,
+                CreatedAtUtc = now,
+                ExpiresAtUtc = now.AddMinutes(5),
+            });
+            db.SaveChanges();
+        }
+
+        var forged = dataProtection.CreateProtector("dmarc-passkey-ceremony-v1").Protect("legacy-handle");
+        var completion = Context($"dmarc_passkey_ceremony={forged}");
+        var ceremony = store.Consume(completion.Request, completion.Response, PasskeyCeremonyKind.Authentication);
+
+        Assert.NotNull(ceremony);
+        Assert.Equal(challenge, ceremony.AuthenticationOptions!.Challenge);
+    }
+
     private static DefaultHttpContext Context(string? cookie = null)
     {
         var context = new DefaultHttpContext();
