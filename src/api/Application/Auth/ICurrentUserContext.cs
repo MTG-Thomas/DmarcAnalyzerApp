@@ -27,6 +27,8 @@ public interface ICurrentUserContext
     bool IsAgencyStaff { get; }
     bool IsService { get; }
     IReadOnlyCollection<string> ServicePermissions { get; }
+    bool IsMagicLink { get; }
+    Guid? MagicLinkId { get; }
 
     /// <summary>Granted client ids; only meaningful when not agency staff.</summary>
     IReadOnlyCollection<Guid> AllowedClientIds { get; }

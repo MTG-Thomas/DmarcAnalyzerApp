@@ -28,6 +28,8 @@ public sealed class CurrentUserContext : ICurrentUserContext
     public bool IsAgencyStaff => Roles.IsAgencyStaff(Role);
     public bool IsService => ActorType == "service";
     public IReadOnlyCollection<string> ServicePermissions { get; private set; } = [];
+    public bool IsMagicLink => ActorType == "magic_link";
+    public Guid? MagicLinkId { get; private set; }
 
     /// <inheritdoc />
     public IReadOnlyCollection<Guid> AllowedClientIds => _allowedClientIds;
@@ -48,6 +50,7 @@ public sealed class CurrentUserContext : ICurrentUserContext
         Role = user.Role;
         _allowedClientIds = [.. grantedClientIds];
         ServicePermissions = [];
+        MagicLinkId = null;
     }
 
     internal void SetService(ServiceApiPrincipal principal)
@@ -59,5 +62,18 @@ public sealed class CurrentUserContext : ICurrentUserContext
         Role = Roles.AgencyAnalyst;
         _allowedClientIds = [];
         ServicePermissions = principal.Permissions;
+        MagicLinkId = null;
+    }
+
+    internal void SetMagicLink(Guid magicLinkId, Guid clientId, string label)
+    {
+        IsAuthenticated = true;
+        ActorType = "magic_link";
+        UserId = magicLinkId;
+        Email = $"magic-link:{label}";
+        Role = Roles.ClientViewer;
+        _allowedClientIds = [clientId];
+        ServicePermissions = [];
+        MagicLinkId = magicLinkId;
     }
 }

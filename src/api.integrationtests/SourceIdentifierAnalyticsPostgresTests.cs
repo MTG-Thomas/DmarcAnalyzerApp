@@ -35,6 +35,8 @@ public sealed class SourceIdentifierAnalyticsPostgresTests(PostgreSqlDatabaseFix
         public bool IsAgencyStaff => true;
         public bool IsService => false;
         public IReadOnlyCollection<string> ServicePermissions => [];
+        public bool IsMagicLink => false;
+        public Guid? MagicLinkId => null;
         public bool CanAccessClient(Guid clientId) => true;
         public bool HasServicePermission(string permission) => true;
     }

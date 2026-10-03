@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Auth;
+using DmarcAnalyzer.Api.Application.MagicLinks;
 using AuthenticationHeaderValue = System.Net.Http.Headers.AuthenticationHeaderValue;
 
 namespace DmarcAnalyzer.Api.Middleware;
@@ -7,7 +8,8 @@ namespace DmarcAnalyzer.Api.Middleware;
 /// The cookie front door for /api/v1/*: resolves the dmarc_session cookie to a
 /// user, populates <see cref="CurrentUserContext"/>, and 401s everything else.
 /// Paths outside /api/v1/ (health, MTA-STS, the SPA) pass through untouched,
-/// as do the listed public auth endpoints and machine-authenticated requests.
+/// as do the listed public auth endpoints and Bearer-authenticated requests
+/// (service credentials and magic links).
 /// </summary>
 public sealed class SessionAuthMiddleware(RequestDelegate next)
 {
@@ -35,7 +37,9 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         HttpContext context,
         IAuthService authService,
         IServiceApiAuthenticator serviceApiAuthenticator,
-        CurrentUserContext currentUserContext)
+        IMagicLinkAuthenticator magicLinkAuthenticator,
+        CurrentUserContext currentUserContext,
+        ILogger<SessionAuthMiddleware> logger)
     {
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
 
@@ -48,10 +52,20 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         if (context.Request.Headers.Authorization.Count > 0)
         {
             var token = GetBearerToken(context.Request);
-            var principal = await serviceApiAuthenticator.AuthenticateAsync(
+            var servicePrincipal = await serviceApiAuthenticator.AuthenticateAsync(
                 token,
                 context.RequestAborted);
-            if (principal is null)
+            if (servicePrincipal is not null)
+            {
+                currentUserContext.SetService(servicePrincipal);
+                await next(context);
+                return;
+            }
+
+            var magicLink = await magicLinkAuthenticator.AuthenticateAsync(
+                token,
+                context.RequestAborted);
+            if (magicLink is null)
             {
                 context.Response.StatusCode = 401;
                 await context.Response.WriteAsJsonAsync(
@@ -60,7 +74,21 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
                 return;
             }
 
-            currentUserContext.SetService(principal);
+            currentUserContext.SetMagicLink(magicLink.MagicLinkId, magicLink.ClientId, magicLink.Label);
+
+            // Best-effort usage evidence for the admin list. A failed write must
+            // not turn a succeeding read into a 500.
+            try
+            {
+                await magicLinkAuthenticator.TouchLastUsedAsync(
+                    magicLink.MagicLinkId,
+                    context.RequestAborted);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to record magic-link usage");
+            }
+
             await next(context);
             return;
         }

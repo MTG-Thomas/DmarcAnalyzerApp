@@ -207,6 +207,27 @@ The full `dmarc_api_v1.<prefix>.<secret>` token is never stored or logged. The
 table is excluded from configuration artifacts; restored integrations receive a
 new credential. ADR 0010 records the target convergence on one credential model.
 
+### `magic_link`
+Reveal-once read-only shares for one client. Separate from the machine
+credentials per ADR 0010, but minted and verified through the same
+`ApiCredentialToken` helper.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK, uuid |
+| `ClientId` | FK → `client`, **cascade**, indexed — the link's single tenant |
+| `Label` | max 100 — operator-chosen, so a list of links is readable |
+| `Prefix` | exactly 22 base64url characters; globally unique |
+| `TokenHash` | exactly 32 bytes — SHA-256 of the full token; compared in fixed time |
+| `CreatedAtUtc` | |
+| `ExpiresAtUtc` | indexed; 1–30 days at issuance, 7 by default; must be after creation |
+| `RevokedAtUtc` | nullable, indexed; non-null links cannot authenticate |
+| `LastUsedAtUtc` | nullable — best-effort usage evidence for the admin list |
+
+The full `dmarc_ml_v1.<prefix>.<secret>` token is never stored or logged. The
+table is excluded from configuration artifacts; a restored install issues fresh
+links.
+
 ### `mailbox_sync_run`
 One row per sync attempt; the operational audit trail behind
 `GET /mailbox-sync-runs` and `GET /mailbox-health`.
@@ -635,7 +656,6 @@ are provisional.
 | `digest_schedule` | Per-client digest cadence as rows. Shipped instead as a single global `Digest:DayOfMonth` — per-client schedules had no demand | — |
 | `export_job` | Async CSV/JSON export | analytics export |
 | `pdf_report_job` | Branded PDF summaries | branded PDF reports |
-| `magic_link_nonce` | Signed single-client read-only links (7-day default), revocable via DB nonce | magic link access |
 
 | archival before deletion | purging deletes outright; archiving to cold storage first is not implemented | — |
 | daily rollup table | Only if on-demand aggregation stops scaling (see A.5) | — |

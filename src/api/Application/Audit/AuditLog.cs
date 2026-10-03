@@ -37,6 +37,8 @@ public static class AuditEvents
     public const string ApiSourceReportUploaded = "api_source.report.uploaded";
     public const string ServiceApiCredentialCreated = "service_api_credential.created";
     public const string ServiceApiCredentialRevoked = "service_api_credential.revoked";
+    public const string MagicLinkCreated = "magic_link.created";
+    public const string MagicLinkRevoked = "magic_link.revoked";
 
     public const string UserCreated = "user.created";
     public const string UserUpdated = "user.updated";

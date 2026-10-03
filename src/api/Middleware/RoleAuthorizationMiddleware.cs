@@ -39,6 +39,32 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             return;
         }
 
+        if (currentUser.IsMagicLink)
+        {
+            // Read-only, single-client, explicit opt-in: a magic link reaches a
+            // GET endpoint only when that endpoint carries both AnyAuthenticated
+            // (the client_viewer read surface) and MagicLinkAllowed. Everything
+            // else — writes, staff/admin endpoints, passkeys, and any future
+            // endpoint that forgot the marker — is 403.
+            var magicAllowed = HttpMethods.IsGet(context.Request.Method)
+                || HttpMethods.IsHead(context.Request.Method);
+            magicAllowed = magicAllowed
+                && endpoint?.Metadata.GetMetadata<RoleRequirementMetadata>()?.Requirement
+                    == RoleRequirement.AnyAuthenticated
+                && endpoint?.Metadata.GetMetadata<MagicLinkAllowedMetadata>() is not null;
+            if (!magicAllowed)
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsJsonAsync(
+                    new { error = "forbidden" },
+                    context.RequestAborted);
+                return;
+            }
+
+            await next(context);
+            return;
+        }
+
         var requirement = endpoint?.Metadata
             .GetMetadata<RoleRequirementMetadata>()?.Requirement
             ?? RoleRequirement.AgencyStaff;

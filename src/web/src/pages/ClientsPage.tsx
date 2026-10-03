@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { MagicLinksDialog } from '@/components/MagicLinksDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -46,6 +47,7 @@ export function ClientsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingClientId, setEditingClientId] = useState<string | null>(null)
   const [clientForm, setClientForm] = useState(initialClientForm)
+  const [shareClient, setShareClient] = useState<Client | null>(null)
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -219,14 +221,24 @@ export function ClientsPage() {
                     </TableCell>
                     {canManage && (
                       <TableCell align="right">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon="pencil"
-                          onClick={() => openClientDialog(client)}
-                        >
-                          Edit
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="external-link"
+                            onClick={() => setShareClient(client)}
+                          >
+                            Share
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="pencil"
+                            onClick={() => openClientDialog(client)}
+                          >
+                            Edit
+                          </Button>
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>
@@ -369,6 +381,10 @@ export function ClientsPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {shareClient ? (
+        <MagicLinksDialog client={shareClient} onClose={() => setShareClient(null)} />
+      ) : null}
     </>
   )
 }

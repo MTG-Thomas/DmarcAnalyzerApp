@@ -236,3 +236,19 @@ Authorization: Bearer [REDACTED]
 Content-Type: application/gzip
 
 < ./report.xml.gz
+
+### Issue a magic link (admin; token and URL are returned once)
+POST {{baseUrl}}/api/v1/magic-links
+Content-Type: application/json
+
+{ "clientId": "00000000-0000-0000-0000-000000000000", "label": "April client review", "expiresInDays": 7 }
+
+### List magic links (never returns a token; optional clientId)
+GET {{baseUrl}}/api/v1/magic-links?clientId=00000000-0000-0000-0000-000000000000
+
+### Revoke a magic link
+POST {{baseUrl}}/api/v1/magic-links/00000000-0000-0000-0000-000000000000/revoke
+
+### Read analytics with a magic link (no session; single client only)
+GET {{baseUrl}}/api/v1/analytics/summary?days=30
+Authorization: Bearer [REDACTED]

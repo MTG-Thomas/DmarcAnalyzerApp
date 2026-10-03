@@ -15,6 +15,8 @@ public sealed class TestCurrentUserContext : ICurrentUserContext
     public bool IsAgencyStaff => Roles.IsAgencyStaff(Role);
     public bool IsService => ActorType == "service";
     public IReadOnlyCollection<string> ServicePermissions { get; init; } = [];
+    public bool IsMagicLink => ActorType == "magic_link";
+    public Guid? MagicLinkId { get; init; }
 
     public bool CanAccessClient(Guid clientId)
         => IsAgencyStaff || AllowedClientIds.Contains(clientId);

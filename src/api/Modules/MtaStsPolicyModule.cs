@@ -19,7 +19,7 @@ public sealed class MtaStsPolicyModule : ICarterModule
         {
             var response = await service.GetAsync(domainId, ct);
             return response is null ? Results.NotFound() : Results.Ok(response);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         // Admin, like domain management itself: this config directs client DNS
         // and certificate issuance.

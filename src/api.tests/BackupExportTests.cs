@@ -324,6 +324,33 @@ public sealed class BackupExportTests
     }
 
     [Fact]
+    public async Task MagicLinksAreCountedButNeverExported()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        db.Clients.Add(client);
+        var link = new MagicLink
+        {
+            ClientId = client.Id,
+            Label = "April review",
+            Prefix = "abcdefghijklmnopqrstuv",
+            TokenHash = Enumerable.Repeat((byte)7, 32).ToArray(),
+            CreatedAtUtc = DateTime.UtcNow.AddDays(-1),
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(6),
+        };
+        db.MagicLinks.Add(link);
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var json = BackupJson.Serialize(artifact);
+
+        Assert.Equal(1, artifact.Manifest.Excluded["magic_link"]);
+        Assert.DoesNotContain(link.Label, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(link.Prefix, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(Convert.ToBase64String(link.TokenHash), json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SpfDriftStateIsCountedButNeverExported()
     {
         await using var db = NewDb();

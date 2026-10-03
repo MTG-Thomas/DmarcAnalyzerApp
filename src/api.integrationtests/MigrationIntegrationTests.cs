@@ -19,7 +19,7 @@ public sealed class MigrationIntegrationTests(PostgreSqlDatabaseFixture database
     private const string BeforeServicePermissionsMigration = "20260812012105_AddServiceApiCredentials";
     private const string BeforePasskeyMigration = "20260812025139_AddServiceApiCredentialPermissions";
     private const string BeforeCredentialUpgradeRepair = "20260812033233_AddUserPasskeys";
-    private const string ExpectedLatestMigration = "20261003212653_AddDpKeyAndCeremonyOptionsJson";
+    private const string ExpectedLatestMigration = "20261003223110_AddMagicLinks";
 
     [Fact]
     public async Task EmptyDatabase_MigratesToPinnedLatestSchema()

@@ -4,9 +4,19 @@ using System.Text;
 
 namespace DmarcAnalyzer.Api.Application.Auth;
 
+internal sealed record MintedCredentialToken(string Prefix, string Token, byte[] TokenHash);
+
 internal static class ApiCredentialToken
 {
     private static readonly byte[] MissingCredentialHash = new byte[32];
+
+    public static MintedCredentialToken Mint(string scheme)
+    {
+        var prefix = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
+        var secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
+        var token = $"{scheme}.{prefix}.{secret}";
+        return new MintedCredentialToken(prefix, token, SHA256.HashData(Encoding.ASCII.GetBytes(token)));
+    }
 
     public static bool TryGetPrefix(string? token, string scheme, out string prefix)
     {

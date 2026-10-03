@@ -8,6 +8,7 @@ import { isAdmin, isStaff } from '@/lib/authz'
 import { AuditPage } from '@/pages/AuditPage'
 import { AlertsPage } from '@/pages/AlertsPage'
 import { BackupPage } from '@/pages/BackupPage'
+import { ClientViewPage } from '@/pages/ClientViewPage'
 import { ClientsPage } from '@/pages/ClientsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { DomainDetailPage } from '@/pages/DomainDetailPage'
@@ -21,6 +22,13 @@ import { UsersPage } from '@/pages/UsersPage'
 
 function App() {
   const { status, user } = useAuth()
+
+  // Magic-link shares are anonymous by design: the token in the URL is the
+  // credential, so this route renders before (and regardless of) the session
+  // gate below. It carries its own Bearer [REDACTED] and never reads the login session.
+  if (window.location.pathname === '/client-view') {
+    return <ClientViewPage />
+  }
 
   if (status === 'loading') {
     return (

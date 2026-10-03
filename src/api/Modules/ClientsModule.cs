@@ -18,14 +18,14 @@ public sealed class ClientsModule : ICarterModule
             var client = await service.GetAsync(id, ct);
 
             return client is null ? Results.NotFound() : Results.Ok(client);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/clients", async (IClientService service, CancellationToken ct) =>
         {
             var clients = await service.ListAsync(ct);
 
             return Results.Ok(clients);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapPost("/api/v1/clients", async (CreateClientRequest request, IClientService service, IAuditLog audit, CancellationToken ct) =>
         {

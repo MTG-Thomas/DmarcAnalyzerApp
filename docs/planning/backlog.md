@@ -66,9 +66,13 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Enforce globally unique domain ownership across clients.
 - [x] (done) Add support for ZIP and GZIP attachment extraction in ingestion pipeline (magic-byte detection; SharpCompress codecs incl. deflate64/bzip2/lzma/zstd).
 - [x] (done) Implement unlimited initial mailbox backfill (oldest-to-newest) with durable checkpoints.
-- [ ] (todo) Add magic link access model (single-client, read-only, 7-day default expiry).
-      Per ADR 0010 this remains separate from machine credentials but should
-      reuse the same token minting and fixed-time comparison helper.
+- [x] (done) Add magic link access model (single-client, read-only, 7-day default expiry).
+      Separate `magic_link` rows per ADR 0010, reusing the shared `ApiCredentialToken`
+      minting and fixed-time comparison helper. Admin-only mint/list/revoke under
+      `/api/v1/magic-links` (audited, reveal-once); anonymous `dmarc_ml_v1` Bearer [REDACTED]
+      reaches only GET endpoints carrying both `AllowClientViewer` and `AllowMagicLink`,
+      scoped to the link's single client. Console sharing dialog on Clients plus an
+      anonymous `/client-view?token=` report page. Excluded from backup artifacts.
 - [ ] (todo) **Converge fork machine credentials on ADR 0010.** The fork already
       ships separate source-scoped `api_source_credential` and global
       `service_api_credential` paths. Preserve them for current fork callers,
