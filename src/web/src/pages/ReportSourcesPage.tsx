@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Notice } from '@/components/Notice'
+import { SyncRequestPanel } from '@/components/SyncRequestPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -30,6 +31,7 @@ import type {
 } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
 import { usePageTitle } from '@/lib/use-page-title'
+import { useSyncRequests } from '@/lib/use-sync-request'
 
 type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
@@ -429,7 +431,6 @@ export function ReportSourcesPage() {
   const [mailboxOpsFilter, setMailboxOpsFilter] = useState<MailboxOpsFilter>('all')
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [syncingId, setSyncingId] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMailboxId, setEditingMailboxId] = useState<string | null>(null)
@@ -472,6 +473,14 @@ export function ReportSourcesPage() {
     void loadData()
   }, [loadData])
 
+  // A settled request refreshes the health and recent-run tables below, so the
+  // live status and the stored outcomes agree without a manual reload.
+  const { requests: syncRequests, startSync, dismiss } = useSyncRequests({
+    onSettled: () => {
+      void loadData()
+    },
+  })
+
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
     [clients],
@@ -484,6 +493,11 @@ export function ReportSourcesPage() {
 
   const sourceById = useMemo(
     () => new Map(reportSources.map((source) => [source.id, source])),
+    [reportSources],
+  )
+
+  const syncSourceNames = useMemo(
+    () => new Map(reportSources.map((source) => [source.id, source.name])),
     [reportSources],
   )
 
@@ -668,15 +682,14 @@ export function ReportSourcesPage() {
   }
 
   const syncNow = async (id: string) => {
-    setSyncingId(id)
     setError(null)
     try {
-      await fetchJson(`/api/v1/report-sources/${id}/sync`, { method: 'POST' })
-      await loadData()
+      // The POST only queues; the hook polls the returned statusUrl and the
+      // tables refresh through onSettled once the request reaches a terminal
+      // status.
+      await startSync(id)
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Failed to sync mailbox')
-    } finally {
-      setSyncingId(null)
     }
   }
 
@@ -755,7 +768,7 @@ export function ReportSourcesPage() {
                       : isPolled
                         ? getHealthBadge(health?.lastRunStatus)
                         : getUnpolledBadge(source.protocol)
-                    const isSyncing = syncingId === source.id
+                    const isSyncing = syncRequests.get(source.id)?.polling ?? false
                     return (
                       <TableRow key={source.id} last={index === filteredReportSources.length - 1}>
                         <TableCell mono>{source.name}</TableCell>
@@ -836,6 +849,12 @@ export function ReportSourcesPage() {
               </p>
             ) : null}
           </Card>
+
+          <SyncRequestPanel
+            entries={[...syncRequests.values()]}
+            sourceNames={syncSourceNames}
+            onDismiss={dismiss}
+          />
 
           {failingMailboxes.length > 0 ? (
             <div className="mt-3 space-y-1.5">
