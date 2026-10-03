@@ -822,7 +822,7 @@ function diffSnapshots(
 ): SnapshotMove[] {
   const before = new Map(previous.map((e) => [e.domain.toLowerCase(), e]))
   const after = new Map(current.map((e) => [e.domain.toLowerCase(), e]))
-  const domains = [...new Set([...before.keys(), ...after.keys()])].sort()
+  const domains = [...new Set([...before.keys(), ...after.keys()])].sort((a, b) => a.localeCompare(b))
   const moves: SnapshotMove[] = []
   for (const key of domains) {
     const oldEntry = before.get(key)
