@@ -59,7 +59,7 @@ public sealed class WorkerOptions
     public int RetentionIntervalHours { get; set; } = 24;
 
     /// <summary>
-    /// Refuse to start when another worker already holds the ingestion lock.
+    /// Wait before ingestion when another worker already holds the ingestion lock.
     /// <para>
     /// On by default. Two ingestion loops duplicate every sync pass and can send
     /// duplicate alert and digest email — see <see cref="WorkerSingleInstanceLock"/>

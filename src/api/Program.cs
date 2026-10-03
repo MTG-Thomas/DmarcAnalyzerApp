@@ -154,9 +154,8 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IBackupOffloadService, BackupOffloadService>();
     workerBuilder.Services.AddScoped<IMailboxRetentionPlanner, MailboxRetentionPlanner>();
     workerBuilder.Services.AddScoped<IMailboxRetentionService, MailboxRetentionService>();
-    // Registered before the loop: hosted services start in order, so this refuses
-    // a second worker before that worker connects to any mailbox.
-    workerBuilder.Services.AddHostedService<WorkerSingleInstanceLock>();
+    // The loop waits for ownership in the background before any ingestion.
+    workerBuilder.Services.AddSingleton<WorkerSingleInstanceLock>();
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
     var workerHost = workerBuilder.Build();
@@ -373,7 +372,7 @@ if (mode == AppMode.All)
     // Everything the loop needs is already registered above — the API host resolves
     // the same sync, alert, digest, retention and DNS services. Combined mode is
     // this one line plus the identity handling below, not a second wiring path.
-    builder.Services.AddHostedService<WorkerSingleInstanceLock>();
+    builder.Services.AddSingleton<WorkerSingleInstanceLock>();
     builder.Services.AddHostedService<QueueWorkerService>();
 }
 
