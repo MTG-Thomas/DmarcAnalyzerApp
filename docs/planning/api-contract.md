@@ -114,6 +114,7 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/domains/{domainId}/source-detail` | One source: evaluated DKIM×SPF combos, raw auth results, identifiers, reporters, trend. Requires `ip` (400 if missing) |
 | GET | `/analytics/domains/{domainId}/enforcement` | Guided next policy step, rationale, `readyToAdvance`, blocking sources |
 | GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published`. The SPF section carries the recursive dependency tree (`dependencyTree`) with the global 10-lookup budget, void lookups, and per-term follow notes |
+| GET | `/analytics/domains/{domainId}/spf-candidate` | Conservative flattened-SPF proposal from the live record (`ready`/`refused`/`lookup_failed`, per-term terms, savings); read-only, never publishes |
 | GET | `/analytics/domains/{domainId}/mta-sts` | The domain's persisted MTA-STS state (record, policy file, MX coverage) — database only, no live lookups |
 | POST | `/analytics/domains/{domainId}/mta-sts/recheck` | **staff** — runs the MTA-STS check live (DNS + HTTPS) and persists it; returns the updated state |
 | GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX, plus `record` — the live `_smtp._tls` TXT lookup (`found`/`missing`/`lookup_failed`/`invalid`, RFC 8460 §3), without which zero sessions is unreadable. Windows anchor to the newest **TLS** data the caller can see. Touches DNS, so unlike `mta-sts` it is not a pure database read |
@@ -591,6 +592,16 @@ how an absent `sp` is reported, since a subdomain policy that is not published
 cannot disagree with anything. `not_reported` means the tag is published but the
 reporter sent no value for it. A published `sp` weaker than `p` is a genuine gap
 and surfaces in `dmarc.issues[]` rather than as a comparison difference.
+
+### GET `/analytics/domains/{domainId}/spf-candidate`
+
+A conservative flattened-SPF proposal for the domain's current live record.
+`status` is `ready` (a candidate that lowers the lookup count), `refused`
+(nothing could be expanded, with per-term `reasons[]`), or `lookup_failed`.
+The candidate preserves mechanism order, never supernets, expands each term
+all-or-nothing, and keeps volatile provider stubs and nested non-`+`
+mechanisms as unexpanded includes. `txtSegments` is the 255-octet split count.
+Read-only: this endpoint proposes text, it never publishes anything.
 
 ### GET `/analytics/domains/{domainId}/mta-sts`
 

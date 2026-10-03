@@ -10,6 +10,9 @@ public interface IRecordInspectionService
 {
     /// <summary>Live DNS DMARC/SPF records for the domain, compared against what reporters observed.</summary>
     Task<RecordInspectionDto?> InspectAsync(Guid domainId, CancellationToken ct);
+
+    /// <summary>Conservative flattened SPF candidate for the domain, or a refusal with reasons. Read-only.</summary>
+    Task<SpfCandidateDto?> GenerateSpfCandidateAsync(Guid domainId, CancellationToken ct);
 }
 
 /// <summary>
@@ -22,7 +25,8 @@ public sealed class RecordInspectionService(
     ICurrentUserContext currentUser,
     IDnsTxtResolver dns,
     IDmarcPolicyResolver policyResolver,
-    ISpfDependencyAnalyzer spfAnalyzer) : IRecordInspectionService
+    ISpfDependencyAnalyzer spfAnalyzer,
+    ISpfCandidateGenerator spfCandidateGenerator) : IRecordInspectionService
 {
     /// <inheritdoc />
     public async Task<RecordInspectionDto?> InspectAsync(Guid domainId, CancellationToken ct)
@@ -103,6 +107,24 @@ public sealed class RecordInspectionService(
             observed,
             Compare(dmarc, observed),
             externalDestinations);
+    }
+
+    /// <inheritdoc />
+    public async Task<SpfCandidateDto?> GenerateSpfCandidateAsync(Guid domainId, CancellationToken ct)
+    {
+        var domain = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Id == domainId)
+            .Select(x => new { x.Id, x.Name, x.ClientId })
+            .SingleOrDefaultAsync(ct);
+
+        // Same tenant rule as InspectAsync: cross-tenant ids read as not-found.
+        if (domain is null || !currentUser.CanAccessClient(domain.ClientId))
+        {
+            return null;
+        }
+
+        return await spfCandidateGenerator.GenerateAsync(domain.Name, ct);
     }
 
     /// <summary>

@@ -415,6 +415,40 @@ export type SpfDependencyNode = {
   issues: string[]
 }
 
+export type SpfCandidateStatus = 'ready' | 'refused'
+
+export type SpfCandidateTermOutcome = 'expanded' | 'passthrough' | 'preserved' | 'dropped'
+
+export type SpfCandidateTerm = {
+  /** The term exactly as published. */
+  originalText: string
+  outcome: SpfCandidateTermOutcome
+  /** Why a term was preserved or dropped, null for clean expansions. */
+  reason: string | null
+  /** The replacement terms, for expanded terms only. */
+  expandedTerms: string[]
+}
+
+export type SpfCandidate = {
+  status: SpfCandidateStatus
+  /** The published record the candidate was built from (empty when refused without one). */
+  original: string
+  /** The flattened record, null when refused. */
+  candidate: string | null
+  /** Per-term outcomes for the original→candidate diff. */
+  terms: SpfCandidateTerm[]
+  /** Refusal reasons, or notes on a ready candidate. */
+  reasons: string[]
+  /** Recursive RFC lookups the published record costs. */
+  originalLookups: number
+  /** RFC lookups the candidate still costs (preserved stubs). */
+  candidateLookups: number
+  /** Candidate characters (0 when refused). */
+  candidateLength: number
+  /** 255-byte TXT character-strings the candidate needs (0 when refused). */
+  txtSegments: number
+}
+
 /** The DMARC policy reporters most recently observed (policy_published). */
 export type ObservedPolicy = {
   policy: string

@@ -289,6 +289,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Record inspection (published vs observed):
   - `IDnsTxtResolver` (DnsClient against the host's configured resolver — no third-party DoH) with short-lived caching
   - `GET /api/v1/analytics/domains/{id}/records` — live `_dmarc`/SPF TXT records parsed tag-by-tag (multiple-record permerror, missing rua, +all, 10-lookup count) and compared field-by-field against the latest `policy_published` reporters observed; the SPF section also carries the recursive dependency tree (global lookup budget, void lookups, per-term follow notes) with a Domain Detail tree panel
+  - `GET /api/v1/analytics/domains/{id}/spf-candidate` — conservative flattened-SPF proposal from the live record: `ready`/`refused`/`lookup_failed`, per-term kept/expanded terms with reasons, lookup-count and TXT-segment savings, with a Domain Detail candidate panel (copy + diff). Read-only, never publishes.
   - Domain Detail "Record inspection" card, fetched separately so slow DNS never blocks the analytics render
 
 - MTA-STS monitoring (RFC 8461):

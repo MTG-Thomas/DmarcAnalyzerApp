@@ -42,6 +42,8 @@ import {
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
+  type SpfCandidate,
+  type SpfCandidateTermOutcome,
   type SpfDependencyNode,
   type SpfNodeStatus,
   type TlsRptRecord,
@@ -461,6 +463,119 @@ export function SpfDependencyTree({ node }: { node: SpfDependencyNode }) {
   )
 }
 
+const SPF_CANDIDATE_OUTCOME_META: Record<
+  SpfCandidateTermOutcome,
+  { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
+> = {
+  expanded: { label: 'Expanded', badge: 'success' },
+  passthrough: { label: 'Unchanged', badge: 'neutral' },
+  preserved: { label: 'Kept as-is', badge: 'warning' },
+  dropped: { label: 'Dropped', badge: 'neutral' },
+}
+
+/**
+ * A flattening candidate: the publishable record with a copy button, the
+ * lookup/size math, and the per-term diff against the published record.
+ * Presentational — the parent owns fetching.
+ */
+export function SpfCandidateView({ candidate }: { candidate: SpfCandidate }) {
+  if (candidate.status === 'refused' || !candidate.candidate) {
+    return (
+      <ul className="mt-2 space-y-1">
+        {candidate.reasons.map((reason) => (
+          <li key={reason} className="flex items-start gap-1.5 text-xs text-[var(--status-warn-fg)]">
+            <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
+            {reason}
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <pre className="min-w-0 flex-1 overflow-x-auto rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap">
+          {candidate.candidate}
+        </pre>
+        <CopyButton value={candidate.candidate} label="Flattened SPF record" />
+      </div>
+      <p className="text-xs text-secondary">
+        {candidate.originalLookups}→{candidate.candidateLookups} lookups · {candidate.candidateLength} characters ·{' '}
+        {candidate.txtSegments} TXT segment{candidate.txtSegments === 1 ? '' : 's'}
+      </p>
+      <ul className="space-y-1">
+        {candidate.terms.map((term, index) => {
+          const meta = SPF_CANDIDATE_OUTCOME_META[term.outcome]
+          return (
+            // Terms can repeat (two identical includes), so the text alone is not a key.
+            <li key={`${term.originalText}-${index}`} className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-mono">{term.originalText}</span>
+              <Badge variant={meta.badge}>{meta.label}</Badge>
+              {term.reason ? <span className="text-secondary">{term.reason}</span> : null}
+              {term.expandedTerms.length > 0 ? (
+                <span className="font-mono text-secondary">→ {term.expandedTerms.join(' ')}</span>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * On-demand flattening candidate. Separate fetch from the inspection card:
+ * expansion fans wider (MX×A per host) than discovery, so it only runs when asked.
+ */
+function SpfCandidatePanel({ domainId }: { domainId: string }) {
+  const [candidate, setCandidate] = useState<SpfCandidate | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const generate = useCallback(async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<SpfCandidate>(
+        `/api/v1/analytics/domains/${domainId}/spf-candidate`,
+      )
+      setCandidate(payload)
+    } catch (loadError) {
+      setCandidate(null)
+      setError(loadError instanceof Error ? loadError.message : 'Failed to generate candidate')
+    } finally {
+      setBusy(false)
+    }
+  }, [domainId])
+
+  return (
+    <div>
+      <PanelSectionTitle>Flattening candidate</PanelSectionTitle>
+      {candidate ? (
+        <SpfCandidateView candidate={candidate} />
+      ) : (
+        <p className="mt-1 text-xs text-secondary">
+          Expand static includes to addresses. Dynamic terms stay as stub includes — nothing is published.
+        </p>
+      )}
+      {busy ? (
+        <div className="mt-2 flex items-center gap-2 text-xs text-secondary">
+          <Icon name="loader-circle" size={14} className="animate-spin" />
+          Expanding includes…
+        </div>
+      ) : (
+        <div className="mt-2">
+          <Button type="button" variant="secondary" size="sm" onClick={() => void generate()}>
+            {candidate ? 'Regenerate candidate' : 'Generate candidate'}
+          </Button>
+        </div>
+      )}
+      {error ? <p className="mt-2 text-xs text-[var(--status-danger-fg)]">{error}</p> : null}
+    </div>
+  )
+}
+
 /**
  * Live DNS DMARC/SPF records vs the policy reporters observed. Fetched
  * separately from the analytics payload because the server does real DNS
@@ -546,6 +661,11 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                 Every include followed, counted against the single 10-lookup budget receivers enforce.
               </p>
               <SpfDependencyTree node={inspection.spf.dependencyTree} />
+            </div>
+          ) : null}
+          {inspection.spf.status === 'found' ? (
+            <div className="lg:col-span-2">
+              <SpfCandidatePanel domainId={domainId} />
             </div>
           ) : null}
           {inspection.externalDestinations.length > 0 ? (

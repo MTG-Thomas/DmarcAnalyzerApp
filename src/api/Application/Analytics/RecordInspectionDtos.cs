@@ -97,6 +97,42 @@ public sealed record SpfDependencyNodeDto(
     int LookupsUsed,
     IReadOnlyList<string> Issues);
 
+/// <summary>What happened to one published term while building a flattening candidate.</summary>
+/// <param name="OriginalText">The term exactly as published.</param>
+/// <param name="Outcome">expanded/passthrough/preserved/dropped.</param>
+/// <param name="Reason">Why a term was preserved or dropped, null for clean expansions.</param>
+/// <param name="ExpandedTerms">The replacement terms, for expanded terms only.</param>
+public sealed record SpfCandidateTermDto(
+    string OriginalText,
+    string Outcome,
+    string? Reason,
+    IReadOnlyList<string> ExpandedTerms);
+
+/// <summary>
+/// A conservative flattened SPF candidate: static includes expanded to addresses,
+/// everything dynamic kept verbatim, or a refusal with reasons. Read-only output —
+/// publishing it is #45's job, never this endpoint's.
+/// </summary>
+/// <param name="Status">ready/refused.</param>
+/// <param name="Original">The published record the candidate was built from (empty when refused without one).</param>
+/// <param name="Candidate">The flattened record, null when refused.</param>
+/// <param name="Terms">Per-term outcomes for the original→candidate diff.</param>
+/// <param name="Reasons">Refusal reasons, or notes on a ready candidate.</param>
+/// <param name="OriginalLookups">Recursive RFC lookups the published record costs (from #42's analysis).</param>
+/// <param name="CandidateLookups">RFC lookups the candidate still costs (preserved stubs).</param>
+/// <param name="CandidateLength">Candidate characters (0 when refused).</param>
+/// <param name="TxtSegments">255-byte TXT character-strings the candidate needs (0 when refused).</param>
+public sealed record SpfCandidateDto(
+    string Status,
+    string Original,
+    string? Candidate,
+    IReadOnlyList<SpfCandidateTermDto> Terms,
+    IReadOnlyList<string> Reasons,
+    int OriginalLookups,
+    int CandidateLookups,
+    int CandidateLength,
+    int TxtSegments);
+
 /// <summary>The DMARC policy reporters most recently observed (policy_published).</summary>
 public sealed record ObservedPolicyDto(
     string Policy,
