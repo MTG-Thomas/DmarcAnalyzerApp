@@ -274,7 +274,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - administrator-only Settings UI for listing, creating, copying once, and revoking service API keys; source-scoped report-upload keys remain on their report source
   - auth endpoints: register, login, logout, me
   - CORS credentials support for frontend dev
-  - passkey ceremonies persist on `passkey_ceremony` (atomic one-time consume, 5-min expiry, exact-options round-trip) and the Data Protection key ring on `dp_key`, so ceremonies complete across replicas, replacements, and cold starts; at-rest key encryption via Key Vault is an explicit follow-up
+  - passkey ceremonies persist on `passkey_ceremony` (atomic one-time consume, 5-min expiry, exact-options round-trip) and the Data Protection key ring on `dp_key`, so ceremonies complete across replicas, replacements, and cold starts; at-rest ring encryption is config-driven via `DataProtection:KeyVaultKeyId` (Azure Key Vault envelope encryption, off by default with a plaintext ring)
 
 - Mailbox credential encryption at rest:
   - AES-256-GCM via `Security:CredentialEncryptionKey` (base64, 32 bytes)

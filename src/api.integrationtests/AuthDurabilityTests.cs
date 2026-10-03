@@ -1,9 +1,12 @@
+using System.Text;
+using System.Xml.Linq;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Fido2NetLib;
 using Fido2NetLib.Objects;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.DataProtection.XmlEncryption;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -97,6 +100,41 @@ public sealed class AuthDurabilityTests(PostgreSqlDatabaseFixture database)
     }
 
     [Fact]
+    public async Task DataProtection_EncryptedAtRest_RoundTripsAcrossProviderInstances()
+    {
+        await database.ResetDatabaseAsync();
+        await database.MigrateToLatestAsync();
+
+        using var first = BuildEncryptedDataProtectionHost();
+        var payload = first.GetRequiredService<IDataProtectionProvider>()
+            .CreateProtector("pg-encrypted-roundtrip")
+            .Protect("replica-secret");
+
+        using (var scope = first.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
+            var rows = await db.Set<DpKey>().AsNoTracking().ToListAsync();
+            Assert.NotEmpty(rows);
+            Assert.All(rows, row =>
+            {
+                // The outer <key> wrapper (id, dates, algorithms) is never
+                // secret; encryption seals the <masterKey> into an
+                // <encryptedSecret>.
+                Assert.DoesNotContain("<masterKey", row.Xml, StringComparison.Ordinal);
+                Assert.Contains("encryptedSecret", row.Xml, StringComparison.Ordinal);
+                Assert.Contains("encrypted-test", row.Xml, StringComparison.Ordinal);
+            });
+        }
+
+        using var second = BuildEncryptedDataProtectionHost();
+        var reopened = second.GetRequiredService<IDataProtectionProvider>()
+            .CreateProtector("pg-encrypted-roundtrip")
+            .Unprotect(payload);
+
+        Assert.Equal("replica-secret", reopened);
+    }
+
+    [Fact]
     public async Task ExpiredCeremonyConsumeFailsAndPurgeRemovesIt()
     {
         await database.ResetDatabaseAsync();
@@ -170,6 +208,15 @@ public sealed class AuthDurabilityTests(PostgreSqlDatabaseFixture database)
         return services.BuildServiceProvider();
     }
 
+    private ServiceProvider BuildEncryptedDataProtectionHost()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<DmarcAnalyzerDbContext>(options =>
+            options.UseNpgsql(database.ConnectionString));
+        services.AddDurableDataProtection(new TestXmlEncryptor());
+        return services.BuildServiceProvider();
+    }
+
     private static Fido2Configuration Fido2Configuration() => new()
     {
         ServerDomain = "dmarc.midtowntg.com",
@@ -193,5 +240,30 @@ public sealed class AuthDurabilityTests(PostgreSqlDatabaseFixture database)
         context.Request.Scheme = "https";
         if (cookie is not null) context.Request.Headers.Cookie = cookie;
         return context;
+    }
+
+    /// <summary>
+    /// Reversible stand-in for the Key Vault encryptor: wraps the key XML in a
+    /// marker element rather than sealing it, so tests can assert on the stored
+    /// shape without a vault.
+    /// </summary>
+    private sealed class TestXmlEncryptor : IXmlEncryptor
+    {
+        public EncryptedXmlInfo Encrypt(XElement plaintextElement)
+        {
+            var bytes = Encoding.UTF8.GetBytes(plaintextElement.ToString(SaveOptions.DisableFormatting));
+            return new EncryptedXmlInfo(
+                new XElement("encrypted-test", Convert.ToBase64String(bytes)),
+                typeof(TestXmlDecryptor));
+        }
+    }
+
+    private sealed class TestXmlDecryptor : IXmlDecryptor
+    {
+        public XElement Decrypt(XElement encryptedElement)
+        {
+            var bytes = Convert.FromBase64String(encryptedElement.Value);
+            return XElement.Parse(Encoding.UTF8.GetString(bytes));
+        }
     }
 }

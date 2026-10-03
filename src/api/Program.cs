@@ -341,7 +341,7 @@ builder.Services.AddFido2(options =>
     options.Origins = passkeyOptions.Origins.ToHashSet(StringComparer.OrdinalIgnoreCase);
     options.ChallengeSize = 32;
 });
-builder.Services.AddDurableDataProtection();
+builder.Services.AddDurableDataProtection(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IPasskeyCeremonyStore, PasskeyCeremonyStore>();
 builder.Services.AddScoped<IPasskeyService, PasskeyService>();
