@@ -167,6 +167,82 @@ if (mode == AppMode.Worker)
     return;
 }
 
+if (mode == AppMode.WorkerOnce)
+{
+    // One iteration of the worker loop, then exit: the same passes over the
+    // same services as the worker block above, driven once by WorkerOnceRunner
+    // instead of forever by the hosted service. The two registrations must stay
+    // in step — a pass that resolves a service missing here throws only at
+    // runtime, and only in this mode.
+    var onceBuilder = Host.CreateApplicationBuilder(args);
+    ConfigurationPreflight.Validate(onceBuilder.Configuration);
+    var onceTelemetry = onceBuilder.AddTelemetry(mode);
+    var onceConnectionString = ConnectionStringResolver.Resolve(onceBuilder.Configuration)
+        ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
+
+    onceBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
+        options.UseNpgsql(onceConnectionString));
+    onceBuilder.Services.AddCredentialProtection(onceBuilder.Configuration);
+    onceBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
+    onceBuilder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
+    onceBuilder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
+    onceBuilder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
+    onceBuilder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
+    onceBuilder.Services.AddSingleton<IPolledSourceTransport, ImapMailboxTransport>();
+    onceBuilder.Services.AddSingleton<IPolledSourceTransport, Pop3MailboxTransport>();
+    onceBuilder.Services.AddSingleton<IPolledSourceTransportFactory, PolledSourceTransportFactory>();
+    onceBuilder.Services.AddSingleton<IPolledSourceTransport, S3ReportSourceTransport>();
+    onceBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    onceBuilder.Services.AddHttpContextAccessor();
+    onceBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
+    onceBuilder.Services.AddScoped<IAuditLog, AuditLog>();
+    onceBuilder.Services.Configure<RetentionOptions>(onceBuilder.Configuration.GetSection("Retention"));
+    onceBuilder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
+    onceBuilder.Services.Configure<EmailOptions>(onceBuilder.Configuration.GetSection("Email"));
+    onceBuilder.Services.Configure<AlertOptions>(onceBuilder.Configuration.GetSection("Alerts"));
+    onceBuilder.Services.AddScoped<IEmailSender, EmailSender>();
+    onceBuilder.Services.Configure<DigestOptions>(onceBuilder.Configuration.GetSection("Digest"));
+    onceBuilder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
+    onceBuilder.Services.AddScoped<IDigestService, DigestService>();
+    onceBuilder.Services.AddMemoryCache();
+    onceBuilder.Services.Configure<DnsOptions>(onceBuilder.Configuration.GetSection("Dns"));
+    onceBuilder.Services.AddSingleton<IAuthoritativeDnsClientLocator, AuthoritativeDnsClientLocator>();
+    onceBuilder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
+    onceBuilder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
+    onceBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
+    onceBuilder.Services.AddMtaStsMonitoring(onceBuilder.Configuration);
+    onceBuilder.Services.AddSpfDriftMonitoring(onceBuilder.Configuration);
+    onceBuilder.Services.Configure<WorkerOptions>(onceBuilder.Configuration.GetSection("Worker"));
+    onceBuilder.Services.Configure<WorkerOnceOptions>(onceBuilder.Configuration.GetSection(WorkerOnceOptions.SectionName));
+    onceBuilder.Services.AddOptions<ReportPayloadExtractionOptions>()
+        .Bind(onceBuilder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
+        .Validate(options => options.IsValid(), "Ingestion limits must be positive; MaxEntryBytes must not exceed MaxExpandedBytes; MaxCompressionRatio must be at least 1")
+        .ValidateOnStart();
+    onceBuilder.Services.AddSingleton<IReportPayloadExtractor, BoundedReportPayloadExtractor>();
+    onceBuilder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
+    onceBuilder.Services.Configure<BackupOptions>(onceBuilder.Configuration.GetSection("Backup"));
+    onceBuilder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+    onceBuilder.Services.AddScoped<IReportMailArchive, ReportMailArchive>();
+    onceBuilder.Services.AddScoped<IBackupExportService, BackupExportService>();
+    onceBuilder.Services.AddScoped<IBackupOffloadService, BackupOffloadService>();
+    onceBuilder.Services.AddScoped<IMailboxRetentionPlanner, MailboxRetentionPlanner>();
+    onceBuilder.Services.AddScoped<IMailboxRetentionService, MailboxRetentionService>();
+    onceBuilder.Services.AddSingleton<WorkerSingleInstanceLock>();
+    onceBuilder.Services.AddSingleton<IWorkerInstanceLock>(sp => sp.GetRequiredService<WorkerSingleInstanceLock>());
+    // The loop as a single callable iteration rather than a hosted service.
+    onceBuilder.Services.AddSingleton<QueueWorkerService>();
+    onceBuilder.Services.AddSingleton<IWorkerPassSource>(sp => sp.GetRequiredService<QueueWorkerService>());
+    onceBuilder.Services.AddSingleton<WorkerOnceRunner>();
+
+    using var onceHost = onceBuilder.Build();
+    onceHost.Services.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Telemetry").LogTelemetryStatus(onceTelemetry);
+    // Environment.ExitCode rather than returning the code: every other path
+    // here ends in a bare return, and mixing the two forms is not allowed.
+    Environment.ExitCode = await onceHost.Services.GetRequiredService<WorkerOnceRunner>().RunAsync();
+    return;
+}
+
 if (mode == AppMode.MtaSts)
 {
     // The dedicated public policy host: an internet-facing container serving
