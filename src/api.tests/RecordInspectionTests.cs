@@ -457,7 +457,7 @@ public sealed class RecordInspectionTests
         Assert.Equal(2, dto.Spf.RecursiveLookups);
         Assert.NotNull(dto.Spf.DependencyTree);
         Assert.Equal("acme.example", dto.Spf.DependencyTree!.Domain);
-        var child = Assert.Single(dto.Spf.DependencyTree.Terms.Where(t => t.Resolution is not null));
+        var child = Assert.Single(dto.Spf.DependencyTree.Terms, t => t.Resolution is not null);
         Assert.Equal("_spf.example.com", child.Resolution!.Domain);
         var mxTerm = child.Resolution.Terms.Single(t => t.Kind == "mx");
         Assert.Equal(["mail.example.com"], mxTerm.MxHosts);
