@@ -59,6 +59,22 @@ is `portfolio.read`, `alerts.manage`, `clients.manage`, `domains.manage`,
 Service credentials can never manage service or source credentials, users,
 authentication, backups/configuration, database migrations, or retention.
 
+### Magic links (client read-only shares)
+| Method | Path | Access |
+|---|---|---|
+| GET | `/magic-links` | admin — metadata only; never returns a token or hash. Optional `clientId` filter |
+| POST | `/magic-links` | admin — issue a reveal-once single-client link (`clientId`, `label`, `expiresInDays` default 7, max 30) |
+| POST | `/magic-links/{id}/revoke` | admin — idempotent revocation |
+
+Tokens use `Authorization: Bearer [REDACTED]<prefix>.<secret>`. The full token
+and the shareable `/client-view?token=` URL are returned only by the create
+response; only the prefix and SHA-256 hash are stored. A magic-link Bearer [REDACTED]
+is anonymous and reaches only GET endpoints carrying both `AllowClientViewer`
+and `AllowMagicLink` (clients, domains, the analytics reads, alerts, hosted-policy
+reads), scoped to the link's single client — cross-tenant ids read 404, everything
+else 403. Magic links are omitted from configuration backups and must be reissued
+after restore.
+
 ### Machine ingestion
 
 This route is deliberately outside `/api/v1` and never uses the cookie-session
@@ -170,7 +186,10 @@ never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
 - Base path: `/api/v1`
 - Auth:
   - Agency UI/API: HTTP-only cookie session.
-  - Client read-only: signed magic link token (JWT/HMAC + nonce), usually passed as query token or bearer-style header.
+  - Server-to-server: `dmarc_api_v1` Bearer [REDACTED] with fixed permissions (§0).
+  - Client read-only shares: `dmarc_ml_v1` magic-link Bearer [REDACTED] single-client (§12).
+    The share URL carries the token once as a `?token=` query; API calls send it as an
+    `Authorization: Bearer` [REDACTED] never as a query parameter.
 - Content type: `application/json`
 - Time format: ISO-8601 UTC.
 - Pagination:
@@ -778,11 +797,13 @@ Download generated artifact if status is `completed`.
 
 ## 12) Magic Links (Client Read-Only)
 
-> **Not implemented.** Target state for the *magic link access* backlog item.
+> **Implemented.** Single-client read-only shares for occasional client access
+> without accounts (see §0 for the route table).
 
 ### POST `/magic-links`
 
-Create signed link.
+Admin only. Issues a link for one client. `label` (1–100 chars) is required;
+`expiresInDays` defaults to 7 and clamps to 1–30.
 
 Request:
 
@@ -794,23 +815,43 @@ Request:
 }
 ```
 
-Response:
+Response `201` (reveal-once; `Cache-Control: no-store`):
 
 ```json
 {
   "id": "ml_123",
-  "url": "https://app.example.tld/client-view?token=...",
-  "expiresAt": "2026-04-30T12:00:00Z"
+  "clientId": "cl_123",
+  "label": "April client review",
+  "prefix": "abcdefghijklmnopqrstuv",
+  "token": "dmarc_ml_v1.abcdefghijklmnopqrstuv.<43-character-secret>",
+  "url": "/client-view?token=dmarc_ml_v1...",
+  "createdAtUtc": "2026-04-01T12:00:00Z",
+  "expiresAtUtc": "2026-04-08T12:00:00Z"
 }
 ```
 
+The console prefixes `url` with the origin to build the shareable link. Unknown
+clients read 404. Audited as `magic_link.created`.
+
 ### GET `/magic-links`
 
-List active/expired links.
+Admin only. Lists link metadata (id, client, label, prefix, created/expiry,
+revocation, last use) — never tokens or hashes. Optional `clientId` query
+filters to one client.
 
 ### POST `/magic-links/{magicLinkId}/revoke`
 
-Revoke by invalidating nonce.
+Admin only. Idempotent revocation; unknown ids read 404. Audited as
+`magic_link.revoked`.
+
+### Anonymous reads with a magic link
+
+`Authorization: Bearer [REDACTED]<prefix>.<secret>` on any GET endpoint carrying
+`AllowMagicLink` (the client/domain/analytics/alert/hosted-policy reads in §0).
+Missing, malformed, revoked, expired, and wrong-secret tokens all read 401 with
+no cookie fallback. Tenancy is the link's single client through the standard
+viewer gate: other clients' ids read 404. Writes, staff/admin endpoints,
+passkeys, and any endpoint without the marker read 403.
 
 ## 13) PDF Reports
 
@@ -874,8 +915,10 @@ Operational status for queues, workers, and key dependencies.
 - `client_viewer`
   - any-authenticated endpoints only; reads are scoped to granted clients via
     `user_client_grant`, and cross-tenant ids return 404.
-- `magic_link_viewer` *(planned)*
-  - read-only subset for one client scope; magic links are not implemented.
+- `magic_link` actor (anonymous, via a `dmarc_ml_v1` Bearer [REDACTED]
+  - read-only subset for one client scope: GET endpoints carrying `AllowMagicLink`
+    (clients, domains, analytics reads, alerts, hosted-policy reads). Writes and
+    unmarked endpoints are 403; other clients' ids are 404.
 
 ## 17) Status Codes
 

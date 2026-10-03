@@ -281,6 +281,25 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - legacy plaintext rows re-protected lazily on first sync
   - plaintext passthrough with startup warning when no key is configured
 
+- Magic-link client sharing (single-client, read-only, 7-day default expiry):
+  - `magic_link` rows carry one client's grant: label, prefix plus SHA-256 hash,
+    expiry (1–30 days), revocation state, last use. The `dmarc_ml_v1` token is
+    reveal-once and reuses the shared `ApiCredentialToken` mint/verify helper
+    alongside the machine credentials (ADR 0010)
+  - admin-only mint/list/revoke under `/api/v1/magic-links`, audited as
+    `magic_link.created` / `magic_link.revoked`; the issue response carries the
+    shareable `/client-view?token=` URL once, with `no-store`
+  - anonymous Bearer [REDACTED] is deny-by-default: it reaches only GET endpoints
+    carrying both `AllowClientViewer` and `AllowMagicLink` (clients, domains,
+    the analytics reads, alerts, hosted-policy reads), scoped to the link's one
+    client through the same `CanAccessClient` gate viewers use — cross-tenant ids
+    read as 404, writes and passkey/admin endpoints as 403
+  - console sharing dialog on Clients (label, expiry, copy-once link, revoke)
+    plus an anonymous `/client-view` report page (totals, trend, domains) that
+    carries the token as a Bearer [REDACTED] and never renders it
+  - excluded from backup artifacts (counted, not carried) like the other
+    reveal-once credentials, so a restored install issues fresh links
+
 - Guided path to enforcement:
   - `GET /api/v1/analytics/domains/{id}/enforcement` — server-computed recommendation for the next safe policy step (none → quarantine → reject), rationale, `readyToAdvance`, and the blocking sources still sending unaligned mail
   - Domain Detail "Path to enforcement" panel upgraded with the server guidance banner + blocking-source quick links (expand via `?source=`)

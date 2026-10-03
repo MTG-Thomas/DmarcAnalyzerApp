@@ -1,6 +1,3 @@
-using System.Buffers.Text;
-using System.Security.Cryptography;
-using System.Text;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -75,14 +72,12 @@ public sealed class ServiceApiCredentialService(DmarcAnalyzerDbContext db) : ISe
                 "expiresAtUtc must be in the future and no more than 366 days away", 400);
         }
 
-        var prefix = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
-        var secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
-        var token = $"dmarc_api_v1.{prefix}.{secret}";
+        var minted = ApiCredentialToken.Mint("dmarc_api_v1");
         var credential = new ServiceApiCredential
         {
             Name = name,
-            Prefix = prefix,
-            TokenHash = SHA256.HashData(Encoding.ASCII.GetBytes(token)),
+            Prefix = minted.Prefix,
+            TokenHash = minted.TokenHash,
             Permissions = permissions,
             CreatedAtUtc = now,
             ExpiresAtUtc = expiresAtUtc,
@@ -95,7 +90,7 @@ public sealed class ServiceApiCredentialService(DmarcAnalyzerDbContext db) : ISe
             credential.Id,
             credential.Name,
             credential.Prefix,
-            token,
+            minted.Token,
             credential.Permissions,
             credential.CreatedAtUtc,
             credential.ExpiresAtUtc));

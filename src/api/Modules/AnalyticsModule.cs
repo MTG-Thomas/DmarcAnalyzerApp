@@ -19,7 +19,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var summary = await service.GetSummaryAsync(days ?? 30, ct);
             return Results.Ok(summary);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains", async (
             int? days,
@@ -28,7 +28,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var items = await service.ListDomainAnalyticsAsync(days ?? 30, ct);
             return Results.Ok(items);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/drilldown", async (
             Guid domainId,
@@ -38,7 +38,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var drilldown = await service.GetDomainDrilldownAsync(domainId, days ?? 30, ct);
             return drilldown is null ? Results.NotFound() : Results.Ok(drilldown);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/sources", async (
             Guid domainId,
@@ -48,7 +48,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var sources = await service.ListDomainSourcesAsync(domainId, days ?? 30, ct);
             return sources is null ? Results.NotFound() : Results.Ok(sources);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/source-detail", async (
             Guid domainId,
@@ -64,7 +64,7 @@ public sealed class AnalyticsModule : ICarterModule
 
             var detail = await service.GetSourceDetailAsync(domainId, ip.Trim(), days ?? 30, ct);
             return detail is null ? Results.NotFound() : Results.Ok(detail);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/enforcement", async (
             Guid domainId,
@@ -74,7 +74,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var guidance = await service.GetEnforcementGuidanceAsync(domainId, days ?? 30, ct);
             return guidance is null ? Results.NotFound() : Results.Ok(guidance);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/records", async (
             Guid domainId,
@@ -83,7 +83,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var inspection = await service.InspectAsync(domainId, ct);
             return inspection is null ? Results.NotFound() : Results.Ok(inspection);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/spf-candidate", async (
             Guid domainId,
@@ -94,7 +94,7 @@ public sealed class AnalyticsModule : ICarterModule
             // host) than the discovery walk, so it only runs when asked.
             var candidate = await service.GenerateSpfCandidateAsync(domainId, ct);
             return candidate is null ? Results.NotFound() : Results.Ok(candidate);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/spf-drift", async (
             Guid domainId,
@@ -105,7 +105,7 @@ public sealed class AnalyticsModule : ICarterModule
             // from the worker pass or an explicit recheck.
             var state = await service.GetAsync(domainId, ct);
             return state is null ? Results.NotFound() : Results.Ok(state);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         // A recheck triggers server-side DNS requests and rewrites the stored
         // state, so it is a POST and staff-only — not something a page load or
@@ -128,7 +128,7 @@ public sealed class AnalyticsModule : ICarterModule
             // from the worker pass or an explicit recheck.
             var state = await service.GetAsync(domainId, ct);
             return state is null ? Results.NotFound() : Results.Ok(state);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         // A recheck triggers server-side DNS and HTTPS requests and rewrites the
         // stored state, so it is a POST and staff-only — not something a page
@@ -150,7 +150,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var summary = await service.GetDomainSummaryAsync(domainId, days ?? 30, ct);
             return summary is null ? Results.NotFound() : Results.Ok(summary);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/live-mx", async (
             Guid domainId,
@@ -159,7 +159,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var result = await service.GetLiveMxAsync(domainId, ct);
             return result is null ? Results.NotFound() : Results.Ok(result);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/threats", async (
             int? days,
@@ -170,7 +170,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var feed = await service.GetThreatFeedAsync(days ?? 30, limit ?? 100, clientId, ct);
             return Results.Ok(feed);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/analytics/hostnames", async (
             string? ips,
@@ -190,6 +190,6 @@ public sealed class AnalyticsModule : ICarterModule
 
             var resolved = await resolver.ResolveAsync(list, ct);
             return Results.Ok(resolved);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
     }
 }

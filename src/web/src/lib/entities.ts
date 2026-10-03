@@ -103,6 +103,31 @@ export type IssuedServiceApiCredential = Omit<ServiceApiCredential, 'revokedAtUt
   token: string
 }
 
+/** Row shape of the admin-only GET /api/v1/magic-links endpoint. Metadata only — never a token. */
+export type MagicLink = {
+  id: string
+  clientId: string
+  clientName: string | null
+  label: string
+  prefix: string
+  createdAtUtc: string
+  expiresAtUtc: string
+  revokedAtUtc: string | null
+  lastUsedAtUtc: string | null
+}
+
+/** Reveal-once shape of POST /api/v1/magic-links. `url` is the shareable relative link. */
+export type IssuedMagicLink = {
+  id: string
+  clientId: string
+  label: string
+  prefix: string
+  token: string
+  url: string
+  createdAtUtc: string
+  expiresAtUtc: string
+}
+
 export type ServiceApiPermission = {
   id: string
   name: string

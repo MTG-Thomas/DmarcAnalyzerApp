@@ -18,14 +18,14 @@ public sealed class DomainsModule : ICarterModule
             var domain = await service.GetAsync(id, ct);
 
             return domain is null ? Results.NotFound() : Results.Ok(domain);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapGet("/api/v1/domains", async (Guid? clientId, IDomainService service, CancellationToken ct) =>
         {
             var domains = await service.ListAsync(clientId, ct);
 
             return Results.Ok(domains);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         app.MapPost("/api/v1/domains", async (CreateDomainRequest request, IDomainService service, IAuditLog audit, CancellationToken ct) =>
         {

@@ -69,7 +69,7 @@ public sealed class AlertsModule : ICarterModule
                 .ToListAsync(ct);
 
             return Results.Ok(items);
-        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+        }).AllowClientViewer().AllowMagicLink().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
         // Triage: an alert list you can't clear down gets ignored, so the status
         // column is writable. Analysts can triage, not just admins.

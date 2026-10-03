@@ -3,6 +3,7 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// <summary>Endpoint role requirements enforced by RoleAuthorizationMiddleware.</summary>
 public sealed record RoleRequirementMetadata(RoleRequirement Requirement);
 public sealed record ServicePermissionMetadata(string Permission);
+public sealed record MagicLinkAllowedMetadata();
 
 /// <summary>What an endpoint demands of the session role — enforced centrally, deny-by-default.</summary>
 public enum RoleRequirement
@@ -38,4 +39,14 @@ public static class EndpointAuthExtensions
     public static TBuilder AllowServicePermission<TBuilder>(this TBuilder builder, string permission)
         where TBuilder : IEndpointConventionBuilder
         => builder.WithMetadata(new ServicePermissionMetadata(permission));
+
+    /// <summary>
+    /// Opts a read endpoint in for magic-link Bearer [REDACTED] Magic links are
+    /// deny-by-default like client_viewer and service callers: without this
+    /// marker a magic-link request is 403 even on an <see cref="AllowClientViewer{TBuilder}"/>
+    /// endpoint. Only meaningful on GET endpoints with client-scoped reads.
+    /// </summary>
+    public static TBuilder AllowMagicLink<TBuilder>(this TBuilder builder)
+        where TBuilder : IEndpointConventionBuilder
+        => builder.WithMetadata(new MagicLinkAllowedMetadata());
 }

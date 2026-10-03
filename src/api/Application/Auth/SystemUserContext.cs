@@ -28,6 +28,8 @@ public sealed class SystemUserContext : ICurrentUserContext
     public bool IsAgencyStaff => true;
     public bool IsService => false;
     public IReadOnlyCollection<string> ServicePermissions => [];
+    public bool IsMagicLink => false;
+    public Guid? MagicLinkId => null;
 
     /// <inheritdoc />
     public IReadOnlyCollection<Guid> AllowedClientIds => [];

@@ -1,6 +1,4 @@
-using System.Buffers.Text;
-using System.Security.Cryptography;
-using System.Text;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -70,15 +68,13 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
                 "credentials can only be issued for API sources", 400);
         }
 
-        var prefix = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(16));
-        var secret = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
-        var token = $"dmarc_v1.{prefix}.{secret}";
+        var minted = ApiCredentialToken.Mint("dmarc_v1");
         var now = DateTime.UtcNow;
         var credential = new ApiSourceCredential
         {
             ReportSourceId = sourceId,
-            Prefix = prefix,
-            TokenHash = SHA256.HashData(Encoding.ASCII.GetBytes(token)),
+            Prefix = minted.Prefix,
+            TokenHash = minted.TokenHash,
             CreatedAtUtc = now,
         };
 
@@ -102,7 +98,7 @@ public sealed class ApiSourceCredentialService(DmarcAnalyzerDbContext db) : IApi
             credential.Id,
             credential.ReportSourceId,
             credential.Prefix,
-            token,
+            minted.Token,
             credential.CreatedAtUtc));
     }
 

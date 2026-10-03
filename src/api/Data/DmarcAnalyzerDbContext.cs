@@ -42,6 +42,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<SyncRequest> SyncRequests => Set<SyncRequest>();
     public DbSet<PasskeyCeremonyState> PasskeyCeremonyStates => Set<PasskeyCeremonyState>();
     public DbSet<DpKey> DpKeys => Set<DpKey>();
+    public DbSet<MagicLink> MagicLinks => Set<MagicLink>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -686,6 +687,37 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Attempts).HasDefaultValue(0);
             // The expiry sweep and the stale-row purge both scan on this.
             entity.HasIndex(x => x.ExpiresAtUtc);
+        });
+
+        modelBuilder.Entity<MagicLink>(entity =>
+        {
+            entity.ToTable("magic_link", table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_magic_link_PrefixLength",
+                    "char_length(\"Prefix\") = 22");
+                table.HasCheckConstraint(
+                    "CK_magic_link_TokenHashLength",
+                    "octet_length(\"TokenHash\") = 32");
+                table.HasCheckConstraint(
+                    "CK_magic_link_Expiry",
+                    "\"ExpiresAtUtc\" > \"CreatedAtUtc\"");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Label).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Prefix).HasMaxLength(22).IsRequired();
+            entity.Property(x => x.TokenHash).IsRequired();
+            entity.HasIndex(x => x.Prefix).IsUnique();
+            entity.HasIndex(x => x.ClientId);
+            entity.HasIndex(x => x.ExpiresAtUtc);
+            entity.HasIndex(x => x.RevokedAtUtc);
+
+            // Cascade: a link for a deleted client must not survive it. No
+            // client-delete path exists today, so this is future-proofing.
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.ApplyDpKeyMapping();

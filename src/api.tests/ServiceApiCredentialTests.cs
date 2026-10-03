@@ -1,10 +1,12 @@
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Common;
+using DmarcAnalyzer.Api.Application.MagicLinks;
 using DmarcAnalyzer.Api.Contracts.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Middleware;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
@@ -151,7 +153,9 @@ public sealed class ServiceApiCredentialTests
             context,
             new ThrowingAuthService(),
             new StubServiceAuthenticator(new ServiceApiPrincipal(Guid.NewGuid(), "Bifrost", [ServiceApiPermissions.PortfolioRead])),
-            current);
+            new StubMagicLinkAuthenticator(null),
+            current,
+            NullLogger<SessionAuthMiddleware>.Instance);
 
         Assert.True(reachedEndpoint);
         Assert.True(current.IsAuthenticated);
@@ -180,7 +184,9 @@ public sealed class ServiceApiCredentialTests
             context,
             new ThrowingAuthService(),
             new StubServiceAuthenticator(null),
-            new CurrentUserContext());
+            new StubMagicLinkAuthenticator(null),
+            new CurrentUserContext(),
+            NullLogger<SessionAuthMiddleware>.Instance);
 
         Assert.Equal(401, context.Response.StatusCode);
         Assert.False(reachedEndpoint);
@@ -209,7 +215,9 @@ public sealed class ServiceApiCredentialTests
             context,
             new ThrowingAuthService(returnNullSession: true),
             new StubServiceAuthenticator(null),
-            new CurrentUserContext());
+            new StubMagicLinkAuthenticator(null),
+            new CurrentUserContext(),
+            NullLogger<SessionAuthMiddleware>.Instance);
 
         Assert.Equal(401, context.Response.StatusCode);
         Assert.False(reachedEndpoint);
@@ -240,7 +248,9 @@ public sealed class ServiceApiCredentialTests
             context,
             new ThrowingAuthService(),
             new StubServiceAuthenticator(new ServiceApiPrincipal(Guid.NewGuid(), "Bifrost", [ServiceApiPermissions.PortfolioRead])),
-            current);
+            new StubMagicLinkAuthenticator(null),
+            current,
+            NullLogger<SessionAuthMiddleware>.Instance);
 
         Assert.Equal(403, context.Response.StatusCode);
         Assert.False(reachedEndpoint);
@@ -312,6 +322,15 @@ public sealed class ServiceApiCredentialTests
     {
         public Task<ServiceApiPrincipal?> AuthenticateAsync(string? bearerToken, CancellationToken ct)
             => Task.FromResult(principal);
+    }
+
+    private sealed class StubMagicLinkAuthenticator(MagicLinkPrincipal? principal) : IMagicLinkAuthenticator
+    {
+        public Task<MagicLinkPrincipal?> AuthenticateAsync(string? bearerToken, CancellationToken ct)
+            => Task.FromResult(principal);
+
+        public Task TouchLastUsedAsync(Guid magicLinkId, CancellationToken ct)
+            => Task.CompletedTask;
     }
 
     private sealed class ThrowingAuthService(bool returnNullSession = false) : IAuthService

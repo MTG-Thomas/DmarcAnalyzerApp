@@ -39,6 +39,9 @@ public sealed class BackupExportService(
         // Service API credentials are also reveal-once. Integrations must be
         // re-authorized after a restore rather than inheriting a copied token.
         "service_api_credential",
+        // Magic links are reveal-once client shares. A restored install must
+        // issue new links rather than inheriting copied tokens.
+        "magic_link",
         // WebAuthn counters cannot be safely merged after two same-RP installs diverge.
         // Users retain password/OIDC recovery and register fresh passkeys after restore.
         "user_passkey",
@@ -235,11 +238,12 @@ public sealed class BackupExportService(
             [ExcludedTables[6]] = await db.SmtpTlsFailureDetails.LongCountAsync(ct),
             [ExcludedTables[7]] = await db.ApiSourceCredentials.LongCountAsync(ct),
             [ExcludedTables[8]] = await db.ServiceApiCredentials.LongCountAsync(ct),
-            [ExcludedTables[9]] = await db.UserPasskeys.LongCountAsync(ct),
-            [ExcludedTables[10]] = await db.SpfDriftStates.LongCountAsync(ct),
-            [ExcludedTables[11]] = await db.ScheduledTaskStates.LongCountAsync(ct),
-            [ExcludedTables[12]] = await db.SyncRequests.LongCountAsync(ct),
-            [ExcludedTables[13]] = await db.PasskeyCeremonyStates.LongCountAsync(ct),
-            [ExcludedTables[14]] = await db.DpKeys.LongCountAsync(ct),
+            [ExcludedTables[9]] = await db.MagicLinks.LongCountAsync(ct),
+            [ExcludedTables[10]] = await db.UserPasskeys.LongCountAsync(ct),
+            [ExcludedTables[11]] = await db.SpfDriftStates.LongCountAsync(ct),
+            [ExcludedTables[12]] = await db.ScheduledTaskStates.LongCountAsync(ct),
+            [ExcludedTables[13]] = await db.SyncRequests.LongCountAsync(ct),
+            [ExcludedTables[14]] = await db.PasskeyCeremonyStates.LongCountAsync(ct),
+            [ExcludedTables[15]] = await db.DpKeys.LongCountAsync(ct),
         };
 }

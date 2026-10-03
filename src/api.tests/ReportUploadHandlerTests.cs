@@ -5,9 +5,11 @@ using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.MagicLinks;
 using DmarcAnalyzer.Api.Contracts.Auth;
 using DmarcAnalyzer.Api.Middleware;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Xunit;
@@ -37,7 +39,9 @@ public sealed class ReportUploadHandlerTests
             context,
             new ThrowingAuthService(),
             new ThrowingServiceApiAuthenticator(),
-            new CurrentUserContext());
+            new ThrowingMagicLinkAuthenticator(),
+            new CurrentUserContext(),
+            NullLogger<SessionAuthMiddleware>.Instance);
 
         Assert.Equal(401, Status(endpointResult!));
         Assert.Equal(["Unauthorized"], Response(endpointResult!).RejectionCodes);
@@ -488,6 +492,15 @@ public sealed class ReportUploadHandlerTests
     private sealed class ThrowingServiceApiAuthenticator : IServiceApiAuthenticator
     {
         public Task<ServiceApiPrincipal?> AuthenticateAsync(string? bearerToken, CancellationToken ct)
+            => throw new InvalidOperationException("machine upload must bypass session API authentication");
+    }
+
+    private sealed class ThrowingMagicLinkAuthenticator : IMagicLinkAuthenticator
+    {
+        public Task<MagicLinkPrincipal?> AuthenticateAsync(string? bearerToken, CancellationToken ct)
+            => throw new InvalidOperationException("machine upload must bypass session API authentication");
+
+        public Task TouchLastUsedAsync(Guid magicLinkId, CancellationToken ct)
             => throw new InvalidOperationException("machine upload must bypass session API authentication");
     }
 }
