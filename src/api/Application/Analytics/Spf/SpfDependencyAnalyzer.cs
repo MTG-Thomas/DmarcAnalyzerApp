@@ -24,18 +24,18 @@ public static class SpfNodeStatus
 /// global budget rollup. Discovery, not match evaluation — nothing here decides
 /// whether a sender passes, only what a receiver would have to look at.
 /// </summary>
+/// <param name="TotalLookups">RFC 7208 §4.6.4 DNS-causing mechanisms across the whole tree. Receivers permerror past 10.</param>
+/// <param name="VoidLookups">Mechanism-triggered queries answered empty (NXDOMAIN or no records). Past 2 is a permerror.</param>
+/// <param name="OverBudgetTerm">The term that spent lookup 11, when over budget.</param>
+/// <param name="EstimatedResponseBytes">SPF TXT payload bytes actually fetched. Response-size pressure lives here, not in the count.</param>
+/// <param name="QueriesPerformed">Real DNS queries performed (TXT + MX), against MaxQueries.</param>
 public sealed record SpfAnalysis(
     SpfDependencyNodeDto Root,
-    /// <summary>RFC 7208 §4.6.4 DNS-causing mechanisms across the whole tree. Receivers permerror past 10.</summary>
     int TotalLookups,
-    /// <summary>Mechanism-triggered queries answered empty (NXDOMAIN or no records). Past 2 is a permerror.</summary>
     int VoidLookups,
     bool OverBudget,
-    /// <summary>The term that spent lookup 11, when over budget.</summary>
     string? OverBudgetTerm,
-    /// <summary>SPF TXT payload bytes actually fetched. Response-size pressure lives here, not in the count.</summary>
     int EstimatedResponseBytes,
-    /// <summary>Real DNS queries performed (TXT + MX), against MaxQueries.</summary>
     int QueriesPerformed,
     IReadOnlyList<string> Issues);
 

@@ -25,32 +25,32 @@ public static class SpfTermKind
 /// One parsed SPF term, in published order. Pure syntax — whether the term matches
 /// anything is evaluation, which needs a sender IP this analysis never has.
 /// </summary>
+/// <param name="Text">The term exactly as published.</param>
+/// <param name="Qualifier">One of + - ~ ?. Default + when the term carries none.</param>
+/// <param name="Target">domain-spec for include/redirect/a/mx/ptr/exists, address for ip4/ip6, else null.</param>
+/// <param name="HasMacro">Target contains a %{macro} — unexpandable without a sender identity.</param>
+/// <param name="CostsLookup">Counts toward the RFC 7208 §4.6.4 limit of 10 DNS-causing mechanisms.</param>
+/// <param name="IsDynamic">Authorization set unknowable statically: macros, or exists: (DNS-by-design).</param>
+/// <param name="ParseError">Why the term did not parse, null when it did.</param>
 public sealed record SpfTerm(
-    /// <summary>The term exactly as published.</summary>
     string Text,
     string Kind,
-    /// <summary>One of + - ~ ?. Default + when the term carries none.</summary>
     string Qualifier,
-    /// <summary>domain-spec for include/redirect/a/mx/ptr/exists, address for ip4/ip6, else null.</summary>
     string? Target,
     int? Cidr4,
     int? Cidr6,
-    /// <summary>Target contains a %{macro} — unexpandable without a sender identity.</summary>
     bool HasMacro,
-    /// <summary>Counts toward the RFC 7208 §4.6.4 limit of 10 DNS-causing mechanisms.</summary>
     bool CostsLookup,
-    /// <summary>Authorization set unknowable statically: macros, or exists: (DNS-by-design).</summary>
     bool IsDynamic,
-    /// <summary>Why the term did not parse, null when it did.</summary>
     string? ParseError);
 
 /// <summary>An SPF record split into ordered terms. Malformed terms stay in place with a ParseError rather than dropping the record.</summary>
+/// <param name="RedirectTarget">redirect= target when present (at most one is meaningful).</param>
+/// <param name="ExpTarget">exp= target when present. Explanations cost nothing toward the lookup budget.</param>
 public sealed record SpfRecord(
     string Raw,
     IReadOnlyList<SpfTerm> Terms,
-    /// <summary>redirect= target when present (at most one is meaningful).</summary>
     string? RedirectTarget,
-    /// <summary>exp= target when present. Explanations cost nothing toward the lookup budget.</summary>
     string? ExpTarget);
 
 /// <summary>
