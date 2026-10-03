@@ -368,6 +368,51 @@ export type DnsSpfRecord = {
   lookupMechanisms: number
   allQualifier: string | null
   issues: string[]
+  /** DNS-causing mechanisms across the whole include tree. Receivers permerror past 10. */
+  recursiveLookups: number
+  /** Mechanism-triggered queries answered empty. Past 2 is a permerror. */
+  voidLookups: number
+  /** True when the recursive walk spent more than 10 lookups. */
+  overBudget: boolean
+  /** SPF TXT payload bytes fetched during the walk. Null when nothing was walked. */
+  estimatedResponseBytes: number | null
+  /** The recursive dependency tree, null unless status is found. */
+  dependencyTree: SpfDependencyNode | null
+}
+
+export type SpfNodeStatus = 'found' | 'missing' | 'lookup_failed' | 'permerror' | 'cycle' | 'skipped'
+
+export type SpfTerm = {
+  /** The term exactly as published. */
+  text: string
+  kind: string
+  /** One of + - ~ ?. Default + when the term carries none. */
+  qualifier: string
+  /** domain-spec for include/redirect/a/mx/ptr/exists, address for ip4/ip6, else null. */
+  target: string | null
+  /** Counts toward the RFC 7208 limit of 10 DNS-causing mechanisms. */
+  costsLookup: boolean
+  /** Authorization set unknowable statically: macros, or exists: (DNS-by-design). */
+  isDynamic: boolean
+  /** Why this term was not or could not be followed, null when it needs no note. */
+  note: string | null
+  /** The followed include/redirect target, null for anything not followed. */
+  resolution: SpfDependencyNode | null
+  /** MX exchange hosts for an mx term, capped; empty for every other kind. */
+  mxHosts: string[]
+  /** How many MX hosts exist in total (more than shown when capped). */
+  mxHostTotal: number
+}
+
+export type SpfDependencyNode = {
+  domain: string
+  depth: number
+  status: SpfNodeStatus
+  raw: string | null
+  terms: SpfTerm[]
+  /** RFC lookups spent in this subtree, including nested includes. */
+  lookupsUsed: number
+  issues: string[]
 }
 
 /** The DMARC policy reporters most recently observed (policy_published). */

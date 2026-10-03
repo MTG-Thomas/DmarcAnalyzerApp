@@ -42,6 +42,8 @@ import {
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
+  type SpfDependencyNode,
+  type SpfNodeStatus,
   type TlsRptRecord,
   type TlsRptSummary,
   type ValueCount,
@@ -379,6 +381,86 @@ function RecordBlock({
   )
 }
 
+function SpfNodeBadge({ status }: { status: SpfNodeStatus }) {
+  switch (status) {
+    case 'found':
+      return null
+    case 'missing':
+      return <Badge variant="warning">no record</Badge>
+    case 'lookup_failed':
+      return <Badge variant="warning">lookup failed</Badge>
+    case 'permerror':
+      return <Badge variant="danger">permerror</Badge>
+    case 'cycle':
+      return <Badge variant="neutral">cycle</Badge>
+    case 'skipped':
+      return <Badge variant="neutral">skipped</Badge>
+  }
+}
+
+function SpfTreeNode({ node }: { node: SpfDependencyNode }) {
+  return (
+    <li>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-xs font-semibold">{node.domain}</span>
+        <SpfNodeBadge status={node.status} />
+        <span className="text-xs text-secondary">
+          {node.lookupsUsed} lookup{node.lookupsUsed === 1 ? '' : 's'}
+        </span>
+      </div>
+      {node.terms.length > 0 ? (
+        <ul className="ml-3 mt-1 space-y-1 border-l border-border pl-3">
+          {node.terms.map((term, index) => (
+            // Terms can repeat (two identical includes), so the text alone is not a key.
+            <li key={`${term.text}-${index}`}>
+              <span className="font-mono text-xs">{term.text}</span>
+              {term.isDynamic ? <Badge variant="neutral">dynamic</Badge> : null}
+              {term.note ? <span className="text-xs text-secondary"> — {term.note}</span> : null}
+              {term.mxHostTotal > 0 ? (
+                <span className="font-mono text-xs text-secondary">
+                  {' '}
+                  mx: {term.mxHosts.join(', ')}
+                  {term.mxHostTotal > term.mxHosts.length
+                    ? ` (+${term.mxHostTotal - term.mxHosts.length} more)`
+                    : ''}
+                </span>
+              ) : null}
+              {term.resolution ? (
+                <ul className="mt-1">
+                  <SpfTreeNode node={term.resolution} />
+                </ul>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {node.issues.length > 0 ? (
+        <ul className="mt-1 space-y-1">
+          {node.issues.map((issue) => (
+            <li key={issue} className="flex items-start gap-1.5 text-xs text-[var(--status-warn-fg)]">
+              <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
+              {issue}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  )
+}
+
+/**
+ * The recursive SPF dependency tree: every include followed, each annotated
+ * with why it was or was not resolved. Bounded server-side (10-lookup budget,
+ * depth and query caps), so a fully expanded render stays small.
+ */
+export function SpfDependencyTree({ node }: { node: SpfDependencyNode }) {
+  return (
+    <ul className="mt-2 space-y-2">
+      <SpfTreeNode node={node} />
+    </ul>
+  )
+}
+
 /**
  * Live DNS DMARC/SPF records vs the policy reporters observed. Fetched
  * separately from the analytics payload because the server does real DNS
@@ -450,11 +532,22 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
             raw={inspection.spf.raw}
             meta={
               inspection.spf.status === 'found'
-                ? `${inspection.spf.lookupMechanisms}/10 lookups${inspection.spf.allQualifier ? ` · ${inspection.spf.allQualifier}all` : ''}`
+                ? `${inspection.spf.lookupMechanisms} top-level · ${inspection.spf.recursiveLookups}/10 recursive` +
+                  `${inspection.spf.voidLookups > 0 ? ` · ${inspection.spf.voidLookups} void lookup${inspection.spf.voidLookups === 1 ? '' : 's'}` : ''}` +
+                  `${inspection.spf.allQualifier ? ` · ${inspection.spf.allQualifier}all` : ''}`
                 : null
             }
             issues={inspection.spf.issues}
           />
+          {inspection.spf.status === 'found' && inspection.spf.dependencyTree ? (
+            <div className="lg:col-span-2">
+              <PanelSectionTitle>SPF dependency tree</PanelSectionTitle>
+              <p className="mt-1 text-xs text-secondary">
+                Every include followed, counted against the single 10-lookup budget receivers enforce.
+              </p>
+              <SpfDependencyTree node={inspection.spf.dependencyTree} />
+            </div>
+          ) : null}
           {inspection.externalDestinations.length > 0 ? (
             <div className="lg:col-span-2">
               <PanelSectionTitle>External report destinations</PanelSectionTitle>
