@@ -16,11 +16,15 @@ public sealed class ServerlessSchemaTests(PostgreSqlDatabaseFixture database)
         await database.MigrateToLatestAsync();
 
         await using var db = database.CreateDbContext();
-        foreach (var table in new[] { "scheduled_task_state", "sync_request", "passkey_ceremony" })
-        {
-            Assert.True(await db.Database.SqlQueryRaw<bool>(
-                $"SELECT to_regclass('public.{table}') IS NOT NULL AS \"Value\"").SingleAsync());
-        }
+        // One static query (no interpolation: table names cannot be parameters,
+        // and SqlQueryRaw with an interpolated string trips EF1002).
+        var existing = await db.Database.SqlQueryRaw<string>(
+            """
+            SELECT tablename AS "Value" FROM pg_tables
+            WHERE schemaname = 'public'
+              AND tablename IN ('scheduled_task_state', 'sync_request', 'passkey_ceremony')
+            """).ToListAsync();
+        Assert.Equal(3, existing.Count);
 
         // The one-live-request-per-source guard must exist and be partial.
         var partialIndexPredicate = await db.Database.SqlQueryRaw<string>(
