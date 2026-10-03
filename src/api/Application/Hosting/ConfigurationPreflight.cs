@@ -55,6 +55,7 @@ public static class ConfigurationPreflight
     public static readonly (string Section, Type Type)[] BoundSections =
     [
         ("Worker", typeof(DmarcAnalyzer.Api.Workers.WorkerOptions)),
+        ("WorkerOnce", typeof(DmarcAnalyzer.Api.Workers.WorkerOnceOptions)),
         ("Ingestion", typeof(DmarcAnalyzer.Api.Application.Ingestion.ReportPayloadExtractionOptions)),
         ("Email", typeof(DmarcAnalyzer.Api.Application.Notifications.EmailOptions)),
         ("Alerts", typeof(DmarcAnalyzer.Api.Application.Notifications.AlertOptions)),
