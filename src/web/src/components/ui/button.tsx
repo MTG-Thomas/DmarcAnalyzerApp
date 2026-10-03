@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
  * Focus draws the 3px theme ring. `icon` renders a leading lucide glyph by kebab name.
  */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-body font-semibold transition-colors duration-[120ms] ease-out focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-body font-semibold transition-colors duration-[120ms] ease-out focus-visible:outline-hidden focus-visible:shadow-[var(--focus-ring)] disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {

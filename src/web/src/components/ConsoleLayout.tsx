@@ -44,7 +44,7 @@ function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => vo
         cn(
           // py-2.5 below lg keeps the row near the 44px touch target; the desktop
           // sidebar goes back to the tighter py-2 rhythm.
-          'flex items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base transition-colors duration-[120ms] ease-out focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:py-2',
+          'flex items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base transition-colors duration-[120ms] ease-out focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-hidden lg:py-2',
           isActive
             ? 'bg-brand-subtle font-semibold text-[var(--brand-hover)]'
             : 'font-medium text-gray-600 hover:bg-gray-100',
@@ -139,7 +139,7 @@ export function ConsoleLayout() {
             type="button"
             onClick={closeNav}
             aria-label="Close navigation"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:hidden"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-hidden lg:hidden"
           >
             <Icon name="x" size={20} />
           </button>
@@ -170,7 +170,7 @@ export function ConsoleLayout() {
           <button
             type="button"
             onClick={() => void logout()}
-            className="mt-3 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base font-medium text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:py-2"
+            className="mt-3 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base font-medium text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-hidden lg:py-2"
           >
             <Icon name="log-out" size={16} />
             <span className="flex-1 text-left">Sign out</span>
@@ -214,7 +214,7 @@ export function ConsoleLayout() {
             aria-label="Open navigation"
             aria-expanded={navOpen}
             aria-controls="console-nav"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-hidden"
           >
             <Icon name="menu" size={20} />
           </button>
