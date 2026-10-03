@@ -5,6 +5,7 @@ import {
   evaluateAudit,
   ghsaIdFromUrl,
   loadAuditJson,
+  main,
   runGate,
 } from './npm-audit-gate.mjs';
 
@@ -120,6 +121,22 @@ describe('loadAuditJson', () => {
       expect.objectContaining({ exitCode: 2 }),
     );
   });
+
+  it('fails closed when stdin cannot be statted', () => {
+    let read = false;
+    expect(() =>
+      loadAuditJson(
+        () => {
+          read = true;
+          return '';
+        },
+        () => {
+          throw new Error('no fd');
+        },
+      ),
+    ).toThrowError(expect.objectContaining({ exitCode: 2 }));
+    expect(read).toBe(false);
+  });
 });
 
 describe('runGate', () => {
@@ -141,6 +158,64 @@ describe('runGate', () => {
     expect(result.exitCode).toBe(1);
     expect(result.errors).toHaveLength(1);
     expect(result.warnings).toEqual([]);
+  });
+});
+
+describe('main', () => {
+  function harness(report, allowlist = ALLOWLIST) {
+    const stdout = [];
+    const stderr = [];
+    const quits = [];
+    main({
+      loadReport: () => report,
+      readAllowlist: () => allowlist,
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+      quit: (code) => quits.push(code),
+    });
+    return { stdout, stderr, quits };
+  }
+
+  it('prints warnings and quits 0 when all advisories are allowlisted', () => {
+    const result = harness(audit({ braces: { severity: 'high', via: [ADVISORY] } }));
+    expect(result.quits).toEqual([0]);
+    expect(result.stdout.join('\n')).toContain('gate passed');
+    expect(result.stderr).toEqual([]);
+  });
+
+  it('prints errors and quits 1 on unlisted advisories', () => {
+    const result = harness(audit({ braces: { severity: 'high', via: [ADVISORY] } }), {});
+    expect(result.quits).toEqual([1]);
+    expect(result.stderr.join('\n')).toContain('gate failed');
+  });
+
+  it('quits with the loader failure code when the report is unreadable', () => {
+    const stdout = [];
+    const stderr = [];
+    const quits = [];
+    main({
+      loadReport: () => loadAuditJson(() => 'garbage', pipeStat),
+      readAllowlist: () => ALLOWLIST,
+      stdout: (line) => stdout.push(line),
+      stderr: (line) => stderr.push(line),
+      quit: (code) => quits.push(code),
+    });
+    expect(quits).toEqual([2]);
+    expect(stderr.join('\n')).toContain('no parseable JSON');
+  });
+
+  it('lets unexpected errors propagate', () => {
+    expect(() =>
+      main({
+        loadReport: () => {
+          throw new Error('boom');
+        },
+        readAllowlist: () => ALLOWLIST,
+        stdout: () => {},
+        stderr: () => {},
+        quit: () => {},
+      }),
+    ).toThrow('boom');
   });
 });
 

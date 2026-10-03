@@ -128,27 +128,36 @@ export function runGate(auditJson, allowlist) {
   return { exitCode: uncovered.length > 0 ? 1 : 0, warnings, errors };
 }
 
-function main() {
-  const allowlist = JSON.parse(readFileSync(ALLOWLIST_PATH, 'utf8'));
+// Default wiring for production use (real stdin, real console, real exit).
+// Tests inject fakes instead. Only these three lines run uncovered.
+const defaultLoadReport = () => loadAuditJson(() => readFileSync(0, 'utf8'), () => fstatSync(0));
+const defaultReadAllowlist = () => JSON.parse(readFileSync(ALLOWLIST_PATH, 'utf8'));
+const defaultQuit = (code) => process.exit(code);
+
+// All side effects hang off `deps` so the whole decision flow — including
+// the exit paths — is unit-testable without spawning a subprocess.
+export function main(deps = {}) {
+  const { loadReport = defaultLoadReport, readAllowlist = defaultReadAllowlist, stdout = console.log, stderr = console.error, quit = defaultQuit } = deps;
+  const allowlist = readAllowlist();
   try {
-    const { exitCode, warnings, errors } = runGate(loadAuditJson(), allowlist);
+    const { exitCode, warnings, errors } = runGate(loadReport(), allowlist);
     for (const warning of warnings) {
-      console.log(`::warning::${warning}`);
+      stdout(`::warning::${warning}`);
     }
     if (exitCode !== 0) {
       for (const error of errors) {
-        console.error(`::error::${error}`);
+        stderr(`::error::${error}`);
       }
-      console.error(`npm audit gate failed: ${errors.length} non-allowlisted high/critical advisories`);
-      process.exit(exitCode);
+      stderr(`npm audit gate failed: ${errors.length} non-allowlisted high/critical advisories`);
+    } else {
+      stdout(`npm audit gate passed (${warnings.length} allowlisted high/critical advisories, 0 unlisted)`);
     }
-    console.log(
-      `npm audit gate passed (${warnings.length} allowlisted high/critical advisories, 0 unlisted)`,
-    );
+    quit(exitCode);
   } catch (err) {
     if (err instanceof GateFailure) {
-      console.error(`::error::${err.message}`);
-      process.exit(err.exitCode);
+      stderr(`::error::${err.message}`);
+      quit(err.exitCode);
+      return;
     }
     throw err;
   }
