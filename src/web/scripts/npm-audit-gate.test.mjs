@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { evaluateAudit, ghsaIdFromUrl } from './npm-audit-gate.mjs';
 
@@ -78,5 +80,46 @@ describe('evaluateAudit', () => {
       {},
     );
     expect(uncovered).toHaveLength(1);
+  });
+});
+
+describe('cli', () => {
+  // import.meta.url is virtualized under vitest, so resolve from the package
+  // root (vitest runs with cwd set there).
+  const SCRIPT = path.resolve(process.cwd(), 'scripts/npm-audit-gate.mjs');
+
+  function runCli(stdin) {
+    try {
+      const stdout = execFileSync(process.execPath, [SCRIPT], {
+        input: stdin,
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return { exit: 0, stdout };
+    } catch (err) {
+      return { exit: err.status, stdout: err.stdout, stderr: err.stderr };
+    }
+  }
+
+  it('exits 0 when every high advisory is allowlisted', () => {
+    const result = runCli(JSON.stringify(audit({
+      braces: { severity: 'high', via: [ADVISORY, 'micromatch'] },
+    })));
+    expect(result.exit).toBe(0);
+    expect(result.stdout).toContain('gate passed');
+  });
+
+  it('exits 1 on a non-allowlisted advisory', () => {
+    const other = { ...ADVISORY, url: 'https://github.com/advisories/GHSA-aaaa-bbbb-cccc' };
+    const result = runCli(JSON.stringify(audit({
+      evil: { severity: 'high', via: [other] },
+    })));
+    expect(result.exit).toBe(1);
+    expect(result.stderr).toContain('ghsa-aaaa-bbbb-cccc');
+  });
+
+  it('exits 2 when stdin is not a report', () => {
+    const result = runCli('this is not json');
+    expect(result.exit).toBe(2);
   });
 });

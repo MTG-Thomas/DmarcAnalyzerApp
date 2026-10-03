@@ -4,7 +4,10 @@
 // An entry is a deliberate, reviewable risk acceptance (dev-only build tooling
 // with no production attack surface, tracked follow-up issue), not a way to
 // hide findings: anything not on the list still fails the build.
-import { spawnSync } from 'node:child_process';
+//
+// Usage: npm audit --json | node scripts/npm-audit-gate.mjs
+// Exit 0 when every high/critical advisory is allowlisted, 1 when one is not,
+// 2 when the report itself is missing or unparseable.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,23 +69,17 @@ export function evaluateAudit(auditJson, allowlist) {
 }
 
 function loadAuditJson() {
-  const auditFile = process.argv.find((a) => a.startsWith('--audit-file='))?.split('=')[1];
-  if (auditFile) {
-    return JSON.parse(readFileSync(auditFile, 'utf8'));
+  // The report arrives on stdin so this script never resolves tool paths
+  // itself. Failing to parse means npm audit itself failed (registry down,
+  // lockfile unreadable) — fail closed, never open.
+  if (process.stdin.isTTY) {
+    console.error('::error::npm-audit-gate expects `npm audit --json` on stdin');
+    process.exit(2);
   }
-  const webDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-  const result = spawnSync('npm', ['audit', '--json'], {
-    cwd: webDir,
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  // npm audit exits non-zero when findings exist; the JSON on stdout is still
-  // the report. Only empty/garbled output is a hard error.
   try {
-    return JSON.parse(result.stdout);
+    return JSON.parse(readFileSync(0, 'utf8'));
   } catch {
-    console.error(`::error::npm audit produced no parseable JSON (exit ${result.status})`);
-    console.error((result.stderr ?? '').slice(-2000));
+    console.error('::error::npm audit produced no parseable JSON report');
     process.exit(2);
   }
 }
