@@ -1325,7 +1325,7 @@ function MtaStsPolicyEditor({
             <label className="grid gap-1 text-xs text-secondary">
               mx patterns — one per line{mode === 'none' ? ' (optional for mode none)' : ''}
               <textarea
-                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-[16px] text-body focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] sm:text-xs"
+                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-[16px] text-body focus-visible:outline-hidden focus-visible:shadow-[var(--focus-ring)] sm:text-xs"
                 value={patternsText}
                 onChange={(e) => setPatternsText(e.target.value)}
                 placeholder={'mx1.example.com\n*.mail.example.com'}
@@ -2097,7 +2097,7 @@ export function DomainDetailPage() {
                                 event.stopPropagation()
                                 toggleSource(source.sourceIp)
                               }}
-                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-hidden"
                             >
                               <Icon
                                 name="chevron-right"

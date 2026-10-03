@@ -308,7 +308,7 @@ export function ApiSourceCredentialsDialog({
                         role="alertdialog"
                         aria-labelledby={confirmationTitleId}
                         tabIndex={-1}
-                        className="focus:outline-none"
+                        className="focus:outline-hidden"
                       >
                         <Notice
                           tone="warn"

@@ -171,7 +171,7 @@ export function PasskeySettings() {
       </Card>
 
       {removeTarget ? (
-        <div ref={removeRef} role="alertdialog" tabIndex={-1} aria-labelledby="remove-passkey-title" className="mt-4 focus:outline-none">
+        <div ref={removeRef} role="alertdialog" tabIndex={-1} aria-labelledby="remove-passkey-title" className="mt-4 focus:outline-hidden">
           <Notice tone="warn" title={<span id="remove-passkey-title">Remove {removeTarget.name}?</span>}>
             <p>This passkey will immediately stop signing in to your account. Other sign-in methods remain unchanged.</p>
             <div className="mt-2 flex gap-2">
@@ -190,7 +190,7 @@ export function PasskeySettings() {
           </DialogHeader>
           {error ? <Notice tone="danger">{error}</Notice> : null}
           <form onSubmit={add} className="space-y-4">
-            <label className="block space-y-1.5">
+            <label className="flex flex-col gap-1.5">
               <span className="text-sm font-medium text-body">Name</span>
               <Input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Work laptop" />
             </label>

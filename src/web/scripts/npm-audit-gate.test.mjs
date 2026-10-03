@@ -237,12 +237,18 @@ describe('cli', () => {
     }
   }
 
-  it('exits 0 when every high advisory is allowlisted', () => {
+  it('exits 0 for a clean report with the empty production allowlist', () => {
+    const result = runCli(JSON.stringify(audit({})));
+    expect(result.exit).toBe(0);
+    expect(result.stdout).toContain('gate passed');
+  });
+
+  it('rejects the former braces exception if it returns', () => {
     const result = runCli(JSON.stringify(audit({
       braces: { severity: 'high', via: [ADVISORY, 'micromatch'] },
     })));
-    expect(result.exit).toBe(0);
-    expect(result.stdout).toContain('gate passed');
+    expect(result.exit).toBe(1);
+    expect(result.stderr).toContain('ghsa-vfj7-8cjw-p6xm');
   });
 
   it('exits 1 on a non-allowlisted advisory', () => {
