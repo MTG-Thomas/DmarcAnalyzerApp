@@ -61,6 +61,7 @@ public static class ConfigurationPreflight
         ("Digest", typeof(DmarcAnalyzer.Api.Application.Notifications.DigestOptions)),
         ("Dns", typeof(DmarcAnalyzer.Api.Application.Analytics.DnsOptions)),
         ("MtaSts", typeof(DmarcAnalyzer.Api.Application.MtaSts.MtaStsOptions)),
+        ("SpfDrift", typeof(DmarcAnalyzer.Api.Application.Analytics.Spf.SpfDriftOptions)),
         ("Retention", typeof(DmarcAnalyzer.Api.Application.Retention.RetentionOptions)),
         ("Network", typeof(DmarcAnalyzer.Api.Application.Security.NetworkOptions)),
         ("Backup", typeof(DmarcAnalyzer.Api.Application.Backup.BackupOptions)),

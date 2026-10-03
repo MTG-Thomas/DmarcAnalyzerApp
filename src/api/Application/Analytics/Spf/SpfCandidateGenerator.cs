@@ -32,7 +32,7 @@ public interface ISpfCandidateGenerator
     /// static includes expanded to addresses, everything dynamic kept verbatim as
     /// stub terms, dead terms dropped. Never throws except on cancellation.
     /// </summary>
-    Task<SpfCandidateDto> GenerateAsync(string domainName, CancellationToken ct);
+    Task<SpfCandidateDto> GenerateAsync(string domainName, CancellationToken ct, bool bypassCache = false);
 }
 
 /// <summary>
@@ -93,7 +93,7 @@ public sealed class SpfCandidateGenerator(
         "spf.protection.outlook.com",
     };
 
-    public async Task<SpfCandidateDto> GenerateAsync(string domainName, CancellationToken ct)
+    public async Task<SpfCandidateDto> GenerateAsync(string domainName, CancellationToken ct, bool bypassCache = false)
     {
         var state = new WalkState { StartedUtc = DateTime.UtcNow };
         try
@@ -101,8 +101,8 @@ public sealed class SpfCandidateGenerator(
             // The recursive count is the honest "before" — the analyzer walks the
             // same tree with the same bounds, and the shared DNS cache makes the
             // second walk nearly free.
-            var analysis = await analyzer.AnalyzeAsync(domainName, ct);
-            var records = await FetchSpfRecordsAsync(Normalize(domainName), state, ct);
+            var analysis = await analyzer.AnalyzeAsync(domainName, ct, bypassCache);
+            var records = await FetchSpfRecordsAsync(Normalize(domainName), state, bypassCache, ct);
             if (records is null)
             {
                 return Refuse(string.Empty, analysis.TotalLookups,
@@ -123,7 +123,7 @@ public sealed class SpfCandidateGenerator(
 
             var record = SpfRecordParser.Parse(records[0]);
             var expansion = await ExpandRecordAsync(Normalize(domainName), record,
-                depth: 0, path: [Normalize(domainName)], state, isEffectiveRoot: true, ct);
+                depth: 0, path: [Normalize(domainName)], state, isEffectiveRoot: true, bypassCache, ct);
 
             if (expansion.ExpandedIpCount > MaxExpandedIps)
             {
@@ -175,7 +175,7 @@ public sealed class SpfCandidateGenerator(
     /// </summary>
     private async Task<RecordExpansion> ExpandRecordAsync(
         string domain, SpfRecord record, int depth, List<string> path,
-        WalkState state, bool isEffectiveRoot, CancellationToken ct)
+        WalkState state, bool isEffectiveRoot, bool bypassCache, CancellationToken ct)
     {
         var expansion = new RecordExpansion();
         var redirect = FollowableRedirect(record);
@@ -278,7 +278,7 @@ public sealed class SpfCandidateGenerator(
                 sawRedirect = true;
             }
 
-            await ExpandMechanismAsync(domain, term, depth, path, expansion, state, isEffectiveRoot, ct);
+            await ExpandMechanismAsync(domain, term, depth, path, expansion, state, isEffectiveRoot, bypassCache, ct);
         }
 
         return expansion;
@@ -286,7 +286,8 @@ public sealed class SpfCandidateGenerator(
 
     private async Task ExpandMechanismAsync(
         string domain, SpfTerm term, int depth, List<string> path,
-        RecordExpansion expansion, WalkState state, bool isEffectiveRoot, CancellationToken ct)
+        RecordExpansion expansion, WalkState state, bool isEffectiveRoot, bool bypassCache,
+        CancellationToken ct)
     {
         if (OutOfBudget(state))
         {
@@ -308,19 +309,19 @@ public sealed class SpfCandidateGenerator(
         switch (term.Kind)
         {
             case SpfTermKind.Include:
-                await ExpandIncludeAsync(term, depth, path, expansion, state, ct);
+                await ExpandIncludeAsync(term, depth, path, expansion, state, bypassCache, ct);
                 break;
 
             case SpfTermKind.Redirect:
-                await ExpandRedirectAsync(term, depth, path, expansion, state, isEffectiveRoot, ct);
+                await ExpandRedirectAsync(term, depth, path, expansion, state, isEffectiveRoot, bypassCache, ct);
                 break;
 
             case SpfTermKind.Mx:
-                await ExpandMxAsync(domain, term, expansion, state, ct);
+                await ExpandMxAsync(domain, term, expansion, state, bypassCache, ct);
                 break;
 
             case SpfTermKind.A:
-                await ExpandHostAsync(domain, term, expansion, state, ct);
+                await ExpandHostAsync(domain, term, expansion, state, bypassCache, ct);
                 break;
 
             case SpfTermKind.Ptr:
@@ -344,7 +345,7 @@ public sealed class SpfCandidateGenerator(
 
     private async Task ExpandIncludeAsync(
         SpfTerm term, int depth, List<string> path,
-        RecordExpansion expansion, WalkState state, CancellationToken ct)
+        RecordExpansion expansion, WalkState state, bool bypassCache, CancellationToken ct)
     {
         var target = term.Target!;
         if (term.HasMacro)
@@ -385,7 +386,7 @@ public sealed class SpfCandidateGenerator(
             return;
         }
 
-        var records = await FetchSpfRecordsAsync(normalized, state, ct);
+        var records = await FetchSpfRecordsAsync(normalized, state, bypassCache, ct);
         if (records is null)
         {
             expansion.Failures.Add($"{target}: DNS lookup failed during expansion.");
@@ -412,7 +413,7 @@ public sealed class SpfCandidateGenerator(
             // terms, in place. Anything unknown deeper down is already preserved
             // verbatim there, so splicing always stays sound; nothing fails upward.
             var nested = await ExpandRecordAsync(normalized, SpfRecordParser.Parse(records[0]),
-                depth + 1, path, state, isEffectiveRoot: false, ct);
+                depth + 1, path, state, isEffectiveRoot: false, bypassCache, ct);
             expansion.Absorb(nested);
             var note = nested.DroppedUnmatchable == 0
                 ? null
@@ -428,7 +429,8 @@ public sealed class SpfCandidateGenerator(
 
     private async Task ExpandRedirectAsync(
         SpfTerm term, int depth, List<string> path,
-        RecordExpansion expansion, WalkState state, bool isEffectiveRoot, CancellationToken ct)
+        RecordExpansion expansion, WalkState state, bool isEffectiveRoot, bool bypassCache,
+        CancellationToken ct)
     {
         var target = term.Target!;
         if (term.HasMacro || string.IsNullOrWhiteSpace(target) || IsIpLiteral(target))
@@ -446,7 +448,7 @@ public sealed class SpfCandidateGenerator(
             return;
         }
 
-        var records = await FetchSpfRecordsAsync(normalized, state, ct);
+        var records = await FetchSpfRecordsAsync(normalized, state, bypassCache, ct);
         if (records is null || records.Count != 1)
         {
             var reason = records is null
@@ -466,7 +468,7 @@ public sealed class SpfCandidateGenerator(
             // At the top level the redirect target IS the effective record: its
             // all and modifiers win. Nested, it is just another branch.
             var nested = await ExpandRecordAsync(normalized, SpfRecordParser.Parse(records[0]),
-                depth + 1, path, state, isEffectiveRoot, ct);
+                depth + 1, path, state, isEffectiveRoot, bypassCache, ct);
             if (isEffectiveRoot)
             {
                 expansion.AbsorbRedirect(nested);
@@ -486,7 +488,8 @@ public sealed class SpfCandidateGenerator(
     }
 
     private async Task ExpandMxAsync(
-        string domain, SpfTerm term, RecordExpansion expansion, WalkState state, CancellationToken ct)
+        string domain, SpfTerm term, RecordExpansion expansion, WalkState state, bool bypassCache,
+        CancellationToken ct)
     {
         if (term.HasMacro)
         {
@@ -511,7 +514,7 @@ public sealed class SpfCandidateGenerator(
         }
 
         var target = term.Target is null ? domain : Normalize(term.Target);
-        var hosts = await mx.ResolveAsync(target, ct);
+        var hosts = await mx.ResolveAsync(target, ct, bypassCache);
         state.Queries++;
         if (hosts is null)
         {
@@ -542,7 +545,7 @@ public sealed class SpfCandidateGenerator(
         var expanded = new List<string>();
         foreach (var host in hosts.OrderBy(h => h.Host, StringComparer.Ordinal))
         {
-            var ips = await ResolveHostAddressesAsync(host.Host, term, state, ct);
+            var ips = await ResolveHostAddressesAsync(host.Host, term, state, bypassCache, ct);
             if (ips is null)
             {
                 expansion.Failures.Add($"{host.Host}: address lookup failed during expansion.");
@@ -562,7 +565,8 @@ public sealed class SpfCandidateGenerator(
     }
 
     private async Task ExpandHostAsync(
-        string domain, SpfTerm term, RecordExpansion expansion, WalkState state, CancellationToken ct)
+        string domain, SpfTerm term, RecordExpansion expansion, WalkState state, bool bypassCache,
+        CancellationToken ct)
     {
         if (term.HasMacro)
         {
@@ -587,7 +591,7 @@ public sealed class SpfCandidateGenerator(
         }
 
         var name = term.Target is null ? domain : Normalize(term.Target);
-        var ips = await ResolveHostAddressesAsync(name, term, state, ct);
+        var ips = await ResolveHostAddressesAsync(name, term, state, bypassCache, ct);
         if (ips is null)
         {
             expansion.Failures.Add($"{name}: address lookup failed during expansion.");
@@ -616,9 +620,9 @@ public sealed class SpfCandidateGenerator(
     /// order never leaks into the candidate. Null when the lookup itself failed.
     /// </summary>
     private async Task<IReadOnlyList<string>?> ResolveHostAddressesAsync(
-        string host, SpfTerm term, WalkState state, CancellationToken ct)
+        string host, SpfTerm term, WalkState state, bool bypassCache, CancellationToken ct)
     {
-        var resolved = await addresses.ResolveAsync(host, ct);
+        var resolved = await addresses.ResolveAsync(host, ct, bypassCache);
         state.Queries += 2; // one A query and one AAAA query
         if (resolved is null)
         {
@@ -641,9 +645,9 @@ public sealed class SpfCandidateGenerator(
     }
 
     private async Task<IReadOnlyList<string>?> FetchSpfRecordsAsync(
-        string domain, WalkState state, CancellationToken ct)
+        string domain, WalkState state, bool bypassCache, CancellationToken ct)
     {
-        var txts = await txt.ResolveAsync(domain, ct);
+        var txts = await txt.ResolveAsync(domain, ct, bypassCache);
         state.Queries++;
         return txts?.Where(t => t.TrimStart().StartsWith("v=spf1", StringComparison.OrdinalIgnoreCase)).ToList();
     }

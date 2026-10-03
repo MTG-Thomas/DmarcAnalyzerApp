@@ -47,7 +47,7 @@ public interface ISpfDependencyAnalyzer
     /// as node outcomes, and anything unexpected degrades to a lookup_failed root
     /// so a read-only enrichment can never fail the inspection card.
     /// </summary>
-    Task<SpfAnalysis> AnalyzeAsync(string domainName, CancellationToken ct);
+    Task<SpfAnalysis> AnalyzeAsync(string domainName, CancellationToken ct, bool bypassCache = false);
 }
 
 /// <summary>
@@ -81,13 +81,13 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
     /// <summary>Wall clock per analysis. Slow DNS fails open into partial results, never a hung page.</summary>
     private static readonly TimeSpan ElapsedLimit = TimeSpan.FromSeconds(20);
 
-    public async Task<SpfAnalysis> AnalyzeAsync(string domainName, CancellationToken ct)
+    public async Task<SpfAnalysis> AnalyzeAsync(string domainName, CancellationToken ct, bool bypassCache = false)
     {
         var state = new WalkState { StartedUtc = DateTime.UtcNow };
         SpfDependencyNodeDto root;
         try
         {
-            root = await VisitAsync(Normalize(domainName), 0, [], state, isRoot: true, ct);
+            root = await VisitAsync(Normalize(domainName), 0, [], state, isRoot: true, bypassCache, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -118,7 +118,8 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
     }
 
     private async Task<SpfDependencyNodeDto> VisitAsync(
-        string domain, int depth, List<string> path, WalkState state, bool isRoot, CancellationToken ct)
+        string domain, int depth, List<string> path, WalkState state, bool isRoot, bool bypassCache,
+        CancellationToken ct)
     {
         if (DateTime.UtcNow - state.StartedUtc > ElapsedLimit)
         {
@@ -158,7 +159,7 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
             }
 
             ct.ThrowIfCancellationRequested();
-            var txts = await txt.ResolveAsync(domain, ct);
+            var txts = await txt.ResolveAsync(domain, ct, bypassCache);
             state.Queries++;
 
             if (txts is null)
@@ -198,7 +199,7 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
 
             var before = state.RfcLookups;
             var record = SpfRecordParser.Parse(records[0]);
-            var terms = await EvaluateTermsAsync(domain, depth, path, record, state, ct);
+            var terms = await EvaluateTermsAsync(domain, depth, path, record, state, bypassCache, ct);
             var nodeIssues = new List<string>();
             if (record.Terms.Count(t => t.Kind == SpfTermKind.Redirect) > 1)
             {
@@ -215,7 +216,8 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
     }
 
     private async Task<IReadOnlyList<SpfTermDto>> EvaluateTermsAsync(
-        string domain, int depth, List<string> path, SpfRecord record, WalkState state, CancellationToken ct)
+        string domain, int depth, List<string> path, SpfRecord record, WalkState state, bool bypassCache,
+        CancellationToken ct)
     {
         // redirect= delegates the whole check: local mechanisms are ignored, only the
         // target is followed. An unfollowable redirect (macro, IP, empty) is reported
@@ -285,14 +287,15 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
                 continue;
             }
 
-            result.Add(await EvaluateCostingTermAsync(domain, depth, path, term, state, ct));
+            result.Add(await EvaluateCostingTermAsync(domain, depth, path, term, state, bypassCache, ct));
         }
 
         return result;
     }
 
     private async Task<SpfTermDto> EvaluateCostingTermAsync(
-        string domain, int depth, List<string> path, SpfTerm term, WalkState state, CancellationToken ct)
+        string domain, int depth, List<string> path, SpfTerm term, WalkState state, bool bypassCache,
+        CancellationToken ct)
     {
         switch (term.Kind)
         {
@@ -310,7 +313,7 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
                     return ToTermDto(term, "Target is an IP address, not a domain — not followed.", [], 0);
                 }
 
-                var child = await VisitAsync(Normalize(target), depth + 1, path, state, isRoot: false, ct);
+                var child = await VisitAsync(Normalize(target), depth + 1, path, state, isRoot: false, bypassCache, ct);
                 if (child.Status == SpfNodeStatus.Missing)
                 {
                     // An include/redirect answered empty is a void lookup (RFC 7208 §4.6.4).
@@ -342,7 +345,7 @@ public sealed class SpfDependencyAnalyzer(IDnsTxtResolver txt, IDnsMxResolver mx
                 }
 
                 var target = term.Target is null ? domain : Normalize(term.Target);
-                var hosts = await mx.ResolveAsync(target, ct);
+                var hosts = await mx.ResolveAsync(target, ct, bypassCache);
                 state.Queries++;
 
                 if (hosts is null)

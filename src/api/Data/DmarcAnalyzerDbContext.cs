@@ -32,6 +32,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<UserPasskey> UserPasskeys => Set<UserPasskey>();
     public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
     public DbSet<MtaStsState> MtaStsStates => Set<MtaStsState>();
+    public DbSet<SpfDriftState> SpfDriftStates => Set<SpfDriftState>();
     public DbSet<MtaStsPolicy> MtaStsPolicies => Set<MtaStsPolicy>();
     public DbSet<SmtpTlsReport> SmtpTlsReports => Set<SmtpTlsReport>();
     public DbSet<SmtpTlsReportPolicy> SmtpTlsReportPolicies => Set<SmtpTlsReportPolicy>();
@@ -481,6 +482,31 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             // One row per domain, current state only.
             entity.HasIndex(x => x.DomainId).IsUnique();
             // The check pass picks the least-recently-checked domains first.
+            entity.HasIndex(x => x.LastCheckedAtUtc);
+
+            entity.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SpfDriftState>(entity =>
+        {
+            entity.ToTable("spf_drift_state");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SpfRecordStatus).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.RawRecord).HasMaxLength(4096);
+            entity.Property(x => x.DependencyHash).HasMaxLength(64);
+            entity.Property(x => x.PreviousDependencyHash).HasMaxLength(64);
+            entity.Property(x => x.CandidateStatus).HasMaxLength(16);
+            entity.Property(x => x.CandidateText).HasMaxLength(4096);
+            entity.Property(x => x.CandidateHash).HasMaxLength(64);
+            entity.Property(x => x.PreviousCandidateStatus).HasMaxLength(16);
+            entity.Property(x => x.PreviousCandidateText).HasMaxLength(4096);
+            entity.Property(x => x.PreviousCandidateHash).HasMaxLength(64);
+            // One row per domain, current state only.
+            entity.HasIndex(x => x.DomainId).IsUnique();
+            // The drift pass picks the least-recently-checked domains first.
             entity.HasIndex(x => x.LastCheckedAtUtc);
 
             entity.HasOne(x => x.Domain)
