@@ -15,8 +15,10 @@ public interface IAuthoritativeDnsClientLocator
     /// or reached, so the caller should fall back to its normal resolver path;
     /// that fallback is the point — a self-hosted install with egress locked
     /// to its configured resolver must keep working exactly as before.
+    /// The interface type (not <c>LookupClient</c>) so tests can substitute a
+    /// canned query client — the concrete client has no testing seam.
     /// </summary>
-    Task<LookupClient?> LocateAsync(string name, CancellationToken ct);
+    Task<IDnsQuery?> LocateAsync(string name, CancellationToken ct);
 }
 
 /// <summary>
@@ -47,7 +49,7 @@ public sealed class AuthoritativeDnsClientLocator(ILogger<AuthoritativeDnsClient
     });
 
     /// <inheritdoc />
-    public async Task<LookupClient?> LocateAsync(string name, CancellationToken ct)
+    public async Task<IDnsQuery?> LocateAsync(string name, CancellationToken ct)
     {
         IReadOnlyList<NsRecord>? ns = null;
         foreach (var candidate in SearchNames(name))

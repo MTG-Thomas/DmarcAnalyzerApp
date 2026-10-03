@@ -84,6 +84,17 @@ public sealed class AnalyticsModule : ICarterModule
             return inspection is null ? Results.NotFound() : Results.Ok(inspection);
         }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
 
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/spf-candidate", async (
+            Guid domainId,
+            IRecordInspectionService service,
+            CancellationToken ct) =>
+        {
+            // On demand, not part of /records: expansion fans wider (MX×A per
+            // host) than the discovery walk, so it only runs when asked.
+            var candidate = await service.GenerateSpfCandidateAsync(domainId, ct);
+            return candidate is null ? Results.NotFound() : Results.Ok(candidate);
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/mta-sts", async (
             Guid domainId,
             IMtaStsInspectionService service,
