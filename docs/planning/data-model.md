@@ -562,9 +562,10 @@ The ASP.NET Core Data Protection key ring: every API replica and cold start
 reads and appends here, so session cookies, ceremony handles, and OIDC
 correlation/nonce state decrypt no matter where they were sealed. A handful of
 rows, no tenancy: `Id` (PK, identity), `Xml` (the key XML, required).
-At-rest encryption via Key Vault is an explicit follow-up; the ring is
-currently stored unencrypted. Excluded from the backup artifact — a restored
-ring would resurrect retired keys; rotation appends instead.
+At-rest encryption is optional envelope encryption under an Azure Key Vault key
+(`DataProtection:KeyVaultKeyId`); empty (the default) stores the ring in
+plaintext. Excluded from the backup artifact — a restored ring would resurrect
+retired keys; rotation appends instead.
 
 ### `mta_sts_policy`
 A hosted MTA-STS policy: what this instance serves at

@@ -1,9 +1,11 @@
 using System.Xml.Linq;
+using Azure.Identity;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Microsoft.AspNetCore.DataProtection.Repositories;
+using Microsoft.AspNetCore.DataProtection.XmlEncryption;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,7 +14,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 namespace DmarcAnalyzer.Api.Application.Auth;
 
 /// <summary>
-/// Durable ASP.NET Core Data Protection: key rings live in the <c>dp_key</c> table instead of the local key directory, so every replica and every cold start shares one ring. To enable it, replace the <c>builder.Services.AddDataProtection()</c> line in <c>Program.cs</c> with <c>builder.Services.AddDurableDataProtection()</c> once the <c>dp_key</c> table exists (needs-migration-merge: the schema worker adds the <c>DbSet</c>, calls <c>ApplyDpKeyMapping</c> from <c>OnModelCreating</c>, and ships the migration); nothing else changes, and the returned <see cref="IDataProtectionBuilder"/> stays open for the explicit follow-up of encrypting keys at rest via <c>ProtectKeysWithAzureKeyVault</c> (or <c>ProtectKeysWith*</c>), which is the hook point — call one of those on the returned builder once Key Vault wiring exists, and do not build it here.
+/// Durable ASP.NET Core Data Protection: the key ring lives in the <c>dp_key</c> table instead of the local
+/// key directory, so every replica and every cold start shares one ring.
+/// <para>
+/// At-rest encryption is config-driven: the <see cref="IConfiguration"/> overload reads
+/// <c>DataProtection:KeyVaultKeyId</c> and envelope-encrypts every row through that Azure Key Vault key when
+/// it is set. Empty (the default) keeps the plaintext ring — see <c>docs/ops/configuration.md</c>.
+/// </para>
 /// </summary>
 public static class DataProtectionExtensions
 {
@@ -25,6 +33,57 @@ public static class DataProtectionExtensions
             DpKeyDbContextOptionsConfiguration>());
         services.AddOptions<KeyManagementOptions>()
             .Configure<IXmlRepository>((options, repository) => options.XmlRepository = repository);
+        return builder;
+    }
+
+    /// <summary>Where the Vault key identifier lives in configuration.</summary>
+    public const string KeyIdConfigPath = "DataProtection:KeyVaultKeyId";
+
+    /// <summary>
+    /// Durable ring plus config-driven at-rest encryption. A set <see cref="KeyIdConfigPath"/> must be an
+    /// absolute <c>https://</c> Vault key identifier and fails startup otherwise; empty leaves the ring in
+    /// plaintext, which is the default.
+    /// </summary>
+    public static IDataProtectionBuilder AddDurableDataProtection(
+        this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var builder = services.AddDurableDataProtection();
+        var keyIdValue = configuration[KeyIdConfigPath];
+
+        if (string.IsNullOrWhiteSpace(keyIdValue))
+        {
+            return builder;
+        }
+
+        if (!Uri.TryCreate(keyIdValue, UriKind.Absolute, out var keyId)
+            || !string.Equals(keyId.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "DataProtection__KeyVaultKeyId must be an absolute https:// Key Vault key identifier " +
+                "(e.g. https://vault-name.vault.azure.net/keys/dp-key/<version>); " +
+                "leave it empty to keep the dp_key ring in plaintext.");
+        }
+
+        // Envelope encryption: every dp_key row is sealed under this Vault key. Authentication is ambient
+        // (DefaultAzureCredential) — managed or workload identity in Azure, environment or developer
+        // credentials elsewhere — so there is no secret to pass alongside the identifier.
+        return builder.ProtectKeysWithAzureKeyVault(keyId, new DefaultAzureCredential());
+    }
+
+    /// <summary>
+    /// Durable ring persisted through <paramref name="encryptor"/> instead of a Vault key. This is the seam
+    /// the tests seal the ring with (no live vault in tests) and the escape hatch for a non-Azure encryptor;
+    /// production Key Vault wiring goes through the <see cref="IConfiguration"/> overload, not here.
+    /// </summary>
+    public static IDataProtectionBuilder AddDurableDataProtection(
+        this IServiceCollection services, IXmlEncryptor encryptor)
+    {
+        ArgumentNullException.ThrowIfNull(encryptor);
+
+        var builder = services.AddDurableDataProtection();
+        services.Configure<KeyManagementOptions>(options => options.XmlEncryptor = encryptor);
         return builder;
     }
 }

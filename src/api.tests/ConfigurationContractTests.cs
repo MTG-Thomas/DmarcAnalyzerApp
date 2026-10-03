@@ -44,6 +44,7 @@ public sealed class ConfigurationContractTests
         "DATABASE_URL",
         "Database__MigrateOnStartup",
         "APP_MODE",
+        "DataProtection__KeyVaultKeyId",
     ];
 
     /// <summary>

@@ -319,11 +319,28 @@ relying-party ID from a request `Host` header.
 | `Auth__Passkeys__RelyingPartyName` | `DMARC Analyzer` | Name shown by authenticators. |
 | `Auth__Passkeys__Origins__0` | *(empty)* | Exact HTTPS browser origin, for example `https://dmarc.midtowntg.com`. Each additional origin uses the next index. |
 
-Registration and sign-in ceremonies are held for five minutes in one API
-process and consumed exactly once. A restart intentionally aborts ceremonies.
-Before running more than one API replica, replace this store with an atomic
-shared PostgreSQL or Redis implementation and persist/share the ASP.NET Data
-Protection key ring.
+Registration and sign-in ceremonies persist for five minutes on
+`passkey_ceremony` and are consumed exactly once, so they complete across
+replicas, replacements, and cold starts. The Data Protection key ring they
+seal under persists on `dp_key` likewise; the next section covers encrypting
+it.
+
+## Key ring at-rest encryption (`DataProtection`)
+
+The Data Protection key ring — the `dp_key` rows that seal session cookies,
+passkey ceremony handles, and OIDC correlation state — is shared by every API
+replica and cold start. By default those rows are stored in **plaintext**:
+anyone who can read the database can read the keys.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DataProtection__KeyVaultKeyId` | *(empty)* | Full Azure Key Vault key identifier, e.g. `https://vault-name.vault.azure.net/keys/dp-key/<version>`. Set it and every row is envelope-encrypted under that key; empty keeps the plaintext ring. Authentication is ambient (`DefaultAzureCredential`): managed or workload identity in Azure, environment or developer credentials elsewhere — there is no secret to configure beside this setting. |
+
+The vault key and the database are a pair: without the key the ring does not
+unprotect, which signs every user out but loses no report data. Prefer a
+versionless identifier (`.../keys/dp-key` with no trailing version) so a
+rotation needs no config change — rows written under an older version still
+decrypt from it.
 
 ## Behind a reverse proxy (`Network`)
 
