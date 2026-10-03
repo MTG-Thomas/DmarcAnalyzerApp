@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "audit:ci": "node scripts/npm-audit-gate.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
