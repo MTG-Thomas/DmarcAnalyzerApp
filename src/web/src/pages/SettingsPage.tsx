@@ -191,7 +191,7 @@ export function SettingsPage() {
   return (
     <>
       <div className="mb-5">
-        <h1 ref={pageHeadingRef} tabIndex={-1} className="text-xl font-semibold tracking-tight text-body focus-visible:shadow-[var(--focus-ring)] focus:outline-none">Settings</h1>
+        <h1 ref={pageHeadingRef} tabIndex={-1} className="text-xl font-semibold tracking-tight text-body focus-visible:shadow-[var(--focus-ring)] focus:outline-hidden">Settings</h1>
         <p className="mt-1 text-sm text-secondary">Personal security, account-wide configuration, and integrations</p>
       </div>
 
@@ -350,7 +350,7 @@ export function SettingsPage() {
 
           {issued ? (
             <div className="space-y-4">
-              <h3 ref={revealRef} tabIndex={-1} className="font-display text-base font-semibold text-body focus:outline-none focus-visible:shadow-[var(--focus-ring)]">
+              <h3 ref={revealRef} tabIndex={-1} className="font-display text-base font-semibold text-body focus:outline-hidden focus-visible:shadow-[var(--focus-ring)]">
                 API key created
               </h3>
               <p role="status" className="text-sm text-secondary">{issued.name} is ready to configure.</p>
@@ -387,7 +387,7 @@ export function SettingsPage() {
           ) : (
             <form onSubmit={createCredential} className="space-y-4">
               {createError ? <Notice tone="danger">{createError}</Notice> : null}
-              <label className="block space-y-1.5">
+              <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-body">Name</span>
                 <Input
                   required
@@ -397,7 +397,7 @@ export function SettingsPage() {
                   placeholder="Bifrost"
                 />
               </label>
-              <label className="block space-y-1.5">
+              <label className="flex flex-col gap-1.5">
                 <span className="text-sm font-medium text-body">Expires</span>
                 <Input
                   type="date"

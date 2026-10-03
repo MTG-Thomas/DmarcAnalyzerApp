@@ -41,7 +41,7 @@ One agency workspace monitors DMARC aggregate (RUA) reports for many clients acr
   - `Application/` — service layer (Auth, Analytics, Clients, Domains, ReportSources, Ingestion, Reports, Security, Users). Carter modules in `Modules/` are thin and delegate here.
   - `Data/` — EF Core `DmarcAnalyzerDbContext`, entities, and `Migrations/`. A design-time factory (`DmarcAnalyzerDbContextFactory`) lets `dotnet ef` run without building the web host.
   - `Middleware/` — `SessionAuthMiddleware` (cookie session → `ICurrentUserContext`) then `RoleAuthorizationMiddleware` (endpoint role enforcement).
-- `src/web` — React 19 + Vite + TypeScript + Tailwind v3. Pages in `src/pages`, primitives in `src/components/ui` + `src/components/data`, shared helpers in `src/lib`. Frontend notes: [`src/web/README.md`](../src/web/README.md).
+- `src/web` — React 19 + Vite + TypeScript + Tailwind v4 (the existing JavaScript design-token configuration is loaded with `@config`). Pages in `src/pages`, primitives in `src/components/ui` + `src/components/data`, shared helpers in `src/lib`. Frontend notes: [`src/web/README.md`](../src/web/README.md).
 - `src/api.tests` — xUnit tests (EF Core InMemory provider; note raw-SQL paths can't run under InMemory).
 - `http/api.http` — REST Client request collection for manual API calls.
 - `docs/` — see the doc map below.
