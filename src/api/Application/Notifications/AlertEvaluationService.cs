@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -24,6 +25,15 @@ public static class AlertRuleTypes
 
     /// <summary>A live MX host is not covered by the policy's mx patterns.</summary>
     public const string MtaStsMxMismatch = "mta_sts_mx_mismatch";
+
+    /// <summary>An SPF dependency target's published record changed.</summary>
+    public const string SpfDependencyChange = "spf_dependency_change";
+
+    /// <summary>The SPF flattening candidate flipped from ready to refused.</summary>
+    public const string SpfCandidateUnsafe = "spf_candidate_unsafe";
+
+    /// <summary>The published SPF record crossed the 10-lookup budget.</summary>
+    public const string SpfLookupBudgetExceeded = "spf_lookup_budget_exceeded";
 }
 
 /// <summary>One evaluation pass's counters, for the worker log and the console's "evaluate now".</summary>
@@ -56,12 +66,16 @@ public interface IAlertEvaluationService
 /// broken (bad record, unreachable or invalid policy file), or a live MX host
 /// is not covered by the policy's mx patterns. Under mode enforce the last two
 /// are mail-breaking, hence critical.</item>
+/// <item><b>SPF drift</b> — a dependency target's published record changed, the
+/// flattening candidate flipped from ready to refused, or the published record
+/// crossed the 10-lookup budget. Transitions only, never current-state: a
+/// domain that was always over budget is not news.</item>
 /// </list>
 ///
 /// The DMARC rules compare against report data rather than wall-clock time,
 /// because reports arrive daily and a backfill can deliver old data at any
-/// moment. The MTA-STS rules read the persisted state the worker's check pass
-/// maintains — evaluation itself never touches the network.
+/// moment. The MTA-STS and SPF rules read the persisted state the worker's
+/// check passes maintain — evaluation itself never touches the network.
 /// </summary>
 public sealed class AlertEvaluationService(
     DmarcAnalyzerDbContext db,
@@ -118,6 +132,8 @@ public sealed class AlertEvaluationService(
                 };
                 candidates.AddRange(
                     await EvaluateMtaStsAlertsAsync(client.Id, client.Name, domain.Id, domain.Name, ct));
+                candidates.AddRange(
+                    await EvaluateSpfDriftAlertsAsync(client.Id, client.Name, domain.Id, domain.Name, ct));
 
                 foreach (var candidate in candidates)
                 {
@@ -431,6 +447,194 @@ public sealed class AlertEvaluationService(
         }
 
         return alerts;
+    }
+
+    /// <summary>
+    /// The three SPF drift rules, evaluated from the persisted state row the
+    /// worker's drift pass maintains — one indexed read, no network.
+    /// <para>
+    /// All three are transitions gated on the change timestamp, so each fires
+    /// once per move and then goes quiet until the next one: a failed lookup
+    /// keeps the previous values but advances no change timestamp, which is why
+    /// stale data can never alert. Domains without a state row (pass disabled,
+    /// or not reached yet) simply produce no candidates.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<AlertEvent>> EvaluateSpfDriftAlertsAsync(
+        Guid clientId, string clientName, Guid domainId, string domainName, CancellationToken ct)
+    {
+        var state = await db.SpfDriftStates
+            .AsNoTracking()
+            .Where(s => s.DomainId == domainId)
+            .Select(s => new
+            {
+                s.DependencySnapshotJson,
+                s.PreviousDependencySnapshotJson,
+                s.DependencyChangedAtUtc,
+                s.CandidateStatus,
+                s.PreviousCandidateStatus,
+                s.CandidateChangedAtUtc,
+                s.PublishedLookups,
+                s.CandidateLength,
+                s.PublishedOverBudget,
+                s.PreviousPublishedLookups,
+                s.PreviousCandidateLength,
+                s.PreviousPublishedOverBudget,
+            })
+            .SingleOrDefaultAsync(ct);
+
+        if (state is null)
+        {
+            return [];
+        }
+
+        var alerts = new List<AlertEvent>();
+        var changeWindowStart = DateTime.UtcNow.AddHours(-Math.Max(1, _options.CooldownHours));
+
+        if (state.PreviousDependencySnapshotJson is not null
+            && state.DependencyChangedAtUtc >= changeWindowStart)
+        {
+            var moves = DescribeDependencyMoves(
+                SpfDriftCheckService.DeserializeDependencies(state.PreviousDependencySnapshotJson),
+                SpfDriftCheckService.DeserializeDependencies(state.DependencySnapshotJson));
+            var budget = DescribeBudgetMove(
+                state.PreviousPublishedLookups, state.PublishedLookups,
+                state.PreviousCandidateLength, state.CandidateLength,
+                state.PreviousPublishedOverBudget, state.PublishedOverBudget);
+
+            alerts.Add(new AlertEvent
+            {
+                ClientId = clientId,
+                DomainId = domainId,
+                RuleType = AlertRuleTypes.SpfDependencyChange,
+                Severity = "info",
+                Title = $"SPF dependencies changed for {domainName}",
+                Details =
+                    $"A provider {domainName} depends on republished its SPF record: {moves}." +
+                    (budget is null ? " " : $" {budget} ") +
+                    "Nothing was published on your side — review the drift panel before the next " +
+                    $"flattening candidate goes out. Client: {clientName}.",
+                DetectedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        if (string.Equals(state.PreviousCandidateStatus, SpfCandidateStatus.Ready, StringComparison.Ordinal)
+            && string.Equals(state.CandidateStatus, SpfCandidateStatus.Refused, StringComparison.Ordinal)
+            && state.CandidateChangedAtUtc >= changeWindowStart)
+        {
+            alerts.Add(new AlertEvent
+            {
+                ClientId = clientId,
+                DomainId = domainId,
+                RuleType = AlertRuleTypes.SpfCandidateUnsafe,
+                Severity = "warning",
+                Title = $"SPF flattening candidate no longer builds for {domainName}",
+                Details =
+                    $"The flattening candidate for {domainName} flipped from ready to refused — a " +
+                    "dependency now needs a mechanism that cannot be expanded safely, so any " +
+                    "candidate generated from the current snapshot would change mail-handling " +
+                    "behavior. The drift panel shows which target moved. " +
+                    $"Client: {clientName}.",
+                DetectedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        if (state.PreviousPublishedOverBudget == false
+            && state.PublishedOverBudget == true
+            && state.DependencyChangedAtUtc >= changeWindowStart)
+        {
+            alerts.Add(new AlertEvent
+            {
+                ClientId = clientId,
+                DomainId = domainId,
+                RuleType = AlertRuleTypes.SpfLookupBudgetExceeded,
+                Severity = "warning",
+                Title = $"SPF lookup budget exceeded for {domainName}",
+                Details =
+                    $"The published SPF record for {domainName} now costs " +
+                    $"{state.PublishedLookups?.ToString() ?? "?"} RFC lookups " +
+                    $"(was {state.PreviousPublishedLookups?.ToString() ?? "?"}), over the 10-lookup " +
+                    "budget receivers enforce — excess mechanisms return permerror and silently " +
+                    "stop protecting the domain. A provider-side change pushed it over; the drift " +
+                    $"panel shows which target moved. Client: {clientName}.",
+                DetectedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        return alerts;
+    }
+
+    /// <summary>
+    /// The per-target moves between two snapshots, capped so a wide provider
+    /// change does not write a novel into the alert: "mid.example.com changed,
+    /// old.example.com removed, and 3 more".
+    /// </summary>
+    private static string DescribeDependencyMoves(
+        IReadOnlyList<SpfDependencySnapshotEntry> previous,
+        IReadOnlyList<SpfDependencySnapshotEntry> current)
+    {
+        var before = previous.ToDictionary(e => e.Domain, e => e.Record, StringComparer.OrdinalIgnoreCase);
+        var after = current.ToDictionary(e => e.Domain, e => e.Record, StringComparer.OrdinalIgnoreCase);
+
+        var moves = new List<string>();
+        foreach (var domain in before.Keys.Union(after.Keys, StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(d => d, StringComparer.Ordinal))
+        {
+            var had = before.TryGetValue(domain, out var oldRecord);
+            var has = after.TryGetValue(domain, out var newRecord);
+            if (had && !has)
+            {
+                moves.Add($"{domain} removed");
+            }
+            else if (!had && has)
+            {
+                moves.Add($"{domain} added");
+            }
+            else if (!string.Equals(oldRecord, newRecord, StringComparison.Ordinal))
+            {
+                moves.Add(newRecord is null
+                    ? $"{domain} unreadable (lookup failed)"
+                    : $"{domain} changed");
+            }
+        }
+
+        if (moves.Count == 0)
+        {
+            return "records republished with equivalent content";
+        }
+
+        const int shown = 5;
+        return moves.Count <= shown
+            ? string.Join(", ", moves)
+            : string.Join(", ", moves.Take(shown)) + $" and {moves.Count - shown} more";
+    }
+
+    /// <summary>
+    /// The before→after numbers riding on a dependency change — lookups, output
+    /// size, budget — or null when none of them moved, so the alert stays short.
+    /// </summary>
+    private static string? DescribeBudgetMove(
+        int? previousLookups, int? lookups,
+        int? previousLength, int? length,
+        bool? previouslyOverBudget, bool? overBudget)
+    {
+        var parts = new List<string>();
+        if (previousLookups != lookups && previousLookups is not null && lookups is not null)
+        {
+            parts.Add($"lookups {previousLookups} → {lookups}");
+        }
+
+        if (previousLength != length && previousLength is not null && length is not null)
+        {
+            parts.Add($"candidate {previousLength} → {length} chars");
+        }
+
+        if (previouslyOverBudget != overBudget && previouslyOverBudget is not null && overBudget is not null)
+        {
+            parts.Add(overBudget.Value ? "now over the 10-lookup budget" : "back under the 10-lookup budget");
+        }
+
+        return parts.Count == 0 ? null : "Effect: " + string.Join(", ", parts) + ".";
     }
 
     private static IReadOnlyList<string> DeserializeHosts(string json)

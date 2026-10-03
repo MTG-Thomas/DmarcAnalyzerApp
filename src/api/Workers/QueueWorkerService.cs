@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MtaSts;
@@ -58,6 +59,7 @@ public sealed class QueueWorkerService(
                 await RunRetentionPassIfDueAsync(stoppingToken);
                 await RunDnsRefreshPassIfDueAsync(stoppingToken);
                 await RunMtaStsPassIfDueAsync(stoppingToken);
+                await RunSpfDriftPassIfDueAsync(stoppingToken);
                 await RunBackupOffloadPassIfDueAsync(stoppingToken);
                 await RunMailboxRetentionPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
@@ -273,6 +275,55 @@ public sealed class QueueWorkerService(
         {
             logger.LogError(ex, "MTA-STS check pass failed; ingestion is unaffected");
             _lastMtaStsRunUtc = DateTime.UtcNow;
+        }
+    }
+
+    private DateTime? _lastSpfDriftRunUtc;
+
+    /// <summary>
+    /// Keeps each domain's SPF drift state fresh: the live record, the
+    /// dependency snapshot, and the candidate it yields. The alert pass reads
+    /// what this writes, so this is also what surfaces a provider-side change
+    /// without anyone opening the domain.
+    /// <para>
+    /// Swallows its own exceptions, like the MTA-STS pass above and for the
+    /// same structural reason: it talks to third parties (every dependency's
+    /// DNS), which makes it likelier to fail than the passes after it — and
+    /// per-domain failures are already absorbed inside the refresh, so an
+    /// exception here means the pass itself broke, not a domain.
+    /// </para>
+    /// </summary>
+    private async Task RunSpfDriftPassIfDueAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var driftOptions = scope.ServiceProvider
+            .GetRequiredService<IOptions<SpfDriftOptions>>().Value;
+
+        if (!driftOptions.Enabled)
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromHours(Math.Max(1, driftOptions.CheckIntervalHours));
+        if (_lastSpfDriftRunUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        try
+        {
+            var cache = scope.ServiceProvider.GetRequiredService<ISpfDriftStateCache>();
+            await cache.RefreshAllAsync(ct);
+            _lastSpfDriftRunUtc = DateTime.UtcNow;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "SPF drift check pass failed; ingestion is unaffected");
+            _lastSpfDriftRunUtc = DateTime.UtcNow;
         }
     }
 

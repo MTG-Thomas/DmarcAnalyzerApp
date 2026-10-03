@@ -449,6 +449,51 @@ export type SpfCandidate = {
   txtSegments: number
 }
 
+// --- SPF drift (GET /api/v1/analytics/domains/{domainId}/spf-drift) ---
+
+export type SpfDriftRecordStatus = 'found' | 'missing' | 'lookup_failed' | 'invalid'
+
+/** One dependency target's published record at snapshot time; null record means that target's lookup failed. */
+export type SpfDriftSnapshotEntry = {
+  domain: string
+  record: string | null
+  hash: string | null
+}
+
+/**
+ * The persisted SPF drift state of a domain. Nullable fields hold the last
+ * known values when the latest lookup failed; consecutiveFailures and
+ * lastSuccessAtUtc are the freshness signal.
+ */
+export type SpfDriftState = {
+  domainId: string
+  name: string
+  checked: boolean
+  spfRecordStatus: SpfDriftRecordStatus | null
+  rawRecord: string | null
+  dependencies: SpfDriftSnapshotEntry[]
+  previousDependencies: SpfDriftSnapshotEntry[]
+  dependencyChangedAtUtc: string | null
+  candidateStatus: SpfCandidateStatus | null
+  candidateText: string | null
+  previousCandidateStatus: SpfCandidateStatus | null
+  previousCandidateText: string | null
+  candidateChangedAtUtc: string | null
+  publishedLookups: number | null
+  candidateLookups: number | null
+  candidateLength: number | null
+  publishedOverBudget: boolean | null
+  previousPublishedLookups: number | null
+  previousCandidateLookups: number | null
+  previousCandidateLength: number | null
+  previousPublishedOverBudget: boolean | null
+  issues: string[]
+  lastCheckedAtUtc: string | null
+  lastChangedAtUtc: string | null
+  lastSuccessAtUtc: string | null
+  consecutiveFailures: number | null
+}
+
 /** The DMARC policy reporters most recently observed (policy_published). */
 export type ObservedPolicy = {
   policy: string
@@ -652,6 +697,9 @@ export type AlertRuleType =
   | 'mta_sts_policy_change'
   | 'mta_sts_broken'
   | 'mta_sts_mx_mismatch'
+  | 'spf_dependency_change'
+  | 'spf_candidate_unsafe'
+  | 'spf_lookup_budget_exceeded'
 
 export type AlertEvent = {
   id: string
@@ -687,6 +735,9 @@ export const ALERT_RULE_LABEL: Record<AlertRuleType, string> = {
   mta_sts_policy_change: 'MTA-STS policy change',
   mta_sts_broken: 'MTA-STS broken',
   mta_sts_mx_mismatch: 'MTA-STS MX mismatch',
+  spf_dependency_change: 'SPF dependency change',
+  spf_candidate_unsafe: 'SPF candidate unsafe',
+  spf_lookup_budget_exceeded: 'SPF lookup budget exceeded',
 }
 
 // --- Notification recipients (GET /api/v1/notification-recipients) ---

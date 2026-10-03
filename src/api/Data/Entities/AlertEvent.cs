@@ -15,7 +15,8 @@ public sealed class AlertEvent
 
     /// <summary>
     /// `failure_spike`, `policy_regression`, `mta_sts_policy_change`,
-    /// `mta_sts_broken` or `mta_sts_mx_mismatch`.
+    /// `mta_sts_broken`, `mta_sts_mx_mismatch`, `spf_dependency_change`,
+    /// `spf_candidate_unsafe` or `spf_lookup_budget_exceeded`.
     /// </summary>
     public string RuleType { get; set; } = string.Empty;
 

@@ -1,5 +1,6 @@
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
@@ -41,6 +42,7 @@ public sealed class ServicePermissionEndpointMetadataTests
         builder.Services.AddScoped<IMailboxSyncRunQueryService>(_ => null!);
         builder.Services.AddScoped<IMtaStsPolicyAdminService>(_ => null!);
         builder.Services.AddScoped<IMtaStsInspectionService>(_ => null!);
+        builder.Services.AddScoped<ISpfDriftInspectionService>(_ => null!);
         builder.Services.AddScoped<IRecordInspectionService>(_ => null!);
         builder.Services.AddScoped<ITlsRptQueryService>(_ => null!);
         builder.Services.AddScoped<IAuditLog>(_ => null!);

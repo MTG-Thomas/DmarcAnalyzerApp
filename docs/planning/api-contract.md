@@ -115,6 +115,8 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/domains/{domainId}/enforcement` | Guided next policy step, rationale, `readyToAdvance`, blocking sources |
 | GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published`. The SPF section carries the recursive dependency tree (`dependencyTree`) with the global 10-lookup budget, void lookups, and per-term follow notes |
 | GET | `/analytics/domains/{domainId}/spf-candidate` | Conservative flattened-SPF proposal from the live record (`ready`/`refused`/`lookup_failed`, per-term terms, savings); read-only, never publishes |
+| GET | `/analytics/domains/{domainId}/spf-drift` | The domain's persisted SPF drift state (dependency snapshot + previous, candidate + previous, lookups/size/budget before→after, freshness) — database only, no live lookups |
+| POST | `/analytics/domains/{domainId}/spf-drift/recheck` | **staff** — runs the SPF drift check live (DNS, cache bypassed) and persists it; returns the updated state |
 | GET | `/analytics/domains/{domainId}/mta-sts` | The domain's persisted MTA-STS state (record, policy file, MX coverage) — database only, no live lookups |
 | POST | `/analytics/domains/{domainId}/mta-sts/recheck` | **staff** — runs the MTA-STS check live (DNS + HTTPS) and persists it; returns the updated state |
 | GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX, plus `record` — the live `_smtp._tls` TXT lookup (`found`/`missing`/`lookup_failed`/`invalid`, RFC 8460 §3), without which zero sessions is unreadable. Windows anchor to the newest **TLS** data the caller can see. Touches DNS, so unlike `mta-sts` it is not a pure database read |
@@ -662,6 +664,9 @@ unbuilt rules *CRUD*):
 - `mta_sts_policy_change`
 - `mta_sts_broken`
 - `mta_sts_mx_mismatch`
+- `spf_dependency_change`
+- `spf_candidate_unsafe`
+- `spf_lookup_budget_exceeded`
 
 Scope:
 

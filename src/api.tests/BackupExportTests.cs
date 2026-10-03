@@ -323,6 +323,31 @@ public sealed class BackupExportTests
     }
 
     [Fact]
+    public async Task SpfDriftStateIsCountedButNeverExported()
+    {
+        await using var db = NewDb();
+        var client = new Client { Name = "Acme", Slug = "acme", Timezone = "UTC" };
+        var domain = new Domain { ClientId = client.Id, Name = "acme.example", IsActive = true };
+        db.AddRange(client, domain);
+        db.SpfDriftStates.Add(new SpfDriftState
+        {
+            DomainId = domain.Id,
+            SpfRecordStatus = "found",
+            RawRecord = "v=spf1 include:mid.example.com -all",
+            LastCheckedAtUtc = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var json = BackupJson.Serialize(artifact);
+
+        // The drift pass rebuilds this cache from live DNS within one interval,
+        // so the artifact counts it (honest scope) without carrying it.
+        Assert.Equal(1, artifact.Manifest.Excluded["spf_drift_state"]);
+        Assert.DoesNotContain("mid.example.com -all", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void FingerprintIdentifiesAKeyAndRefusesToGuess()
     {
         var other = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray());

@@ -1,6 +1,7 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.MtaSts;
 
 namespace DmarcAnalyzer.Api.Modules;
@@ -94,6 +95,29 @@ public sealed class AnalyticsModule : ICarterModule
             var candidate = await service.GenerateSpfCandidateAsync(domainId, ct);
             return candidate is null ? Results.NotFound() : Results.Ok(candidate);
         }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/spf-drift", async (
+            Guid domainId,
+            ISpfDriftInspectionService service,
+            CancellationToken ct) =>
+        {
+            // Database only — the panel must render instantly; freshness comes
+            // from the worker pass or an explicit recheck.
+            var state = await service.GetAsync(domainId, ct);
+            return state is null ? Results.NotFound() : Results.Ok(state);
+        }).AllowClientViewer().AllowServicePermission(ServiceApiPermissions.PortfolioRead);
+
+        // A recheck triggers server-side DNS requests and rewrites the stored
+        // state, so it is a POST and staff-only — not something a page load or
+        // a viewer should be able to fire.
+        app.MapPost("/api/v1/analytics/domains/{domainId:guid}/spf-drift/recheck", async (
+            Guid domainId,
+            ISpfDriftInspectionService service,
+            CancellationToken ct) =>
+        {
+            var state = await service.RecheckAsync(domainId, ct);
+            return state is null ? Results.NotFound() : Results.Ok(state);
+        }).RequireAgencyStaff().AllowServicePermission(ServiceApiPermissions.DomainsManage);
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/mta-sts", async (
             Guid domainId,

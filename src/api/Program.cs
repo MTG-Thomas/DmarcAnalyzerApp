@@ -137,6 +137,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
     workerBuilder.Services.AddMtaStsMonitoring(workerBuilder.Configuration);
+    workerBuilder.Services.AddSpfDriftMonitoring(workerBuilder.Configuration);
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     workerBuilder.Services.AddOptions<ReportPayloadExtractionOptions>()
         .Bind(workerBuilder.Configuration.GetSection(ReportPayloadExtractionOptions.SectionName))
@@ -328,8 +329,7 @@ builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryServi
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
-builder.Services.AddScoped<ISpfDependencyAnalyzer, SpfDependencyAnalyzer>();
-builder.Services.AddScoped<ISpfCandidateGenerator, SpfCandidateGenerator>();
+builder.Services.AddSpfDriftMonitoring(builder.Configuration);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLog, AuditLog>();
 builder.Services.AddScoped<AuditQueryService>();
@@ -345,7 +345,6 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IAuthoritativeDnsClientLocator, AuthoritativeDnsClientLocator>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
-builder.Services.AddSingleton<IDnsAddressResolver, DnsAddressResolver>();
 builder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
 builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();

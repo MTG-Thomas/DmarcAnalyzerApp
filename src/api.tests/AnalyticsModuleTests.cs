@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Modules;
 using Microsoft.AspNetCore.Builder;
@@ -76,6 +77,28 @@ public sealed class AnalyticsModuleTests
             => throw new NotImplementedException();
     }
 
+    private sealed class StubSpfDriftInspectionService : ISpfDriftInspectionService
+    {
+        public SpfDriftStateDto? State { get; set; } = new(
+            DomainId, "acme.example", Checked: true,
+            SpfDriftRecordStatus.Found, "v=spf1 include:mid.example.com -all",
+            [new("mid.example.com", "v=spf1 ip4:198.51.100.7 -all", "h")], [], null,
+            SpfCandidateStatus.Ready, "v=spf1 ip4:198.51.100.7 -all", null, null, null,
+            1, 0, 33, false, null, null, null, null, [],
+            DateTime.UtcNow, null, DateTime.UtcNow, 0);
+
+        public int Rechecks { get; private set; }
+
+        public Task<SpfDriftStateDto?> GetAsync(Guid domainId, CancellationToken ct)
+            => Task.FromResult(State);
+
+        public Task<SpfDriftStateDto?> RecheckAsync(Guid domainId, CancellationToken ct)
+        {
+            Rechecks++;
+            return Task.FromResult(State);
+        }
+    }
+
     [Fact]
     public async Task SpfCandidateRoute_ReturnsServiceResult()
     {
@@ -88,6 +111,7 @@ public sealed class AnalyticsModuleTests
         builder.Services.AddSingleton<IMtaStsInspectionService, UnusedMtaStsInspectionService>();
         builder.Services.AddSingleton<ITlsRptQueryService, UnusedTlsRptQueryService>();
         builder.Services.AddSingleton<IHostnameResolver, UnusedHostnameResolver>();
+        builder.Services.AddSingleton<ISpfDriftInspectionService, StubSpfDriftInspectionService>();
 
         await using var app = builder.Build();
         new AnalyticsModule().AddRoutes(app);
@@ -107,5 +131,44 @@ public sealed class AnalyticsModuleTests
 
         service.Candidate = null;
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(url)).StatusCode);
+    }
+
+    [Fact]
+    public async Task SpfDriftRoutes_ReturnServiceResult()
+    {
+        var service = new StubSpfDriftInspectionService();
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddSingleton<IRecordInspectionService, StubRecordInspectionService>();
+        builder.Services.AddSingleton<IAnalyticsQueryService, UnusedAnalyticsQueryService>();
+        builder.Services.AddSingleton<IMtaStsInspectionService, UnusedMtaStsInspectionService>();
+        builder.Services.AddSingleton<ITlsRptQueryService, UnusedTlsRptQueryService>();
+        builder.Services.AddSingleton<IHostnameResolver, UnusedHostnameResolver>();
+        builder.Services.AddSingleton<ISpfDriftInspectionService>(service);
+
+        await using var app = builder.Build();
+        new AnalyticsModule().AddRoutes(app);
+        await app.StartAsync();
+
+        var address = app.Services.GetRequiredService<IServer>()
+            .Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+        using var client = new HttpClient { BaseAddress = new Uri(address) };
+        var url = $"/api/v1/analytics/domains/{DomainId}/spf-drift";
+
+        var ok = await client.GetAsync(url);
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var payload = await ok.Content.ReadFromJsonAsync<SpfDriftStateDto>();
+        Assert.NotNull(payload);
+        Assert.True(payload.Checked);
+        Assert.Equal("v=spf1 ip4:198.51.100.7 -all", payload.CandidateText);
+
+        var recheck = await client.PostAsync(url + "/recheck", content: null);
+        Assert.Equal(HttpStatusCode.OK, recheck.StatusCode);
+        Assert.Equal(1, service.Rechecks);
+
+        service.State = null;
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(url)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsync(url + "/recheck", content: null)).StatusCode);
     }
 }

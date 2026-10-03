@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -564,6 +565,225 @@ public sealed class AlertEvaluationTests
 
     [Fact]
     public async Task NoMtaStsStateRow_ProducesNoCandidates()
+    {
+        await using var db = NewDb();
+        Seed(db);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+        Assert.Equal(0, result.Suppressed);
+    }
+
+    // --- SPF drift rules (read the persisted state row; no network) ---
+
+    /// <summary>A stable SPF posture with a ready candidate; mutate to move specific parts.</summary>
+    private static SpfDriftState SeedSpfDrift(DmarcAnalyzerDbContext db, Guid domainId, Action<SpfDriftState>? mutate = null)
+    {
+        var deps = (IReadOnlyList<SpfDependencySnapshotEntry>)
+            [new("mid.example.com", "v=spf1 ip4:198.51.100.0/24 -all", "bb")];
+        var state = new SpfDriftState
+        {
+            DomainId = domainId,
+            SpfRecordStatus = SpfDriftRecordStatus.Found,
+            RawRecord = "v=spf1 include:mid.example.com -all",
+            DependencySnapshotJson = SpfDriftCheckService.SerializeDependencies(deps),
+            DependencyHash = "current",
+            CandidateStatus = SpfCandidateStatus.Ready,
+            CandidateText = "v=spf1 ip4:198.51.100.0/24 -all",
+            CandidateHash = "cc",
+            PublishedLookups = 1,
+            CandidateLookups = 0,
+            CandidateLength = 34,
+            PublishedOverBudget = false,
+            LastCheckedAtUtc = DateTime.UtcNow,
+            LastSuccessAtUtc = DateTime.UtcNow,
+        };
+        mutate?.Invoke(state);
+        db.Add(state);
+        return state;
+    }
+
+    private static string SnapshotJson(params (string Domain, string? Record)[] entries)
+        => SpfDriftCheckService.SerializeDependencies(
+            entries.Select(e => new SpfDependencySnapshotEntry(e.Domain, e.Record, null)).ToList());
+
+    [Fact]
+    public async Task SpfHealthyState_RaisesNothing()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedSpfDrift(db, domain.Id);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+        Assert.Equal(0, result.Suppressed);
+    }
+
+    [Fact]
+    public async Task SpfDependencyChange_RaisesInfo_WithMovesAndBudgetEffect()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.PreviousDependencySnapshotJson = SnapshotJson(
+                ("mid.example.com", "v=spf1 ip4:198.51.100.0/24 -all"));
+            s.DependencySnapshotJson = SnapshotJson(
+                ("mid.example.com", "v=spf1 ip4:192.0.2.1 -all"));
+            s.PreviousDependencyHash = "old";
+            s.DependencyHash = "new";
+            s.DependencyChangedAtUtc = DateTime.UtcNow.AddHours(-1);
+            s.PreviousPublishedLookups = 1;
+            s.PublishedLookups = 2;
+            s.PreviousCandidateLength = 34;
+            s.CandidateLength = 30;
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.AlertsRaised);
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.SpfDependencyChange, alert.RuleType);
+        Assert.Equal("info", alert.Severity);
+        Assert.Contains("acme.example", alert.Title);
+        Assert.Contains("mid.example.com changed", alert.Details);
+        Assert.Contains("lookups 1 → 2", alert.Details);
+        Assert.Contains("candidate 34 → 30 chars", alert.Details);
+    }
+
+    [Fact]
+    public async Task SpfDependencyChange_AgedPastTheWindow_IsNotProposedAgain()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.PreviousDependencySnapshotJson = SnapshotJson(
+                ("mid.example.com", "v=spf1 ip4:198.51.100.0/24 -all"));
+            s.DependencyChangedAtUtc = DateTime.UtcNow.AddHours(-48); // past the 24h cooldown window
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task SpfCandidateUnsafe_RaisesWarning_OnReadyToRefusedFlip()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.PreviousCandidateStatus = SpfCandidateStatus.Ready;
+            s.CandidateStatus = SpfCandidateStatus.Refused;
+            s.CandidateText = null;
+            s.CandidateHash = null;
+            s.CandidateChangedAtUtc = DateTime.UtcNow.AddHours(-1);
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.AlertsRaised);
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.SpfCandidateUnsafe, alert.RuleType);
+        Assert.Equal("warning", alert.Severity);
+        Assert.Contains("no longer builds", alert.Title);
+    }
+
+    [Fact]
+    public async Task SpfCandidateRefusedWithoutAFlip_RaisesNothing()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        // Refused from the first observation — there is no transition to announce.
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.CandidateStatus = SpfCandidateStatus.Refused;
+            s.CandidateText = null;
+            s.CandidateHash = null;
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task SpfLookupBudgetExceeded_RaisesWarning_OnFlip()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.PreviousPublishedOverBudget = false;
+            s.PublishedOverBudget = true;
+            s.PreviousPublishedLookups = 9;
+            s.PublishedLookups = 11;
+            s.DependencyChangedAtUtc = DateTime.UtcNow.AddHours(-1);
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.AlertsRaised);
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.SpfLookupBudgetExceeded, alert.RuleType);
+        Assert.Equal("warning", alert.Severity);
+        Assert.Contains("11 RFC lookups", alert.Details);
+    }
+
+    [Fact]
+    public async Task SpfAlwaysOverBudget_RaisesNothing()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        // Over budget since the first observation — drift is a change, not a state.
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.PublishedOverBudget = true;
+            s.PublishedLookups = 14;
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task SpfCooldown_SuppressesTheRepeat_AcrossRestarts()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedSpfDrift(db, domain.Id, s =>
+        {
+            s.PreviousDependencySnapshotJson = SnapshotJson(
+                ("mid.example.com", "v=spf1 ip4:198.51.100.0/24 -all"));
+            s.DependencyChangedAtUtc = DateTime.UtcNow.AddHours(-1);
+        });
+        await db.SaveChangesAsync();
+
+        // Fresh service instances: a worker restart must not duplicate the open finding.
+        var first = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+        var second = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, first.AlertsRaised);
+        Assert.Equal(0, second.AlertsRaised);
+        Assert.Equal(1, second.Suppressed);
+        Assert.Single(await db.AlertEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task NoSpfDriftStateRow_ProducesNoCandidates()
     {
         await using var db = NewDb();
         Seed(db);

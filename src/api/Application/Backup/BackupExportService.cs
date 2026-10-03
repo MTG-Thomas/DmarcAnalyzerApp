@@ -42,6 +42,10 @@ public sealed class BackupExportService(
         // WebAuthn counters cannot be safely merged after two same-RP installs diverge.
         // Users retain password/OIDC recovery and register fresh passkeys after restore.
         "user_passkey",
+        // SPF drift state is a monitoring cache, not configuration: the drift pass
+        // rebuilds it from live DNS within one interval of a restore, and carrying
+        // a stale copy would show drift that no longer exists.
+        "spf_drift_state",
     ];
 
     /// <inheritdoc />
@@ -218,5 +222,6 @@ public sealed class BackupExportService(
             [ExcludedTables[7]] = await db.ApiSourceCredentials.LongCountAsync(ct),
             [ExcludedTables[8]] = await db.ServiceApiCredentials.LongCountAsync(ct),
             [ExcludedTables[9]] = await db.UserPasskeys.LongCountAsync(ct),
+            [ExcludedTables[10]] = await db.SpfDriftStates.LongCountAsync(ct),
         };
 }

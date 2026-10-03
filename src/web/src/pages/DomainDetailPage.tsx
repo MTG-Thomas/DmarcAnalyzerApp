@@ -44,6 +44,8 @@ import {
   type SourceDetail,
   type SpfCandidate,
   type SpfCandidateTermOutcome,
+  type SpfDriftSnapshotEntry,
+  type SpfDriftState,
   type SpfDependencyNode,
   type SpfNodeStatus,
   type TlsRptRecord,
@@ -785,6 +787,353 @@ function describeComparison(row: RecordComparison): string {
     default:
       return `${row.field}: ${row.published ?? 'nothing'}, matching reports`
   }
+}
+
+// --- SPF drift monitoring ---
+
+const SPF_DRIFT_RECORD_META: Record<
+  Exclude<SpfDriftState['spfRecordStatus'], null>,
+  { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
+> = {
+  found: { label: 'Monitored', badge: 'success' },
+  missing: { label: 'No SPF record', badge: 'neutral' },
+  lookup_failed: { label: 'Check failed', badge: 'warning' },
+  invalid: { label: 'Invalid', badge: 'danger' },
+}
+
+type SnapshotMove = {
+  domain: string
+  before: string | null
+  after: string | null
+  kind: 'added' | 'removed' | 'changed' | 'unreadable'
+}
+
+const SNAPSHOT_MOVE_LABEL: Record<SnapshotMove['kind'], string> = {
+  added: 'Added',
+  removed: 'Removed',
+  changed: 'Changed',
+  unreadable: 'Unreadable',
+}
+
+/** Old→new per target, for the reviewable diff. Order-stable by domain. */
+function diffSnapshots(
+  previous: SpfDriftSnapshotEntry[],
+  current: SpfDriftSnapshotEntry[],
+): SnapshotMove[] {
+  const before = new Map(previous.map((e) => [e.domain.toLowerCase(), e]))
+  const after = new Map(current.map((e) => [e.domain.toLowerCase(), e]))
+  const domains = [...new Set([...before.keys(), ...after.keys()])].sort((a, b) => a.localeCompare(b))
+  const moves: SnapshotMove[] = []
+  for (const key of domains) {
+    const oldEntry = before.get(key)
+    const newEntry = after.get(key)
+    if (oldEntry && !newEntry) {
+      moves.push({ domain: oldEntry.domain, before: oldEntry.record, after: null, kind: 'removed' })
+    } else if (!oldEntry && newEntry) {
+      moves.push({ domain: newEntry.domain, before: null, after: newEntry.record, kind: 'added' })
+    } else if (oldEntry && newEntry && oldEntry.record !== newEntry.record) {
+      moves.push({
+        domain: newEntry.domain,
+        before: oldEntry.record,
+        after: newEntry.record,
+        kind: newEntry.record === null ? 'unreadable' : 'changed',
+      })
+    }
+  }
+  return moves
+}
+
+/**
+ * Presentational — the card owns fetching. Renders the persisted drift state:
+ * the live record, the dependency snapshot with its old→new diff, and the
+ * flattening candidate that snapshot yields.
+ */
+export function SpfDriftView({ state }: { state: SpfDriftState }) {
+  if (!state.checked) {
+    return (
+      <p className="py-2 text-sm text-secondary">
+        Not checked yet — the worker&apos;s SPF drift pass hasn&apos;t reached this domain.
+      </p>
+    )
+  }
+
+  const status = state.spfRecordStatus
+  const statusMeta = status ? SPF_DRIFT_RECORD_META[status] : null
+  if (status === 'missing') {
+    return (
+      <div className="flex items-center gap-2 py-2">
+        <Badge variant="neutral">No SPF record</Badge>
+        <p className="text-sm text-secondary">
+          This domain doesn&apos;t publish an SPF record, so there is nothing to watch for drift.
+        </p>
+      </div>
+    )
+  }
+
+  const moves = diffSnapshots(state.previousDependencies, state.dependencies)
+  const failures = state.consecutiveFailures ?? 0
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <PanelSectionTitle>SPF record</PanelSectionTitle>
+          {statusMeta ? <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge> : null}
+          {status === 'lookup_failed' ? (
+            <span className="text-xs text-secondary">
+              showing last known state
+              {state.lastSuccessAtUtc ? ` · last good read ${formatRelativeOrDate(state.lastSuccessAtUtc)}` : ''}
+              {failures > 0 ? ` · ${failures} failed check${failures === 1 ? '' : 's'} — freshness unknown` : ''}
+            </span>
+          ) : null}
+          {status === 'invalid' ? (
+            <span className="text-xs text-secondary">
+              two or more v=spf1 records — receivers reject all of them
+            </span>
+          ) : null}
+        </div>
+        {state.rawRecord ? (
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
+            {state.rawRecord}
+          </pre>
+        ) : null}
+      </div>
+
+      {state.previousDependencies.length > 0 && moves.length > 0 ? (
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <PanelSectionTitle>What changed</PanelSectionTitle>
+            <Badge variant="warning">
+              {moves.length} target{moves.length === 1 ? '' : 's'}
+            </Badge>
+            {state.dependencyChangedAtUtc ? (
+              <span className="text-xs text-secondary">
+                {formatRelativeOrDate(state.dependencyChangedAtUtc)}
+              </span>
+            ) : null}
+          </div>
+          <ul className="mt-2 space-y-2">
+            {moves.map((move) => (
+              <li
+                key={move.domain}
+                className="rounded-md border border-border bg-surface-card px-3 py-2 text-xs"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono font-semibold text-body">{move.domain}</span>
+                  <span className="text-secondary">{SNAPSHOT_MOVE_LABEL[move.kind]}</span>
+                </div>
+                {move.kind === 'unreadable' ? (
+                  <p className="mt-1 text-secondary">
+                    The target didn&apos;t answer this check — the previous record is kept below.
+                  </p>
+                ) : null}
+                {move.before != null && move.kind !== 'added' ? (
+                  <p className="mt-1 break-all font-mono text-secondary">
+                    <span className="font-sans">was:</span> {move.before}
+                  </p>
+                ) : null}
+                {move.after != null ? (
+                  <p className="mt-1 break-all font-mono text-body">
+                    <span className="font-sans text-secondary">now:</span> {move.after}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <DriftNumbers state={state} />
+        </div>
+      ) : null}
+
+      {state.dependencies.length > 0 ? (
+        <div>
+          <PanelSectionTitle>Dependency snapshot</PanelSectionTitle>
+          <p className="mt-1 text-xs text-secondary">
+            Every include target with the record it published at check time.
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {state.dependencies.map((entry) => (
+              <li key={entry.domain} className="text-xs leading-relaxed">
+                <span className="font-mono font-semibold text-body">{entry.domain}</span>
+                {entry.record ? (
+                  <span className="block break-all font-mono text-secondary">{entry.record}</span>
+                ) : (
+                  <span className="block text-[var(--status-warn-fg)]">unreadable — lookup failed</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {state.candidateStatus ? (
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <PanelSectionTitle>Flattening candidate</PanelSectionTitle>
+            <Badge variant={state.candidateStatus === 'ready' ? 'success' : 'warning'}>
+              {state.candidateStatus === 'ready' ? 'Ready' : 'Refused'}
+            </Badge>
+            {state.previousCandidateStatus &&
+            state.previousCandidateStatus !== state.candidateStatus &&
+            state.candidateChangedAtUtc ? (
+              <span className="text-xs text-secondary">
+                was {state.previousCandidateStatus} {formatRelativeOrDate(state.candidateChangedAtUtc)}
+              </span>
+            ) : null}
+          </div>
+          {state.candidateText ? (
+            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
+              {state.candidateText}
+            </pre>
+          ) : (
+            <p className="mt-1 text-xs text-secondary">
+              The candidate no longer builds from the current snapshot — a dependency needs a
+              mechanism that cannot be expanded safely.
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {state.issues.length > 0 ? (
+        <ul className="space-y-1">
+          {state.issues.map((issue) => (
+            <li
+              key={issue}
+              className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--status-warn-fg)]"
+            >
+              <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
+              {issue}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <p className="text-xs text-secondary">
+        {state.lastCheckedAtUtc ? `Checked ${formatRelativeOrDate(state.lastCheckedAtUtc)}` : null}
+        {state.publishedLookups != null ? ` · ${state.publishedLookups}/10 lookups` : null}
+        {state.publishedOverBudget ? ' (over budget)' : null}
+        {state.candidateLength != null && state.candidateStatus === 'ready'
+          ? ` · candidate ${state.candidateLength} characters`
+          : null}
+      </p>
+    </div>
+  )
+}
+
+/** The before→after numbers riding on a dependency change — only the ones that moved. */
+function DriftNumbers({ state }: { state: SpfDriftState }) {
+  const rows: string[] = []
+  if (
+    state.previousPublishedLookups != null &&
+    state.publishedLookups != null &&
+    state.previousPublishedLookups !== state.publishedLookups
+  ) {
+    rows.push(`lookups ${state.previousPublishedLookups} → ${state.publishedLookups}`)
+  }
+  if (
+    state.previousCandidateLength != null &&
+    state.candidateLength != null &&
+    state.previousCandidateLength !== state.candidateLength
+  ) {
+    rows.push(`candidate ${state.previousCandidateLength} → ${state.candidateLength} characters`)
+  }
+  if (
+    state.previousPublishedOverBudget != null &&
+    state.publishedOverBudget != null &&
+    state.previousPublishedOverBudget !== state.publishedOverBudget
+  ) {
+    rows.push(
+      state.publishedOverBudget ? 'now over the 10-lookup budget' : 'back under the 10-lookup budget',
+    )
+  }
+  if (rows.length === 0) return null
+  return <p className="mt-2 font-mono text-xs text-secondary">{rows.join(' · ')}</p>
+}
+
+/**
+ * The domain's SPF drift posture, from the state the worker pass persists — a
+ * plain database read, so unlike the record inspection card nothing here waits
+ * on live DNS. Recheck (staff only) runs a live check on demand.
+ */
+export function SpfDriftCard({ domainId }: { domainId: string }) {
+  const { user } = useAuth()
+  const staff = isStaff(user)
+  const [state, setState] = useState<SpfDriftState | null>(null)
+  const [busy, setBusy] = useState(true)
+  const [rechecking, setRechecking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
+
+  const load = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setBusy(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<SpfDriftState>(`/api/v1/analytics/domains/${domainId}/spf-drift`)
+      if (seq === requestSeq.current) setState(payload)
+    } catch (loadError) {
+      if (seq === requestSeq.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load SPF drift state')
+      }
+    } finally {
+      if (seq === requestSeq.current) setBusy(false)
+    }
+  }, [domainId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const recheck = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setRechecking(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<SpfDriftState>(
+        `/api/v1/analytics/domains/${domainId}/spf-drift/recheck`,
+        { method: 'POST' },
+      )
+      if (seq === requestSeq.current) setState(payload)
+    } catch (recheckError) {
+      if (seq === requestSeq.current) {
+        setError(recheckError instanceof Error ? recheckError.message : 'Recheck failed')
+      }
+    } finally {
+      if (seq === requestSeq.current) setRechecking(false)
+    }
+  }, [domainId])
+
+  return (
+    <Card pad>
+      <div className="flex items-start justify-between gap-3">
+        <CardHeader
+          title="SPF drift monitoring"
+          description="Whether providers this domain's SPF record depends on republished theirs — the dependency snapshot, what changed, and the candidate it yields"
+        />
+        {staff ? (
+          <Button variant="outline" size="sm" onClick={() => void recheck()} disabled={rechecking || busy}>
+            {rechecking ? (
+              <Icon name="loader-circle" size={14} className="animate-spin" />
+            ) : (
+              <Icon name="refresh-cw" size={14} />
+            )}
+            Recheck now
+          </Button>
+        ) : null}
+      </div>
+      {busy ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+          <Icon name="loader-circle" size={16} className="animate-spin" />
+          Loading SPF drift state…
+        </div>
+      ) : error ? (
+        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </p>
+      ) : state ? (
+        <SpfDriftView state={state} />
+      ) : null}
+    </Card>
+  )
 }
 
 // --- Transport security (MTA-STS) ---
@@ -2446,6 +2795,8 @@ export function DomainDetailPage() {
           </div>
 
           <RecordInspectionCard domainId={domainId} />
+
+          <SpfDriftCard domainId={domainId} />
 
           <TransportSecurityCard domainId={domainId} />
 
