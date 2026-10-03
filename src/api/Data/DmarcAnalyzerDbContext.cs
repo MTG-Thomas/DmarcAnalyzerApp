@@ -38,6 +38,9 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<SmtpTlsReportPolicy> SmtpTlsReportPolicies => Set<SmtpTlsReportPolicy>();
     public DbSet<SmtpTlsFailureDetail> SmtpTlsFailureDetails => Set<SmtpTlsFailureDetail>();
     public DbSet<TlsReportIngest> TlsReportIngests => Set<TlsReportIngest>();
+    public DbSet<ScheduledTaskState> ScheduledTaskStates => Set<ScheduledTaskState>();
+    public DbSet<SyncRequest> SyncRequests => Set<SyncRequest>();
+    public DbSet<PasskeyCeremonyState> PasskeyCeremonyStates => Set<PasskeyCeremonyState>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -638,6 +641,49 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ScheduledTaskState>(entity =>
+        {
+            entity.ToTable("scheduled_task_state");
+            entity.HasKey(x => x.TaskKey);
+            entity.Property(x => x.TaskKey).IsRequired();
+            entity.Property(x => x.ConsecutiveFailures).HasDefaultValue(0);
+        });
+
+        modelBuilder.Entity<SyncRequest>(entity =>
+        {
+            entity.ToTable("sync_request", table => table.HasCheckConstraint(
+                "CK_sync_request_Status",
+                "\"Status\" IN ('queued','running','completed','partial','failed','cancelled')"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).IsRequired();
+            entity.Property(x => x.Attempts).HasDefaultValue(0);
+            entity.Property(x => x.LastError).HasMaxLength(2000);
+            entity.Property(x => x.ResultJson).HasMaxLength(8000);
+            // The claim scan: oldest queued request first, per status.
+            entity.HasIndex(x => new { x.Status, x.CreatedAtUtc });
+            // One live request per source; a second enqueue while one is
+            // queued or running is refused at the insert.
+            entity.HasIndex(x => x.ReportSourceId)
+                .IsUnique()
+                .HasFilter("\"Status\" IN ('queued','running')");
+
+            entity.HasOne(x => x.ReportSource)
+                .WithMany()
+                .HasForeignKey(x => x.ReportSourceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PasskeyCeremonyState>(entity =>
+        {
+            entity.ToTable("passkey_ceremony");
+            entity.HasKey(x => x.Handle);
+            entity.Property(x => x.Handle).IsRequired();
+            entity.Property(x => x.Challenge).IsRequired();
+            entity.Property(x => x.Attempts).HasDefaultValue(0);
+            // The expiry sweep and the stale-row purge both scan on this.
+            entity.HasIndex(x => x.ExpiresAtUtc);
         });
     }
 }
