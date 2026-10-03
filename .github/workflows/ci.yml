@@ -119,7 +119,7 @@ jobs:
         working-directory: src/web
         run: |
           npm ci
-          npm audit --audit-level=high
+          npm run audit:ci
           npm run lint
           npx tsc --noEmit
           npm test
