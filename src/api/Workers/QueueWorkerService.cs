@@ -26,7 +26,7 @@ public sealed class QueueWorkerService(
     WorkerSingleInstanceLock workerLock,
     IOptions<WorkerOptions> options,
     IOptions<BackupOptions> backupOptions,
-    ILogger<QueueWorkerService> logger) : BackgroundService
+    ILogger<QueueWorkerService> logger) : BackgroundService, IWorkerPassSource
 {
     private readonly WorkerOptions _options = options.Value;
     private readonly BackupOptions _backupOptions = backupOptions.Value;
@@ -52,16 +52,7 @@ public sealed class QueueWorkerService(
         {
             try
             {
-                await CloseStaleRunningSyncsAsync(stoppingToken);
-                await RunScheduledSyncPassAsync(stoppingToken);
-                await RunAlertPassIfDueAsync(stoppingToken);
-                await RunDigestPassIfDueAsync(stoppingToken);
-                await RunRetentionPassIfDueAsync(stoppingToken);
-                await RunDnsRefreshPassIfDueAsync(stoppingToken);
-                await RunMtaStsPassIfDueAsync(stoppingToken);
-                await RunSpfDriftPassIfDueAsync(stoppingToken);
-                await RunBackupOffloadPassIfDueAsync(stoppingToken);
-                await RunMailboxRetentionPassIfDueAsync(stoppingToken);
+                await RunIterationAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -85,6 +76,35 @@ public sealed class QueueWorkerService(
         }
 
         logger.LogInformation("Queue worker stopping.");
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<WorkerPass> GetPasses() =>
+    [
+        new("stale-sync-close", CloseStaleRunningSyncsAsync),
+        new("scheduled-sync", RunScheduledSyncPassAsync),
+        new("alerts", RunAlertPassIfDueAsync),
+        new("digest", RunDigestPassIfDueAsync),
+        new("retention", RunRetentionPassIfDueAsync),
+        new("dns-refresh", RunDnsRefreshPassIfDueAsync),
+        new("mta-sts", RunMtaStsPassIfDueAsync),
+        new("spf-drift", RunSpfDriftPassIfDueAsync),
+        new("backup-offload", RunBackupOffloadPassIfDueAsync),
+        new("mailbox-retention", RunMailboxRetentionPassIfDueAsync),
+    ];
+
+    /// <summary>
+    /// One full iteration: every pass in order. A throw aborts the remaining
+    /// passes and propagates to the caller — the loop counts it as a failed
+    /// iteration and retries. Callers that must not let one pass skip the
+    /// others run <see cref="GetPasses"/> with their own isolation instead.
+    /// </summary>
+    public async Task RunIterationAsync(CancellationToken ct)
+    {
+        foreach (var pass in GetPasses())
+        {
+            await pass.Run(ct);
+        }
     }
 
     /// <summary>

@@ -30,7 +30,7 @@ namespace DmarcAnalyzer.Api.Workers;
 public sealed class WorkerSingleInstanceLock(
     IConfiguration configuration,
     IOptions<WorkerOptions> options,
-    ILogger<WorkerSingleInstanceLock> logger) : IAsyncDisposable
+    ILogger<WorkerSingleInstanceLock> logger) : IWorkerInstanceLock, IAsyncDisposable
 {
     /// <summary>
     /// Arbitrary but fixed: any two processes using this key contend, and nothing
@@ -84,6 +84,75 @@ public sealed class WorkerSingleInstanceLock(
         }
 
         logger.LogInformation("Acquired the ingestion lock; this is the only worker on this database.");
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TryAcquireAsync(CancellationToken cancellationToken)
+    {
+        if (!options.Value.EnforceSingleInstance)
+        {
+            LogEnforcementOffOnce();
+            return true;
+        }
+
+        var connectionString = ConnectionStringResolver.Resolve(configuration);
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            // Same reasoning as above: the passes are about to fail on the
+            // same missing setting with a clearer message.
+            return true;
+        }
+
+        // A dedicated non-pooled connection, like the blocking path: the lock
+        // lives on the session, so the connection that took it must stay open.
+        // It only becomes this instance's connection on success; a failed try
+        // closes its own, so a contended caller holds nothing at all.
+        var connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString)
+        {
+            Pooling = false,
+        }.ConnectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT pg_try_advisory_lock(@key)";
+            command.Parameters.AddWithValue("key", LockKey);
+            var acquired = (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+
+            if (acquired)
+            {
+                _connection = connection;
+                logger.LogInformation("Acquired the ingestion lock; this is the only worker on this database.");
+                return true;
+            }
+
+            await connection.DisposeAsync();
+            return false;
+        }
+        catch
+        {
+            await connection.DisposeAsync();
+            throw;
+        }
+    }
+
+    private bool _enforcementOffWarningLogged;
+
+    private void LogEnforcementOffOnce()
+    {
+        // Try-acquire is polled, so the warning AcquireAsync logs inline would
+        // repeat every second for the whole lock wait. Once is enough.
+        if (_enforcementOffWarningLogged)
+        {
+            return;
+        }
+
+        _enforcementOffWarningLogged = true;
+        logger.LogWarning(
+            "Worker:EnforceSingleInstance is off. Nothing prevents a second worker from " +
+            "running against this database, which duplicates ingestion and can send " +
+            "duplicate alert and digest email.");
     }
 
     /// <summary>
