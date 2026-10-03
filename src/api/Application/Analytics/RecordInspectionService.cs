@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,8 @@ public sealed class RecordInspectionService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
     IDnsTxtResolver dns,
-    IDmarcPolicyResolver policyResolver) : IRecordInspectionService
+    IDmarcPolicyResolver policyResolver,
+    ISpfDependencyAnalyzer spfAnalyzer) : IRecordInspectionService
 {
     /// <inheritdoc />
     public async Task<RecordInspectionDto?> InspectAsync(Guid domainId, CancellationToken ct)
@@ -63,6 +65,23 @@ public sealed class RecordInspectionService(
         var effective = await dmarcTask;
         var dmarc = DescribeEffective(effective, domain.Name);
         var spf = ParseSpf(await spfTask);
+        if (spf.Status == RecordLookupStatus.Found)
+        {
+            // Recursive enrichment is best-effort detail on top of the top-level
+            // verdict: the analyzer never throws (except on cancellation), and a
+            // failed walk still leaves the parsed record and its issues intact.
+            var analysis = await spfAnalyzer.AnalyzeAsync(domain.Name, ct);
+            spf = spf with
+            {
+                RecursiveLookups = analysis.TotalLookups,
+                VoidLookups = analysis.VoidLookups,
+                OverBudget = analysis.OverBudget,
+                EstimatedResponseBytes = analysis.EstimatedResponseBytes,
+                DependencyTree = analysis.Root,
+                Issues = [..spf.Issues, ..analysis.Issues],
+            };
+        }
+
         var externalDestinations = await CheckExternalDestinationsAsync(domain.Name, dmarc, ct);
 
         var observed = observedRow is null

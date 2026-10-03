@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -157,6 +158,12 @@ public sealed class RecordInspectionTests
             => Task.FromResult(answers.GetValueOrDefault(name));
     }
 
+    private sealed class FakeMx(Dictionary<string, IReadOnlyList<MxHost>?> answers) : IDnsMxResolver
+    {
+        public Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct, bool bypassCache = false)
+            => Task.FromResult(answers.GetValueOrDefault(domain));
+    }
+
     private static DmarcAnalyzerDbContext NewDb()
     {
         var options = new DbContextOptionsBuilder<DmarcAnalyzerDbContext>()
@@ -206,7 +213,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 include:_spf.google.com -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         Assert.NotNull(dto);
@@ -242,7 +249,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         var sp = dto!.Comparison.Single(c => c.Field == "sp");
@@ -264,7 +271,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         var sp = dto!.Comparison.Single(c => c.Field == "sp");
@@ -285,7 +292,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         var sp = dto!.Comparison.Single(c => c.Field == "sp");
@@ -324,7 +331,7 @@ public sealed class RecordInspectionTests
             ["acme.example._report._dmarc.agency.example"] = ["v=DMARC1"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         var dest = Assert.Single(dto!.ExternalDestinations);
@@ -346,7 +353,7 @@ public sealed class RecordInspectionTests
             ["acme.example._report._dmarc.agency.example"] = Array.Empty<string>(),
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         var dest = Assert.Single(dto!.ExternalDestinations);
@@ -368,7 +375,7 @@ public sealed class RecordInspectionTests
             ["acme.example._report._dmarc.agency.example"] = null,
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         var dest = Assert.Single(dto!.ExternalDestinations);
@@ -387,7 +394,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         Assert.Empty(dto!.ExternalDestinations);
@@ -414,11 +421,46 @@ public sealed class RecordInspectionTests
             ["mail.acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         Assert.Equal(RecordLookupStatus.Inherited, dto!.Dmarc.Status);
         Assert.Empty(dto.ExternalDestinations);
+    }
+
+    [Fact]
+    public async Task Inspect_SpfFound_AttachesRecursiveTree()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject");
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:d@acme.example"],
+            ["acme.example"] = ["v=spf1 include:_spf.example.com -all"],
+            ["_spf.example.com"] = ["v=spf1 ip4:198.51.100.0/24 mx -all"],
+        });
+
+        var mx = new FakeMx(new()
+        {
+            ["_spf.example.com"] = [new MxHost(10, "mail.example.com")],
+        });
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, mx))
+            .InspectAsync(domainId, CancellationToken.None);
+
+        // Top-level verdict unchanged by the enrichment.
+        Assert.Equal(RecordLookupStatus.Found, dto!.Spf.Status);
+        Assert.Equal(1, dto.Spf.LookupMechanisms);
+        Assert.Equal("-", dto.Spf.AllQualifier);
+
+        // Recursive detail attached: 1 include + 1 mx across two levels.
+        Assert.Equal(2, dto.Spf.RecursiveLookups);
+        Assert.NotNull(dto.Spf.DependencyTree);
+        Assert.Equal("acme.example", dto.Spf.DependencyTree!.Domain);
+        var child = Assert.Single(dto.Spf.DependencyTree.Terms, t => t.Resolution is not null);
+        Assert.Equal("_spf.example.com", child.Resolution!.Domain);
+        var mxTerm = child.Resolution.Terms.Single(t => t.Kind == "mx");
+        Assert.Equal(["mail.example.com"], mxTerm.MxHosts);
     }
 
     [Fact]
@@ -428,7 +470,7 @@ public sealed class RecordInspectionTests
         var domainId = await SeedDomainWithReportAsync(db, "none");
 
         var dns = new FakeDns([]);
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()), dns, new DmarcPolicyResolver(dns))
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()), dns, new DmarcPolicyResolver(dns), new SpfDependencyAnalyzer(dns, new FakeMx([])))
             .InspectAsync(domainId, CancellationToken.None);
 
         Assert.Null(dto);

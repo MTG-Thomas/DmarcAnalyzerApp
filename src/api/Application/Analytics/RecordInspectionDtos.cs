@@ -42,14 +42,59 @@ public sealed record DnsDmarcRecordDto(
 /// <summary>
 /// The live SPF record(s) at {domain}. LookupMechanisms counts top-level
 /// mechanisms that cost a DNS lookup (include/a/mx/ptr/exists/redirect) —
-/// RFC 7208 caps the total at 10.
+/// RFC 7208 caps the resolved total at 10, which is what RecursiveLookups reports.
 /// </summary>
+/// <param name="RecursiveLookups">DNS-causing mechanisms across the whole include tree. Receivers permerror past 10.</param>
+/// <param name="VoidLookups">Mechanism-triggered queries answered empty. Past 2 is a permerror.</param>
+/// <param name="OverBudget">True when the recursive walk spent more than 10 lookups.</param>
+/// <param name="EstimatedResponseBytes">SPF TXT payload bytes fetched during the walk. Null when nothing was walked.</param>
+/// <param name="DependencyTree">The recursive dependency tree, null unless Status is found.</param>
 public sealed record DnsSpfRecordDto(
     string Status,
     string? Raw,
     int RecordCount,
     int LookupMechanisms,
     string? AllQualifier,
+    IReadOnlyList<string> Issues,
+    int RecursiveLookups = 0,
+    int VoidLookups = 0,
+    bool OverBudget = false,
+    int? EstimatedResponseBytes = null,
+    SpfDependencyNodeDto? DependencyTree = null);
+
+/// <summary>One parsed SPF term inside a dependency-tree node, with its resolution attached.</summary>
+/// <param name="Text">The term exactly as published.</param>
+/// <param name="Kind">all/include/a/mx/ptr/exists/ip4/ip6/redirect/exp/unknown_modifier/invalid.</param>
+/// <param name="Qualifier">One of + - ~ ?. Default + when the term carries none.</param>
+/// <param name="Target">domain-spec for include/redirect/a/mx/ptr/exists, address for ip4/ip6, else null.</param>
+/// <param name="CostsLookup">Counts toward the RFC 7208 limit of 10 DNS-causing mechanisms.</param>
+/// <param name="IsDynamic">Authorization set unknowable statically: macros, or exists: (DNS-by-design).</param>
+/// <param name="Note">Why this term was not or could not be followed, null when it needs no note.</param>
+/// <param name="Resolution">The followed include/redirect target, null for anything not followed.</param>
+/// <param name="MxHosts">MX exchange hosts for an mx term, capped; empty for every other kind.</param>
+/// <param name="MxHostTotal">How many MX hosts exist in total (more than shown when capped).</param>
+public sealed record SpfTermDto(
+    string Text,
+    string Kind,
+    string Qualifier,
+    string? Target,
+    bool CostsLookup,
+    bool IsDynamic,
+    string? Note,
+    SpfDependencyNodeDto? Resolution,
+    IReadOnlyList<string> MxHosts,
+    int MxHostTotal);
+
+/// <summary>One SPF record in the recursive dependency tree.</summary>
+/// <param name="Status">found/missing/lookup_failed/permerror/cycle/skipped.</param>
+/// <param name="LookupsUsed">RFC lookups spent in this subtree, including nested includes.</param>
+public sealed record SpfDependencyNodeDto(
+    string Domain,
+    int Depth,
+    string Status,
+    string? Raw,
+    IReadOnlyList<SpfTermDto> Terms,
+    int LookupsUsed,
     IReadOnlyList<string> Issues);
 
 /// <summary>The DMARC policy reporters most recently observed (policy_published).</summary>

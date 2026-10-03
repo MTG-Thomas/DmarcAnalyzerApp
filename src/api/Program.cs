@@ -1,5 +1,6 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Analytics.Spf;
 using DmarcAnalyzer.Api.Application.ApiSources;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Backup;
@@ -327,6 +328,7 @@ builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryServi
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
+builder.Services.AddScoped<ISpfDependencyAnalyzer, SpfDependencyAnalyzer>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLog, AuditLog>();
 builder.Services.AddScoped<AuditQueryService>();
