@@ -3,6 +3,7 @@ using System;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DmarcAnalyzer.Api.Data.Migrations
 {
     [DbContext(typeof(DmarcAnalyzerDbContext))]
-    partial class DmarcAnalyzerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261003205835_AddServerlessDurabilityState")]
+    partial class AddServerlessDurabilityState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -662,23 +665,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.ToTable("domain", (string)null);
                 });
 
-            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.DpKey", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Xml")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("dp_key", (string)null);
-                });
-
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.MailboxSyncRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -940,9 +926,6 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("OptionsJson")
-                        .HasColumnType("text");
 
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uuid");

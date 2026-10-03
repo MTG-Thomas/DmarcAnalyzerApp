@@ -27,13 +27,13 @@ List values take an index: `Network__TrustedNetworks__0`,
 
 ## How the values work
 
-The settings this app binds to its own options — the `Worker__*`, `Email__*`,
-`Alerts__*`, `Digest__*`, `Dns__*`, `MtaSts__*`, `Retention__*`, `Network__*`,
-`Backup__*` and `Auth__Oidc__*` groups below, plus `Database__MigrateOnStartup`
-— are typed, and a value that does not convert stops the process at startup with
-a message naming the variable. That is deliberate: a setting silently falling
-back to its default is the failure mode the rule above already warns about, and
-it is worse.
+The settings this app binds to its own options — the `Worker__*`,
+`WorkerOnce__*`, `Email__*`, `Alerts__*`, `Digest__*`, `Dns__*`, `MtaSts__*`,
+`Retention__*`, `Network__*`, `Backup__*` and `Auth__Oidc__*` groups below,
+plus `Database__MigrateOnStartup` — are typed, and a value that does not
+convert stops the process at startup with a message naming the variable. That
+is deliberate: a setting silently falling back to its default is the failure
+mode the rule above already warns about, and it is worse.
 
 Two things are outside that check, and neither is an oversight. Variables read
 by the framework or another SDK rather than by this app — `ASPNETCORE_*`,
@@ -85,7 +85,7 @@ Two settings have no usable default.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), `all` (both in one process), `migrate` (apply pending migrations and exit), or `mta-sts` (only the public MTA-STS policy routes plus health probes — an internet-facing policy host separate from the console; see [mta-sts-hosting.md](./mta-sts-hosting.md)). Any other value fails startup rather than falling back. |
+| `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), `all` (both in one process), `migrate` (apply pending migrations and exit), `mta-sts` (only the public MTA-STS policy routes plus health probes — an internet-facing policy host separate from the console; see [mta-sts-hosting.md](./mta-sts-hosting.md)), or `worker-once` (run the ingestion pass plus every maintenance pass once and exit — for a scheduler that triggers ingestion externally; see [Run-once worker](#run-once-worker-workeronce)). Any other value fails startup rather than falling back. |
 | `Database__MigrateOnStartup` | `false` | Apply pending EF migrations at boot. The Compose files set it true. On Kubernetes leave it false and use the migration Job — with more than one replica, startup migration races. |
 | `ASPNETCORE_URLS` | `http://+:8080` | Set in the image; override only for an unusual port inside the container. |
 
@@ -111,7 +111,7 @@ typed rejections for individual empty, nested, or unsupported entries.
 
 ## Mailbox ingestion (`Worker`)
 
-Read in `worker` and `all` modes.
+Read in `worker`, `all` and `worker-once` modes.
 
 Exactly one worker may run against a database. The process takes a Postgres
 advisory lock at startup and exits if another holds it, so the limit applies
@@ -136,6 +136,25 @@ then and its log says so.
 | `Worker__RetentionIntervalHours` | `24` | Gap between purge passes. |
 | `Worker__RetentionBatchSize` | `500` | Rows deleted per purge batch. Smaller batches hold locks for less time. |
 | `Worker__EnforceSingleInstance` | `true` | Wait in the background when another worker holds the ingestion lock (a Postgres advisory lock). The API can serve readiness probes during rolling replacement, but the ingestion loop runs only after ownership transfers. Cancelling a standby worker closes its waiting connection. Two loops duplicate every sync pass, inflate the sync-run counts, and can send duplicate alert and digest email. Turning this off removes the only guard that works on every platform. |
+
+## Run-once worker (`WorkerOnce`)
+
+Read only in `worker-once` mode: one ingestion pass plus every maintenance
+pass, then exit. For schedulers that trigger ingestion externally — a
+Kubernetes CronJob, a systemd timer — instead of a long-lived loop.
+
+One pass throwing does not skip the passes after it; each throw is recorded
+and the run continues. The exit code is 0 when every pass ran, and also 0 when
+another worker owned the slot and this run skipped it — that is the scheduler
+working, not a failure. It is 1 only when required work failed: a pass threw,
+the run outlived its bound, or the lock itself errored. Every run logs one
+`worker-once finished` line naming the outcome, so the scheduler's log answers
+what happened without correlating per-pass lines.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `WorkerOnce__OverallTimeoutMinutes` | `50` | Wall-clock bound on the whole run: lock wait plus every pass. Past it the run stops and exits 1, so an overrunning schedule slot fails loudly instead of overlapping the next one. |
+| `WorkerOnce__LockWaitSeconds` | `30` | How long to wait for the ingestion lock before giving up. Giving up is a clean skip that exits 0 — another worker is running these passes, so the slot has nothing left to do. |
 
 ## Retention (`Retention`)
 
@@ -168,7 +187,7 @@ Two things are worth knowing before you turn this on:
 | Variable | Default | Meaning |
 |---|---|---|
 | `Backup__Bucket` | *(empty)* | Destination bucket. Empty disables offload. |
-| `Backup__IntervalMinutes` | `30` | Gap between offload passes. **Effective resolution is `Worker__ScheduleIntervalSeconds`** — with the shipped hourly schedule, 30 here still means roughly hourly. Shorten the schedule interval too if the cadence matters. |
+| `Backup__IntervalMinutes` | `30` | Gap between offload passes. **Effective resolution is `Worker__ScheduleIntervalSeconds`** — with the shipped hourly schedule, 30 here still means roughly hourly. Shorten the schedule interval too if the cadence matters. Under an hourly run-once job (`worker-once`), every sub-hourly cadence collapses to hourly by construction — accepted for backup (snapshots stay usable, just coarser); do not lower this expecting a faster offload there. |
 | `Backup__Endpoint` | *(empty)* | Custom S3 endpoint for MinIO, Cloudflare R2, Backblaze B2. Empty targets AWS. |
 | `Backup__Region` | `us-east-1` | AWS region. Used only as the signing region when `Endpoint` is set. |
 | `Backup__AccessKeyId` | *(empty)* | Static credential. Leave both key settings empty to use the ambient chain — an instance role or IRSA beats a long-lived key in configuration. |

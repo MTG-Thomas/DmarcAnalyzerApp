@@ -4,6 +4,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.ReportSources;
 using DmarcAnalyzer.Api.Contracts.ReportSources;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
@@ -65,12 +66,12 @@ public sealed class ReportSourcesModule : ICarterModule
             return Results.Ok(updatedSource);
         }).RequireAgencyAdmin().AllowServicePermission(ServiceApiPermissions.SourcesManage);
 
-        app.MapPost("/api/v1/report-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, IAuditLog audit, CancellationToken ct) =>
+        // [FromServices] is explicit here rather than inferred like the rest of the
+        // module: the drain-wiring step registers this service, and inference reads an
+        // unregistered service as a body parameter and refuses to map the route.
+        app.MapPost("/api/v1/report-sources/{id:guid}/sync", async (Guid id, [FromServices] ISyncRequestService syncRequests, IAuditLog audit, CancellationToken ct) =>
         {
-            await audit.RecordAsync(AuditEvents.MailboxSyncTriggered,
-                "Triggered a manual mailbox sync", "mailbox_source", id, ct: ct);
-
-            var result = await service.SyncReportSourceAsync(id, ct);
+            var result = await syncRequests.EnqueueAsync(id, ct);
             if (!result.IsSuccess)
             {
                 if (result.StatusCode == 404)
@@ -81,9 +82,33 @@ public sealed class ReportSourcesModule : ICarterModule
                 return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
             }
 
-            var sync = result.Value!;
-            var statusCode = sync.Success ? 200 : 502;
-            return Results.Json(sync, statusCode: statusCode);
+            var enqueued = result.Value!;
+
+            await audit.RecordAsync(AuditEvents.MailboxSyncTriggered,
+                "Triggered a manual mailbox sync", "mailbox_source", id, ct: ct);
+
+            return Results.Json(
+                new SyncRequestEnqueueResponse(
+                    enqueued.RequestId,
+                    enqueued.Status,
+                    $"/api/v1/report-sources/sync-requests/{enqueued.RequestId}"),
+                statusCode: enqueued.IsNew ? 202 : 200);
+        }).AllowServicePermission(ServiceApiPermissions.SourcesSync);
+
+        app.MapGet("/api/v1/report-sources/sync-requests/{requestId:guid}", async (Guid requestId, [FromServices] ISyncRequestService syncRequests, CancellationToken ct) =>
+        {
+            var result = await syncRequests.GetAsync(requestId, ct);
+            if (!result.IsSuccess)
+            {
+                if (result.StatusCode == 404)
+                {
+                    return Results.NotFound();
+                }
+
+                return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
+            }
+
+            return Results.Ok(result.Value!);
         }).AllowServicePermission(ServiceApiPermissions.SourcesSync);
     }
 }

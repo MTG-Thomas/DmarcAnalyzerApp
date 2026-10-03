@@ -89,7 +89,10 @@ And three for S3:
 - `GET /api/v1/mailbox-sync-runs`
   - sync run history with per-run counts and errors
 - `POST /api/v1/report-sources/{id}/sync`
-  - manual operator trigger for targeted testing/recovery
+  - manual operator trigger for targeted testing/recovery; persists a durable
+    request and returns `202` (the worker runs it — poll
+    `GET /api/v1/report-sources/sync-requests/{requestId}` for
+    queued/running/completed/partial/failed)
 
 ## Common Failure Patterns
 

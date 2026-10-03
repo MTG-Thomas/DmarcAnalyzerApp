@@ -91,7 +91,8 @@ cookie does not grant access.
 | GET | `/report-sources` | staff |
 | POST | `/report-sources` | admin |
 | PATCH | `/report-sources/{id}` | admin |
-| POST | `/report-sources/{id}/sync` | staff — manual trigger |
+| POST | `/report-sources/{id}/sync` | staff — manual trigger (202 + durable request) |
+| GET | `/report-sources/sync-requests/{requestId}` | staff — manual sync request status |
 | GET | `/report-sources/{id}/credentials` | admin — metadata only; never returns a token or hash |
 | POST | `/report-sources/{id}/credentials` | admin — issue a reveal-once API token |
 | POST | `/report-sources/{id}/credentials/rotate` | admin — issue an overlapping token; prior keys remain active |
@@ -252,6 +253,23 @@ Request password reset token.
 
 Confirm password reset with token.
 
+### Rate limiting and multi-replica operation
+
+The API currently has no in-app rate limiting: the anonymous auth routes
+(`POST /auth/login`, the two passkey ceremony routes, the two password-reset
+routes) are unthrottled in code, and single-instance deployments rely on
+deployment-level controls.
+
+For the serverless deployment this stays true on purpose. An in-memory
+`System.Threading.RateLimiting` partition does not compose across replicas or
+scale-to-zero, so adding one would only look like a control. The required
+control is an ingress-level equivalent instead: the ACA cutover must include a
+WAF/Front Door rate-limit rule covering the anonymous `/auth/*` routes (the
+authenticated routes inherit session validation and need no separate throttle
+at this scale). If in-app throttling is ever added, it must be backed by a
+shared store (Postgres), never a per-instance partition. Tracked as part of
+the bifrost-infra cutover, not the app.
+
 ## 3) Clients
 
 ### GET `/clients`
@@ -403,12 +421,26 @@ token.
 
 ### POST `/report-sources/{sourceId}/sync`
 
-Manual sync trigger for operations/testing. Returns sync summary payload immediately from execution.
+Manual sync trigger for operations/testing. Persists a durable request and
+returns `202` with `{ requestId, status: "queued", statusUrl }` — the worker
+(not the request) runs the sync. When the source already has a queued or
+running request, that request is returned with `200` in the same shape instead
+of queueing a second one.
 
 Notes:
 
 - Intended for operator use; steady-state sync is worker-scheduled.
 - Mailbox processing is read-only (does not delete emails).
+- Delivery latency follows the worker topology: seconds on a running worker,
+  up to the job period under scheduled run-once execution.
+
+### GET `/report-sources/sync-requests/{requestId}`
+
+One manual sync request: `{ requestId, reportSourceId, status, createdAtUtc,
+startedAtUtc, finishedAtUtc, attempts, error, summary }`, where status is
+`queued|running|completed|partial|failed|cancelled` and summary is the outcome
+counters object (or null). Unknown or cross-tenant ids return `404`.
+Same staff/service (`sources.sync`) authorization as the trigger.
 
 ### POST `/report-sources/{sourceId}/test-connection`
 

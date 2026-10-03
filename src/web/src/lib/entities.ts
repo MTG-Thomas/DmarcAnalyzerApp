@@ -153,6 +153,40 @@ export type MailboxSyncRun = {
 }
 
 /**
+ * Lifecycle of a manual sync request. `queued` and `running` are still in
+ * flight; the other four are terminal and the console stops polling on them.
+ */
+export type SyncRequestState = 'queued' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled'
+
+/**
+ * Shape of POST /api/v1/report-sources/{id}/sync: 202 when queued, or 200
+ * with the same shape when the request dedupes onto one already in flight.
+ */
+export type SyncRequestResponse = {
+  requestId: string
+  status: 'queued'
+  /** Opaque path the console polls for status. Never constructed by hand. */
+  statusUrl: string
+}
+
+/**
+ * Shape of GET {statusUrl} for a manual sync request. `summary` carries
+ * outcome counts (messagesScanned, reportsInserted, …) once the run reports
+ * them; its keys are camelCase count names.
+ */
+export type SyncRequestStatusResponse = {
+  requestId: string
+  reportSourceId: string
+  status: SyncRequestState
+  createdAtUtc: string
+  startedAtUtc: string | null
+  finishedAtUtc: string | null
+  attempts: number
+  error: string | null
+  summary: Record<string, unknown> | null
+}
+
+/**
  * One immutable audit-trail entry. `clientName` resolves to null when the event
  * has no client, or when that client has since been deleted — the trail keeps
  * the id either way, since `audit_event` deliberately has no foreign keys.

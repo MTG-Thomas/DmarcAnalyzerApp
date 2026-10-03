@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Backup;
+using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -345,6 +346,41 @@ public sealed class BackupExportTests
         // so the artifact counts it (honest scope) without carrying it.
         Assert.Equal(1, artifact.Manifest.Excluded["spf_drift_state"]);
         Assert.DoesNotContain("mid.example.com -all", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ServerlessRunStateIsCountedButNeverExported()
+    {
+        await using var db = NewDb();
+        db.ScheduledTaskStates.Add(new ScheduledTaskState
+        {
+            TaskKey = "alert",
+            LastRunAtUtc = DateTime.UtcNow,
+        });
+        db.SyncRequests.Add(new SyncRequest
+        {
+            ReportSourceId = Guid.NewGuid(),
+            Status = SyncRequestStatus.Queued,
+        });
+        db.PasskeyCeremonyStates.Add(new PasskeyCeremonyState
+        {
+            Handle = "excluded-ceremony-handle",
+            Challenge = [(byte)1],
+            CreatedAtUtc = DateTime.UtcNow,
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(5),
+        });
+        db.DpKeys.Add(new DpKey { Xml = "<excluded-keysentinel />" });
+        await db.SaveChangesAsync();
+
+        var artifact = (await Service(db).ExportAsync(false, default)).Value!;
+        var json = BackupJson.Serialize(artifact);
+
+        Assert.Equal(1, artifact.Manifest.Excluded["scheduled_task_state"]);
+        Assert.Equal(1, artifact.Manifest.Excluded["sync_request"]);
+        Assert.Equal(1, artifact.Manifest.Excluded["passkey_ceremony"]);
+        Assert.Equal(1, artifact.Manifest.Excluded["dp_key"]);
+        Assert.DoesNotContain("excluded-ceremony-handle", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("excluded-keysentinel", json, StringComparison.Ordinal);
     }
 
     [Fact]
