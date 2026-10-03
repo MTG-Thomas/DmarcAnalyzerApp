@@ -1,0 +1,39 @@
+name: MTG Dockerfile Policy
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**/Dockerfile*'
+      - 'Dockerfile*'
+      - '**/.dockerignore'
+      - '.dockerignore'
+      - '**/*.dockerignore'
+      - droast.toml
+      - .github/workflows/mtg-dockerfile-policy.yml
+  push:
+    branches: [main]
+    paths:
+      - '**/Dockerfile*'
+      - 'Dockerfile*'
+      - '**/.dockerignore'
+      - '.dockerignore'
+      - '**/*.dockerignore'
+      - droast.toml
+      - .github/workflows/mtg-dockerfile-policy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mtg-dockerfile-policy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dockerfile-policy:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: MTG-Thomas/dockerfile-roast/.github/workflows/mtg-dockerfile-policy.yml@23ea8bf7c9d3ee65d6a0ccec3d76d4566591ad3c
+    with:
+      source_revision: 23ea8bf7c9d3ee65d6a0ccec3d76d4566591ad3c
+      binary_sha256: 592e9ad6bb5734bea6d951791ef8de54e8e9d6b1243c63aab544574ceb0784b5
