@@ -122,4 +122,16 @@ describe('cli', () => {
     const result = runCli('this is not json');
     expect(result.exit).toBe(2);
   });
+
+  it('exits 2 without reading when stdin is a terminal device', () => {
+    // Ignored stdio lands on /dev/null, a character device like a terminal:
+    // the gate must refuse immediately instead of blocking on input.
+    let exit = null;
+    try {
+      execFileSync(process.execPath, [SCRIPT], { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      exit = err.status;
+    }
+    expect(exit).toBe(2);
+  });
 });

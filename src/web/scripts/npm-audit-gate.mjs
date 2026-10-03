@@ -8,7 +8,7 @@
 // Usage: npm audit --json | node scripts/npm-audit-gate.mjs
 // Exit 0 when every high/critical advisory is allowlisted, 1 when one is not,
 // 2 when the report itself is missing or unparseable.
-import { readFileSync } from 'node:fs';
+import { fstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,9 +70,20 @@ export function evaluateAudit(auditJson, allowlist) {
 
 function loadAuditJson() {
   // The report arrives on stdin so this script never resolves tool paths
-  // itself. Failing to parse means npm audit itself failed (registry down,
-  // lockfile unreadable) — fail closed, never open.
-  if (process.stdin.isTTY) {
+  // itself. The TTY check deliberately uses fstat rather than
+  // process.stdin: merely touching the stdin stream object switches fd 0 to
+  // non-blocking mode, which turns the read below into an EAGAIN race against
+  // the slow npm audit writer. fstat leaves the descriptor alone, so the
+  // blocking read waits for the full report. Failing to parse means npm audit
+  // itself failed (registry down, lockfile unreadable) — fail closed, never
+  // open.
+  let isTerminal = false;
+  try {
+    isTerminal = fstatSync(0).isCharacterDevice();
+  } catch {
+    isTerminal = true;
+  }
+  if (isTerminal) {
     console.error('::error::npm-audit-gate expects `npm audit --json` on stdin');
     process.exit(2);
   }
