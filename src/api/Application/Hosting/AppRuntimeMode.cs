@@ -34,6 +34,15 @@ public enum AppMode
     /// host as its own container, structurally separate from the console.
     /// </summary>
     MtaSts,
+
+    /// <summary>
+    /// Runs the worker's passes (ingestion plus every maintenance pass) exactly
+    /// once and exits. For orchestrators that schedule ingestion externally —
+    /// a Kubernetes CronJob or systemd timer — instead of a long-lived loop.
+    /// Like <see cref="Worker"/> it never serves HTTP; like
+    /// <see cref="Migrate"/> it runs to completion rather than staying up.
+    /// </summary>
+    WorkerOnce,
 }
 
 /// <summary>
@@ -61,7 +70,7 @@ public static class AppRuntimeMode
     /// which is also <see cref="AppMode"/>'s declaration order, so this doubles as
     /// the lookup for <see cref="ToName"/>. A test holds the two in step.
     /// </summary>
-    public static readonly string[] Names = ["api", "worker", "all", "migrate", "mta-sts"];
+    public static readonly string[] Names = ["api", "worker", "all", "migrate", "mta-sts", "worker-once"];
 
     /// <summary>
     /// Parses <c>APP_MODE</c>. Unset or blank means <see cref="AppMode.Api"/> —
@@ -87,6 +96,7 @@ public static class AppRuntimeMode
             "all" => AppMode.All,
             "migrate" => AppMode.Migrate,
             "mta-sts" => AppMode.MtaSts,
+            "worker-once" => AppMode.WorkerOnce,
             _ => throw new InvalidOperationException(
                 $"{EnvironmentVariable}='{value}' is not a valid runtime mode. " +
                 $"Expected one of: {string.Join(", ", Names)}."),
@@ -104,12 +114,12 @@ public static class AppRuntimeMode
     /// </summary>
     public static string ToName(this AppMode mode) => Names[(int)mode];
 
-    /// <summary>Whether this mode runs the background loop in-process.</summary>
-    public static bool RunsWorker(this AppMode mode) => mode is AppMode.Worker or AppMode.All;
+    /// <summary>Whether this mode runs the worker passes in-process — the loop, or one run of it.</summary>
+    public static bool RunsWorker(this AppMode mode) => mode is AppMode.Worker or AppMode.All or AppMode.WorkerOnce;
 
     /// <summary>Whether this mode serves HTTP.</summary>
     public static bool RunsHttp(this AppMode mode) => mode is AppMode.Api or AppMode.All or AppMode.MtaSts;
 
     /// <summary>Whether this mode runs to completion rather than staying up.</summary>
-    public static bool IsOneShot(this AppMode mode) => mode is AppMode.Migrate;
+    public static bool IsOneShot(this AppMode mode) => mode is AppMode.Migrate or AppMode.WorkerOnce;
 }
