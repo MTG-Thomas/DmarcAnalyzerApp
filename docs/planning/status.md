@@ -682,3 +682,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   scenario is worth, and that the scenario was self-inflicted rather than something
   operators hit. Recovery, if ever needed, is a deliberate database operation.
   Please do not re-propose it.
+
+Worker startup waits through transient PostgreSQL/sidecar-forward unavailability
+before acquiring exclusive ingestion ownership. Failed sessions close before a
+five-second cancellable retry; nontransient failures still fail startup, and no
+ingestion pass runs before the lock. This addresses the ACA staged sidecar
+startup race without disabling single-worker enforcement.

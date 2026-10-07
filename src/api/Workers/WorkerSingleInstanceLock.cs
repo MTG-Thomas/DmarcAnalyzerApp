@@ -63,24 +63,37 @@ public sealed class WorkerSingleInstanceLock(
         // A dedicated connection, held open for the life of the process: advisory
         // locks are scoped to a session, so it has to be this connection rather
         // than one borrowed from the pool and returned.
-        _connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString)
+        while (true)
         {
-            Pooling = false,
-        }.ConnectionString);
-        try
-        {
-            await _connection.OpenAsync(cancellationToken);
-            await using var command = _connection.CreateCommand();
-            command.CommandText = "SELECT pg_advisory_lock(@key)";
-            command.CommandTimeout = 0;
-            command.Parameters.AddWithValue("key", LockKey);
-            logger.LogInformation("Waiting for exclusive ingestion ownership; API remains available.");
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-        catch
-        {
-            await DisposeAsync();
-            throw;
+            cancellationToken.ThrowIfCancellationRequested();
+            _connection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder(connectionString)
+            {
+                Pooling = false,
+            }.ConnectionString);
+            try
+            {
+                await _connection.OpenAsync(cancellationToken);
+                await using var command = _connection.CreateCommand();
+                command.CommandText = "SELECT pg_advisory_lock(@key)";
+                command.CommandTimeout = 0;
+                command.Parameters.AddWithValue("key", LockKey);
+                logger.LogInformation("Waiting for exclusive ingestion ownership; API remains available.");
+                await command.ExecuteNonQueryAsync(cancellationToken);
+                break;
+            }
+            catch (NpgsqlException ex) when (ex.IsTransient && !cancellationToken.IsCancellationRequested)
+            {
+                // A sidecar forward may start after the API. No ingestion pass
+                // runs before the lock, and failed sessions close before retry.
+                await DisposeAsync();
+                logger.LogWarning("Database unavailable while waiting for ingestion ownership; retrying in five seconds.");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            catch
+            {
+                await DisposeAsync();
+                throw;
+            }
         }
 
         logger.LogInformation("Acquired the ingestion lock; this is the only worker on this database.");
