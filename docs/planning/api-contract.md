@@ -274,20 +274,19 @@ Confirm password reset with token.
 
 ### Rate limiting and multi-replica operation
 
-The API currently has no in-app rate limiting: the anonymous auth routes
-(`POST /auth/login`, the two passkey ceremony routes, the two password-reset
-routes) are unthrottled in code, and single-instance deployments rely on
-deployment-level controls.
+Three in-app fixed-window policies exist, all per-instance partitions:
+`passkey-anonymous` (per IP, on the two passkey ceremony routes),
+`passkey-management` (per session, on the authenticated passkey lifecycle
+routes), and the credential-partitioned machine-upload policy. Password
+login (`POST /auth/login`) is unthrottled in code; the password-reset routes
+do not exist (see §0), so there is nothing to throttle there.
 
-For the serverless deployment this stays true on purpose. An in-memory
-`System.Threading.RateLimiting` partition does not compose across replicas or
-scale-to-zero, so adding one would only look like a control. The required
-control is an ingress-level equivalent instead: the ACA cutover must include a
-WAF/Front Door rate-limit rule covering the anonymous `/auth/*` routes (the
-authenticated routes inherit session validation and need no separate throttle
-at this scale). If in-app throttling is ever added, it must be backed by a
-shared store (Postgres), never a per-instance partition. Tracked as part of
-the bifrost-infra cutover, not the app.
+Per-instance partitions do not compose across replicas or scale-to-zero, so
+these policies only hold on a single replica. The ACA cutover must include
+an ingress-level (WAF/Front Door) rate-limit rule covering the anonymous
+`/auth/*` routes, and the passkey/upload policies need a shared-store
+(Postgres) replacement or an ingress equivalent before the API scales past
+one replica. Tracked as part of the bifrost-infra cutover, not the app.
 
 ## 3) Clients
 
