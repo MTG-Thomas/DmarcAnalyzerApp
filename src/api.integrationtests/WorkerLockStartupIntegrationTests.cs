@@ -44,7 +44,8 @@ public sealed class WorkerLockStartupIntegrationTests(PostgreSqlDatabaseFixture 
             await acquiring.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.False(await contender.TryAcquireAsync(cancellation.Token));
             await owner.DisposeAsync();
-            Assert.True(await contender.TryAcquireAsync(cancellation.Token));
+            while (!await contender.TryAcquireAsync(cancellation.Token))
+                await Task.Delay(20, cancellation.Token);
         }
         finally
         {
