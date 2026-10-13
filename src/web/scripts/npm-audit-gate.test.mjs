@@ -6,6 +6,7 @@ import {
   ghsaIdFromUrl,
   loadAuditJson,
   main,
+  runNpmAudit,
   runGate,
 } from './npm-audit-gate.mjs';
 
@@ -21,7 +22,22 @@ const ADVISORY = {
 };
 
 function audit(entries) {
-  return { vulnerabilities: entries };
+  const severities = Object.values(entries).map((entry) => entry.severity);
+  const count = (severity) => severities.filter((value) => value === severity).length;
+  return {
+    auditReportVersion: 2,
+    vulnerabilities: entries,
+    metadata: {
+      vulnerabilities: {
+        info: count('info'),
+        low: count('low'),
+        moderate: count('moderate'),
+        high: count('high'),
+        critical: count('critical'),
+        total: severities.length,
+      },
+    },
+  };
 }
 
 function charDeviceStat() {
@@ -158,6 +174,37 @@ describe('runGate', () => {
     expect(result.exitCode).toBe(1);
     expect(result.errors).toHaveLength(1);
     expect(result.warnings).toEqual([]);
+  });
+
+  it('fails closed on npm endpoint and network error payloads', () => {
+    expect(() => runGate({ error: { code: 'ECONNRESET' } }, {})).toThrowError(
+      expect.objectContaining({ exitCode: 2 }),
+    );
+  });
+});
+
+describe('runNpmAudit', () => {
+  it('accepts npm exit 1 when stdout is a valid vulnerability report', () => {
+    const report = audit({ braces: { severity: 'high', via: [ADVISORY] } });
+    expect(
+      runNpmAudit(() => ({ status: 1, signal: null, stdout: JSON.stringify(report) })),
+    ).toEqual(report);
+  });
+
+  it('rejects npm error JSON even when npm exits 1', () => {
+    expect(() =>
+      runNpmAudit(() => ({
+        status: 1,
+        signal: null,
+        stdout: JSON.stringify({ error: { code: 'ECONNRESET' } }),
+      })),
+    ).toThrowError(expect.objectContaining({ exitCode: 2 }));
+  });
+
+  it('rejects command failures without evaluating output', () => {
+    expect(() =>
+      runNpmAudit(() => ({ status: 2, signal: null, stdout: '{}' })),
+    ).toThrowError(expect.objectContaining({ exitCode: 2 }));
   });
 });
 

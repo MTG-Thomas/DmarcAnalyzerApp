@@ -5,9 +5,10 @@
 // with no production attack surface, tracked follow-up issue), not a way to
 // hide findings: anything not on the list still fails the build.
 //
-// Usage: npm audit --json | node scripts/npm-audit-gate.mjs
+// Usage: node scripts/npm-audit-gate.mjs --run-audit
 // Exit 0 when every high/critical advisory is allowlisted, 1 when one is not,
 // 2 when the report itself is missing or unparseable.
+import { spawnSync } from 'node:child_process';
 import { fstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,6 +93,24 @@ export function evaluateAudit(auditJson, allowlist) {
   return { covered, uncovered };
 }
 
+export function validateAuditReport(auditJson) {
+  const counts = auditJson?.metadata?.vulnerabilities;
+  const requiredCounts = ['info', 'low', 'moderate', 'high', 'critical', 'total'];
+  const validObject = (value) =>
+    value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (
+    auditJson?.auditReportVersion !== 2
+    || !validObject(auditJson.vulnerabilities)
+    || !validObject(counts)
+    || requiredCounts.some(
+      (name) => !Number.isInteger(counts[name]) || counts[name] < 0,
+    )
+  ) {
+    throw new GateFailure(2, 'npm audit did not produce a complete v2 vulnerability report');
+  }
+  return auditJson;
+}
+
 export function loadAuditJson(
   readStdin = () => readFileSync(0, 'utf8'),
   statStdin = () => fstatSync(0),
@@ -117,9 +136,28 @@ export function loadAuditJson(
   }
 }
 
+export function runNpmAudit(runCommand = spawnSync) {
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const result = runCommand(command, ['audit', '--json'], {
+    encoding: 'utf8',
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  if (result.error || result.signal || ![0, 1].includes(result.status)) {
+    throw new GateFailure(2, 'npm audit command failed before producing a report');
+  }
+  let report;
+  try {
+    report = JSON.parse(result.stdout);
+  } catch {
+    throw new GateFailure(2, 'npm audit produced no parseable JSON report');
+  }
+  return validateAuditReport(report);
+}
+
 // Pure decision step: everything main() prints and exits on, unit-testable
 // without a subprocess.
 export function runGate(auditJson, allowlist) {
+  validateAuditReport(auditJson);
   const { covered, uncovered } = evaluateAudit(auditJson, allowlist);
   const warnings = covered.map((c) => `npm audit: ${c.id} allowlisted (via ${c.packages.join(', ')})`);
   const errors = uncovered.map(
@@ -130,7 +168,11 @@ export function runGate(auditJson, allowlist) {
 
 // Default wiring for production use (real stdin, real console, real exit).
 // Tests inject fakes instead. Only these three lines run uncovered.
-const defaultLoadReport = () => loadAuditJson(() => readFileSync(0, 'utf8'), () => fstatSync(0));
+const defaultLoadReport = () => (
+  process.argv.includes('--run-audit')
+    ? runNpmAudit()
+    : loadAuditJson(() => readFileSync(0, 'utf8'), () => fstatSync(0))
+);
 const defaultReadAllowlist = () => JSON.parse(readFileSync(ALLOWLIST_PATH, 'utf8'));
 const defaultQuit = (code) => process.exit(code);
 
