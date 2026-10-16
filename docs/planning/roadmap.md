@@ -90,3 +90,23 @@ Target: add enterprise identity and mailbox ecosystem support.
       links and portal polish remain.)*
 - [ ] Add Microsoft 365 mailbox/API ingestion connector.
 - [ ] Add Google Workspace/Gmail mailbox/API ingestion connector.
+
+## Milestone 6 - Agency Managed Service — **planned in the MTG fork**
+
+Target: turn the analyzer into the system of record and operator console for a
+repeatable managed DMARC service without duplicating acquisition, DNS-provider,
+or PSA integrations inside the product.
+
+- [ ] Prove the private source-scoped ingest and deployment gates in
+      [`mtg-fork-slices.md`](mtg-fork-slices.md).
+- [ ] Add portfolio groups/tags, onboarding state, sender classification, and a
+      shared finding lifecycle.
+- [ ] Add preview/approval/apply/readback policy milestones through delegated
+      DNS adapters.
+- [ ] Add white-label exports and signed events, with HaloPSA as MTG's first
+      managed-service consumer.
+- [ ] Expand into RUF, BIMI, reputation enrichment, and DKIM/SPF lifecycle only
+      after the managed RUA loop is proven.
+
+The capability benchmark, ownership split, sequencing, and pilot acceptance
+criteria live in [`managed-service-vision.md`](managed-service-vision.md).

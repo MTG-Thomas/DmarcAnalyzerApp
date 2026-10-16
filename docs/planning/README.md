@@ -47,6 +47,9 @@ Planning artifacts for `DmarcAnalyzerApp`, a DMARC analyzer platform in the spir
 - [`mtg-fork-slices.md`](mtg-fork-slices.md) - MTG fork dogfood and pre-live
   slices, with PR boundaries and acceptance gates. It does not replace the
   upstream backlog.
+- [`managed-service-vision.md`](managed-service-vision.md) - MTG's fork-local
+  EasyDMARC-like managed-service target, upstream alignment, repo boundaries,
+  and delivery sequence.
 - [`roadmap.md`](roadmap.md) - milestone delivery plan with per-item status.
 - [`architecture.md`](architecture.md) - system architecture, runtime modes, and
   component responsibilities.
