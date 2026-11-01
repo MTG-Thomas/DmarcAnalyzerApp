@@ -5,30 +5,30 @@ public sealed class DatabaseSessionIdentityObserver(ILogger<DatabaseSessionIdent
 {
     private const int MaximumTrackedConnections = 128;
     private readonly object _gate = new();
-    private readonly Dictionary<(string Host, int Port, int BackendId), (long Generation, bool Observed)> _observed = new();
+    private readonly Dictionary<(string? Host, int Port, int BackendId), (long Generation, bool Observed)> _observed = new();
     private long _nextGeneration;
     private bool _reported;
 
     /// <summary>Called by Npgsql only when it opens a new physical connection.</summary>
-    public void PhysicalConnectionOpened((string Host, int Port, int BackendId) key)
+    public void PhysicalConnectionOpened((string? Host, int Port, int BackendId) key)
     {
         lock (_gate)
         {
-            if (_reported || key.BackendId <= 0) return;
+            if (_reported || string.IsNullOrWhiteSpace(key.Host) || key.BackendId <= 0) return;
             if (_observed.ContainsKey(key) || _observed.Count < MaximumTrackedConnections)
                 _observed[key] = (++_nextGeneration, false);
         }
     }
 
     /// <summary>Captures the physical generation before the identity query.</summary>
-    public long? CaptureGeneration((string Host, int Port, int BackendId) key)
+    public long? CaptureGeneration((string? Host, int Port, int BackendId) key)
     {
         lock (_gate)
             return !_reported && _observed.TryGetValue(key, out var state) ? state.Generation : null;
     }
 
     /// <summary>Reports only after an earlier sample on this physical generation.</summary>
-    public void Observe((string Host, int Port, int BackendId) key, long? generation,
+    public void Observe((string? Host, int Port, int BackendId) key, long? generation,
         string sessionUser, string currentUser, string database)
     {
         lock (_gate)

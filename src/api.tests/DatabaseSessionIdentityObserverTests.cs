@@ -76,6 +76,18 @@ public sealed class DatabaseSessionIdentityObserverTests
         Assert.Empty(logger.Messages);
     }
 
+    [Fact]
+    public void MissingHostCannotEstablishPhysicalConnectionReuse()
+    {
+        var logger = new RecordingLogger();
+        var observer = new DatabaseSessionIdentityObserver(logger);
+        (string? Host, int Port, int BackendId) key = (null, 5432, 1);
+        observer.PhysicalConnectionOpened(key);
+        observer.Observe(key, observer.CaptureGeneration(key), "runtime", "runtime", "dmarc");
+        observer.Observe(key, observer.CaptureGeneration(key), "runtime", "runtime", "dmarc");
+        Assert.Empty(logger.Messages);
+    }
+
     private static (string Host, int Port, int BackendId) Key(int backendId) => ("db.example", 5432, backendId);
 
     private sealed class RecordingLogger : ILogger<DatabaseSessionIdentityObserver>
