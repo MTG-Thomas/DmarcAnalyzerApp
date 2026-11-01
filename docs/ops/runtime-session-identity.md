@@ -1,8 +1,13 @@
 # Prepared runtime session identity diagnostic
 
-Status: source and tests prepared; not yet restored, compiled, run, reviewed or
-activated. Heavy laptop tests are prohibited pending the owner-qualified remote
-capacity. Do not treat this plan as runtime evidence or deployment approval.
+Status: source validated on an isolated remote guest; review and production
+activation remain pending. At `cb65b9f2ca4f16135e1500e25272e78bb8073c4c`, locked
+restore and the Release warnings-as-errors build passed with zero warnings and
+errors; all 1,216 unit tests and the real PostgreSQL pool replacement/reuse test
+passed with no skips. The guest was bounded to two CPUs and 4 GiB; the SDK
+container used at most 1.5 CPUs / 3 GiB, and PostgreSQL 0.5 CPU / 512 MiB. Test
+services were stopped afterward; evidence and volumes were retained. No laptop
+Docker test batch, production query or activation is part of this evidence.
 
 The API/all host's existing /health/ready path uses its actual application
 DbContext and Npgsql pool. One constant SELECT reads only session_user,
@@ -32,14 +37,14 @@ operator's behalf. Source tests and disposable PostgreSQL tests prove no
 production identity. Unsafe names and provider errors are not emitted; the
 caller's ordinary readiness failure result remains authoritative.
 
-The proposed tests cover fresh versus reused physical generations, replacement,
+The tests cover fresh versus reused physical generations, replacement,
 stale samples, host separation, safe logging, and a real private test data source
 which is cleared only in the fixture. No shared application pool is cleared by
 the diagnostic. Tests must use an isolated synthetic PostgreSQL database, never
 production connection strings. Existing integration fixtures create/drop only
 their randomized disposable database.
 
-Remote validation, after capacity/access/isolation and resource qualification:
+Remote validation commands (passed after capacity/access/isolation qualification):
 
     dotnet restore DmarcAnalyzerApp.slnx --locked-mode
     dotnet build DmarcAnalyzerApp.slnx --configuration Release --no-restore -warnaserror -m:1
@@ -51,7 +56,17 @@ only SDK 8 and was not changed. The target must supply the qualified SDK or a
 verified published SDK image digest, required network access to public package
 sources, locked dependencies, and private owner-specific build/output/cache
 paths. Do not copy production secrets, whole private caches or encryption keys.
-No package/lockfile change is part of this patch; no UI files changed.
+The first build exposed nullable Npgsql host annotations and audited transitive
+cryptography dependencies. Missing hosts now fail closed without a reuse claim.
+`System.Security.Cryptography.Pkcs` is pinned to patched 10.0.13 in the API;
+`System.Security.Cryptography.Xml` is pinned to patched 10.0.13 only in the two
+non-Web test hosts (the API uses the shared framework). Locks were regenerated,
+then locked restore and the original warnings-as-errors build passed. Audit and
+warning policy are unchanged. See the [PKCS advisory](https://github.com/advisories/GHSA-846f-f764-76mx)
+and [XML advisory](https://github.com/advisories/GHSA-7hqp-7c5m-4vq6).
+No UI files changed. The broader integration suite (including Testcontainers),
+frontend checks and container image build remain the normal CI/review gates;
+they were not executed in this bounded remote validation.
 
 Actual target: app-mtg-dmarc-production, existing application process and pool.
 Normal source/security review, qualified published image/provenance, protected
