@@ -325,8 +325,23 @@ builder.Services.AddCarter();
 // startup crash rather than becoming a 500 on an endpoint.
 builder.Services.AddSingleton(new AppRuntimeInfo(mode));
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
-builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
-    options.UseNpgsql(connectionString));
+builder.Services.AddSingleton<DatabaseSessionIdentityObserver>();
+builder.Services.AddSingleton<DatabaseReadinessProbe>();
+builder.Services.AddSingleton<Npgsql.NpgsqlDataSource>(services =>
+{
+    var observer = services.GetRequiredService<DatabaseSessionIdentityObserver>();
+    var dataSource = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+    dataSource.UsePhysicalConnectionInitializer(
+        connection => observer.PhysicalConnectionOpened((connection.Host, connection.Port, connection.ProcessID)),
+        connection =>
+        {
+            observer.PhysicalConnectionOpened((connection.Host, connection.Port, connection.ProcessID));
+            return Task.CompletedTask;
+        });
+    return dataSource.Build();
+});
+builder.Services.AddDbContext<DmarcAnalyzerDbContext>((services, options) =>
+    options.UseNpgsql(services.GetRequiredService<Npgsql.NpgsqlDataSource>()));
 builder.Services.AddCredentialProtection(builder.Configuration);
 builder.Services.AddOidcAuthentication(builder.Configuration);
 var passkeyOptions = builder.Configuration.GetSection(PasskeyOptions.SectionName).Get<PasskeyOptions>() ?? new PasskeyOptions();
@@ -543,8 +558,8 @@ app.UseMiddleware<RoleAuthorizationMiddleware>();
 app.UseRateLimiter();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
-app.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, CancellationToken ct) =>
-    await db.Database.CanConnectAsync(ct)
+app.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, DatabaseReadinessProbe probe, CancellationToken ct) =>
+    await probe.CheckAsync(db, ct)
         ? Results.Ok(new { status = "ready" })
         : Results.Json(new { status = "unavailable" }, statusCode: 503));
 

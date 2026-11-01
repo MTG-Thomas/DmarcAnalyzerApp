@@ -2,6 +2,10 @@
 
 Prioritized list of candidate work.
 
+## Prepared ? Awaiting Remote Verification
+
+- Bounded application-session identity diagnostics: [source/test and activation plan](../ops/runtime-session-identity.md). Remote locked restore/build, 1,216 unit tests and the real PostgreSQL pool test passed; review and production diagnostics/activation remain pending.
+
 ## Next Up (recommended sequence)
 
 The MVP is functionally complete: multi-tenant RBAC, pluggable auth (local +
