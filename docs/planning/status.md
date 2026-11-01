@@ -2,6 +2,10 @@
 
 Current implementation snapshot for `DmarcAnalyzerApp`.
 
+## Prepared ? Awaiting Remote Verification
+
+- Bounded application-session identity diagnostics: [source/test and activation plan](../ops/runtime-session-identity.md). No successful build, test, production query or activation is claimed yet.
+
 ## Implemented Now
 
 - Repository structure and planning docs baseline under `docs/planning`.
