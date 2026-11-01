@@ -64,9 +64,18 @@ non-Web test hosts (the API uses the shared framework). Locks were regenerated,
 then locked restore and the original warnings-as-errors build passed. Audit and
 warning policy are unchanged. See the [PKCS advisory](https://github.com/advisories/GHSA-846f-f764-76mx)
 and [XML advisory](https://github.com/advisories/GHSA-7hqp-7c5m-4vq6).
-No UI files changed. The broader integration suite (including Testcontainers),
-frontend checks and container image build remain the normal CI/review gates;
-they were not executed in this bounded remote validation.
+No UI components or application behavior files changed. CI at `0c0fe36` passed
+PostgreSQL 16 integration, PostgreSQL 18 migration smoke, CodeQL and Sonar, but
+stopped at the frontend audit gate on existing vulnerable dependencies. A targeted
+lock refresh within existing declared ranges updates Vite to 8.3.5, Undici to
+8.12.3 and Zod to 4.6.7 with their required dependency closure. Audit policy and
+the allowlist are unchanged. The same isolated remote guest, using Node 22.23.4
+in pinned image `node@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914`,
+passed `npm ci`, `npm run audit:ci` (zero unlisted high/critical advisories),
+`npm run lint`, `npx tsc --noEmit`, all 139 tests across 22 files with one bounded
+test worker, and `npm run build`. Test services stopped afterward. These checks
+covered the exact lock patch on `0c0fe36`; fresh final-candidate CI, including the
+container image build and broader suites, remains required.
 
 Actual target: app-mtg-dmarc-production, existing application process and pool.
 Normal source/security review, qualified published image/provenance, protected
